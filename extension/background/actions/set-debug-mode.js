@@ -6,7 +6,8 @@
     name: 'set-debug-mode',
 
     meta: {
-      allowedSources: ['popup'],
+      // O handler legado aceitava a alteração de qualquer contexto da extensão.
+      allowedSources: ['any'],
       async: true,
     },
 
