@@ -10,7 +10,7 @@
   scope.MangaTranslatorRouter.registerAction({
     name: 'request-image-data',
     meta: {
-      // O handler legado aceitava mensagens de qualquer contexto da extensao.
+      // Contrato atual mantém mensagens aceitas de qualquer contexto da extensão.
       allowedSources: ['any'],
     },
     execute(request) {
