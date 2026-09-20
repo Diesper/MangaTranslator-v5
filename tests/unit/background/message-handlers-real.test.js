@@ -141,11 +141,12 @@ describe('background.js - handlers onMessage reais', () => {
         }, { tab: { id: 3333 } });
 
         expect(extractedResult.response).toEqual({ ok: true });
-        expect(forwardedMessages).toContainEqual({
+        expect(forwardedMessages).toContainEqual(expect.objectContaining({
             action: 'UPDATE_IMAGE',
             index: 7,
             newSrc: 'data:image/png;base64,FROM_GEMINI',
-        });
+            expectAck: true,
+        }));
 
         await jest.advanceTimersByTimeAsync(1501);
         await flushFakeTimerRounds(4);
@@ -160,21 +161,24 @@ describe('background.js - handlers onMessage reais', () => {
             completedJobs: 0,
         });
 
-        const readyFromTab = await dispatchToBackground(runtimeMock, {
+        const readyFromTabPromise = dispatchToBackground(runtimeMock, {
             action: 'IMAGE_READY_FROM_NEW_TAB',
             mangaTabId: mangaTab.id,
             index: 8,
             src: 'data:image/png;base64,FROM_EXTRACTION_TAB',
             geminiTabId: 4444,
         }, { tab: { id: extractionTab.id } });
+        await jest.advanceTimersByTimeAsync(1);
+        const readyFromTab = await readyFromTabPromise;
 
         expect(readyFromTab.response).toEqual({ ok: true });
         expect(tabsMock._tabs.has(extractionTab.id)).toBe(false);
-        expect(forwardedMessages).toContainEqual({
+        expect(forwardedMessages).toContainEqual(expect.objectContaining({
             action: 'UPDATE_IMAGE',
             index: 8,
             newSrc: 'data:image/png;base64,FROM_EXTRACTION_TAB',
-        });
+            expectAck: true,
+        }));
 
         await jest.advanceTimersByTimeAsync(1501);
         await flushFakeTimerRounds(4);
