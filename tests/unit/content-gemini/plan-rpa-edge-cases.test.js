@@ -154,7 +154,11 @@ function appendSendButton({
     button.setAttribute('aria-label', label);
     button.disabled = disabled;
     if (hidden) button.style.display = 'none';
-    button.click = jest.fn(() => onSubmit());
+    button.click = jest.fn(() => {
+        const editor = document.querySelector('.ql-editor, [contenteditable="true"]');
+        if (editor) editor.textContent = '';
+        onSubmit();
+    });
     document.body.appendChild(button);
     return button;
 }
