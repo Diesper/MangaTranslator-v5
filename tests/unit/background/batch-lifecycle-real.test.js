@@ -190,6 +190,24 @@ describe('background.js - lifecycle real do batch', () => {
         });
     });
 
+    test('P0: CHECK_IF_EXTRACTION_TAB reidrata mapeamento após worker novo', async () => {
+        const extractionTab = await tabsMock.create({ url: 'https://cdn.reader.test/result.png', active: false });
+        await storageMock.set({
+            mt_state: {
+                jobQueue: [], isProcessing: true, stopRequested: false, activeMangaTabId: 88,
+                currentBatchId: 'batch-r', totalJobs: 1, completedJobs: 0, activeJobsCount: 0, jobIndex: [],
+                extractionTabs: {
+                    [extractionTab.id]: { mangaTabId: 88, index: 1, geminiTabId: 44, jobId: 'job-r', batchId: 'batch-r' },
+                },
+            },
+        });
+
+        const lookup = await dispatchToBackground(runtimeMock, { action: 'CHECK_IF_EXTRACTION_TAB' }, { tab: { id: extractionTab.id } });
+        expect(lookup.response).toEqual(expect.objectContaining({
+            isExtractionTab: true, mangaTabId: 88, jobId: 'job-r', batchId: 'batch-r',
+        }));
+    });
+
     test('STOP_BATCH limpa estado, jobs persistidos e abas abertas do fluxo real', async () => {
         await storageMock.set({
             maxConcurrentJobs: 1,
