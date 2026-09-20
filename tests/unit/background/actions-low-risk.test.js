@@ -93,12 +93,14 @@ describe('ações de baixo risco do background', () => {
                 61: { mangaTabId: 7, index: 4, geminiTabId: 32, jobId: 'job-1' },
             },
         });
-        const response = await dispatch(router.createMessageRouter({}), {
+        const response = await dispatch(router.createMessageRouter({
+            contextFactory: () => ({ ensureInitialized: jest.fn().mockResolvedValue() }),
+        }), {
             action: 'CHECK_IF_EXTRACTION_TAB',
         }, { tab: { id: 61, url: 'https://cdn.example/result.png' } });
 
         expect(response).toEqual({
-            keepAlive: false,
+            keepAlive: true,
             response: {
                 ok: true,
                 isExtractionTab: true,
