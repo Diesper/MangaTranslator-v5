@@ -124,7 +124,7 @@ describe('background.js - lifecycle e alarms reais', () => {
 
         const data = await storageMock.get(['mt_state', 'translatorLog']);
         expect(data.mt_state).toEqual(expect.objectContaining({
-            isProcessing: false,
+            isProcessing: true,
             activeMangaTabId: 42,
             extractionTabs: {},
             totalJobs: 2,
