@@ -22,6 +22,19 @@ function sendLog(level, action_name, detail, extra = {}) {
     chrome.runtime.sendMessage({ action: 'LOG_ENTRY', level, source: 'gemini', action_name, detail, extra }, () => { if (chrome.runtime.lastError) {} });
 }
 
+function getUrlLogMetadata(value) {
+    const rawUrl = String(value || '');
+    if (rawUrl.startsWith('data:')) return { urlKind: 'data', host: null, hasQuery: false };
+    if (rawUrl.startsWith('blob:')) return { urlKind: 'blob', host: null, hasQuery: false };
+
+    try {
+        const parsed = new URL(rawUrl);
+        return { urlKind: parsed.protocol.replace(':', ''), host: parsed.hostname || null, hasQuery: Boolean(parsed.search) };
+    } catch (_error) {
+        return { urlKind: 'invalid', host: null, hasQuery: false };
+    }
+}
+
 function reportProgress(text, mangaTabId = null) {
     chrome.runtime.sendMessage({ action: 'GEMINI_PROGRESS', text, mangaTabId }, () => { if (chrome.runtime.lastError) {} });
 }
@@ -605,7 +618,7 @@ function setManualGeminiResultUrl(url, source = 'manual') {
     window.__mangaTranslatorManualGeminiResultUrl = url;
     const status = document.getElementById('mt-gemini-assist-status');
     if (status) status.textContent = 'Imagem marcada. A extensão vai usar esse resultado.';
-    sendLog('info', 'GEMINI_MANUAL_RESULT', 'Imagem marcada manualmente no Gemini', { source, url: String(url || '').substring(0, 80) });
+    sendLog('info', 'GEMINI_MANUAL_RESULT', 'Imagem marcada manualmente no Gemini', { source, ...getUrlLogMetadata(url) });
 }
 
 function removeGeminiManualPanel() {
@@ -929,7 +942,7 @@ async function processGeminiJob() {
             usedFallback = false;
         }
 
-        if (usedFallback) sendLog('error', 'PROMPT_FALLBACK', `Prompt falhou ou está vazio. Usando emergência!`, { fallbackPrompt });
+        if (usedFallback) sendLog('error', 'PROMPT_FALLBACK', 'Prompt falhou ou está vazio. Usando emergência!', { fallbackLength: fallbackPrompt.length });
 
         // Re-obtém os elementos mais recentes do DOM
         const activeEditor = document.querySelector('rich-textarea, .ql-editor, [contenteditable="true"]') || liveEditor;
@@ -946,7 +959,7 @@ async function processGeminiJob() {
 
         const promptLen = (activeEditable.textContent || '').trim().length;
         assert(promptLen >= 5, `O prompt não foi inserido. Comprimento: ${promptLen}`, 4, 'Prompt injetado com sucesso.');
-        sendLog('success', 'PROMPT_INJECTED', 'Prompt confirmado no DOM', { promptLen, preview: activeEditable.textContent.trim().slice(0, 35) });
+        sendLog('success', 'PROMPT_INJECTED', 'Prompt confirmado no DOM', { promptLen });
         await sleep(1000);
 
         let sendClicked = false;
@@ -1097,7 +1110,7 @@ async function processGeminiJob() {
             }
             
             assert(resultUrl.startsWith('http') || resultUrl.startsWith('blob') || resultUrl.startsWith('data:image/'), 'URL Imagem inválida', 5, 'Mídia extraída blob');
-            sendLog('success', 'GEMINI_IMG_FOUND', 'Imagem gerada!', { url: resultUrl.substring(0, 50) + '...' });
+            sendLog('success', 'GEMINI_IMG_FOUND', 'Imagem gerada!', getUrlLogMetadata(resultUrl));
             reportProgress(`📥 EXTRAINDO IMAGEM...`, job.mangaTabId);
             
             // Eleva a resolução da imagem CDN do Google para =s0 (original sem compressão)
@@ -1128,7 +1141,10 @@ async function processGeminiJob() {
                 if (shouldDeleteConversation) deleteCurrentConversation().catch(() => {});
                 chrome.runtime.sendMessage({ action: 'GEMINI_IMAGE_EXTRACTED', mangaTabId: job.mangaTabId, index: job.index, src: base64, jobId: job.jobId, batchId: job.batchId });
             } catch(e) {
-                sendLog('warn', 'GEMINI_EXTRACT_ERR', 'Extração direta falhou, fallback bypass.', { err: e.message });
+                sendLog('warn', 'GEMINI_EXTRACT_ERR', 'Extração direta falhou, fallback bypass.', {
+                    errorName: e && e.name ? e.name : 'Error',
+                    messageLength: String(e && e.message || '').length,
+                });
                 if (shouldDeleteConversation) deleteCurrentConversation().catch(() => {});
                 chrome.runtime.sendMessage({ action: 'GEMINI_RESULT_URL', mangaTabId: job.mangaTabId, index: job.index, url: resultUrl, jobId: job.jobId, batchId: job.batchId });
             }
