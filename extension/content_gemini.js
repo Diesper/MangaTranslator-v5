@@ -53,6 +53,28 @@ function getUrlLogMetadata(value) {
     }
 }
 
+// ── Console de depuração — gated por debug mode ─────────────────────────────
+// console.log/warn/error escrevem direto no DevTools, fora do pipeline
+// sanitizado de sendLog()/sanitizeLogExtra(). Antes rodavam incondicionalmente
+// (mesmo com debug mode desligado) e alguns argumentos carregavam dado bruto
+// (jobId completo, objeto Error inteiro, referência DOM com src de imagem).
+// Este helper: (1) só escreve no console quando debugMode está ativo, e
+// (2) sempre passa argumentos estruturados por sanitizeLogExtra antes de
+// imprimir, nunca o objeto bruto.
+let _debugModeEnabled = false;
+chrome.storage.local.get(['debugMode'], data => { _debugModeEnabled = data && data.debugMode === true; });
+if (chrome.storage && chrome.storage.onChanged) {
+    chrome.storage.onChanged.addListener((changes, area) => {
+        if (area === 'local' && changes.debugMode) _debugModeEnabled = changes.debugMode.newValue === true;
+    });
+}
+
+function debugConsole(level, ...args) {
+    if (!_debugModeEnabled) return;
+    const safeArgs = args.map(arg => (typeof arg === 'object' && arg !== null ? sanitizeLogExtra(arg) : arg));
+    console[level](...safeArgs);
+}
+
 function reportProgress(text, mangaTabId = null) {
     chrome.runtime.sendMessage({ action: 'GEMINI_PROGRESS', text, mangaTabId }, () => { if (chrome.runtime.lastError) {} });
 }
@@ -282,7 +304,7 @@ const TemporaryChatActivator = {
     },
 
     async ensureTemporaryChatActive(maxSeconds = 12) {
-        console.log('[MangaTranslator Gemini] Verificando status da "Conversa momentânea/temporária"...');
+        debugConsole('log', '[MangaTranslator Gemini] Verificando status da "Conversa momentânea/temporária"...');
         const startTime = Date.now();
 
         while (Date.now() - startTime < maxSeconds * 1000) {
@@ -290,25 +312,25 @@ const TemporaryChatActivator = {
 
             if (btn) {
                 if (this.isAlreadyActive(btn)) {
-                    console.log('[MangaTranslator Gemini] Conversa temporária já está ATIVADA na página.');
+                    debugConsole('log', '[MangaTranslator Gemini] Conversa temporária já está ATIVADA na página.');
                     return { success: true, alreadyActive: true };
                 }
 
                 const label = (btn.innerText || btn.textContent || btn.getAttribute('aria-label') || '').trim();
-                console.log(`[MangaTranslator Gemini] Botão de conversa temporária encontrado ("${label}"). Acionando clique...`);
+                debugConsole('log', `[MangaTranslator Gemini] Botão de conversa temporária encontrado ("${label}"). Acionando clique...`);
                 this.triggerClick(btn);
                 await this.sleep(600);
 
                 const btnAfter = this.findTempChatButton() || this.findButtonByPosition();
                 const activeNow = this.isAlreadyActive(btnAfter) || !((btnAfter?.innerText || '').toLowerCase().includes('ativar'));
-                console.log('[MangaTranslator Gemini] Conversa temporária acionada com sucesso.', { activeNow });
+                debugConsole('log', '[MangaTranslator Gemini] Conversa temporária acionada com sucesso.', { activeNow });
                 return { success: true, activated: true };
             }
 
             await this.sleep(500);
         }
 
-        console.warn('[MangaTranslator Gemini] Não foi possível localizar o botão de Conversa Momentânea após tentativas.');
+        debugConsole('warn', '[MangaTranslator Gemini] Não foi possível localizar o botão de Conversa Momentânea após tentativas.');
         return { success: false, notFound: true };
     }
 };
@@ -736,7 +758,7 @@ function getEditableElement(root) {
 }
 
 async function processGeminiJob() {
-    console.log('[MangaTranslator Gemini] processGeminiJob iniciado na aba');
+    debugConsole('log', '[MangaTranslator Gemini] processGeminiJob iniciado na aba');
     // 1. Obter Tab ID com tolerância a atrasos de reidratação do Service Worker
     let response = null;
     for (let t = 0; t < 5; t++) {
@@ -751,7 +773,7 @@ async function processGeminiJob() {
     }
 
     if (!response || !response.tabId) {
-        console.warn('[MangaTranslator Gemini] Falha ao obter tabId após 5 tentativas');
+        debugConsole('warn', '[MangaTranslator Gemini] Falha ao obter tabId após 5 tentativas');
         return;
     }
 
@@ -783,7 +805,7 @@ async function processGeminiJob() {
             if (orphanKey) {
                 job = all[orphanKey];
                 job._claimed = true;
-                console.log('[MangaTranslator Gemini] Job resgatado via orphan fallback:', orphanKey);
+                debugConsole('log', '[MangaTranslator Gemini] Job resgatado via orphan fallback (tab key):', orphanKey);
                 await new Promise(r => chrome.storage.local.set({ [jobKey]: job }, r));
                 break;
             }
@@ -800,7 +822,7 @@ async function processGeminiJob() {
 
     // Job confirmado: só a partir daqui vale manter o Service Worker acordado.
     openKeepAlive();
-    console.log('[MangaTranslator Gemini] Job confirmado:', { jobId: job.jobId, index: job.index });
+    debugConsole('log', '[MangaTranslator Gemini] Job confirmado:', { jobId: (job.jobId || '').slice(0, 8), index: job.index });
 
     const scrollInterval = setInterval(() => {
         window.scrollTo(0, document.body.scrollHeight);
@@ -811,7 +833,7 @@ async function processGeminiJob() {
     const assert = (condition, errorMessage, step, successMsg = '') => {
         if (!condition) {
             const fullError = `[ERRO CRÍTICO - ETAPA ${step}] ${errorMessage}`;
-            console.error(fullError);
+            debugConsole('error', fullError);
             sendLog('error', `TEST_FAIL_STEP_${step}`, errorMessage, { path: window.location.pathname });
             throw new Error(fullError); 
         } else {
@@ -821,7 +843,7 @@ async function processGeminiJob() {
 
     try {
         reportProgress(`📡 OBTENDO IMAGEM...`, job.mangaTabId);
-        console.log('[MangaTranslator Gemini] Obtendo imagem da aba do mangá...', { index: job.index });
+        debugConsole('log', '[MangaTranslator Gemini] Obtendo imagem da aba do mangá...', { index: job.index });
         sendLog('info', 'GEMINI_STEP_1', 'Obtendo imagem', { index: job.index });
 
         let imgResponse = null;
@@ -841,7 +863,7 @@ async function processGeminiJob() {
         job.srcData = imgResponse.srcData;
 
         reportProgress(`⏳ AGUARDANDO INTERFACE...`, job.mangaTabId);
-        console.log('[MangaTranslator Gemini] Aguardando interface do Gemini...');
+        debugConsole('log', '[MangaTranslator Gemini] Aguardando interface do Gemini...');
         let editor = await waitForElement('rich-textarea, .ql-editor, [contenteditable="true"]', 20000);
         assert(editor !== null, 'Editor não carregou.', 2, 'Editor alvo detectado');
 
@@ -861,7 +883,7 @@ async function processGeminiJob() {
         let tempChatResult = { success: false };
         if (executionMode === 'temp_chat') {
             reportProgress(`🔒 ATIVANDO CONVERSA TEMPORÁRIA...`, job.mangaTabId);
-            console.log('[MangaTranslator Gemini] Ativando conversa temporária...');
+            debugConsole('log', '[MangaTranslator Gemini] Ativando conversa temporária...');
             sendLog('info', 'GEMINI_STEP_TEMP_CHAT', 'Ativando conversa temporária no Gemini', {});
             try {
                 tempChatResult = await TemporaryChatActivator.ensureTemporaryChatActive(12);
@@ -870,7 +892,7 @@ async function processGeminiJob() {
                     await sleep(1500);
                 }
             } catch (tempErr) {
-                console.warn('[MangaTranslator Gemini] Aviso ao ativar conversa temporária:', tempErr);
+                debugConsole('warn', '[MangaTranslator Gemini] Aviso ao ativar conversa temporária:', tempErr && tempErr.message);
                 sendLog('warn', 'GEMINI_TEMP_CHAT_ERR', `Aviso ao ativar conversa temporária: ${tempErr.message}`, {});
             }
         }
@@ -880,7 +902,7 @@ async function processGeminiJob() {
         const liveEditable = getEditableElement(liveEditor) || liveEditor;
 
         reportProgress(`📎 ANEXANDO IMAGEM...`, job.mangaTabId);
-        console.log('[MangaTranslator Gemini] Anexando imagem...');
+        debugConsole('log', '[MangaTranslator Gemini] Anexando imagem...');
         const file = dataURLtoFile(job.srcData, 'manga_page.png');
         assert(file.size > 0, 'Imagem gerada vazia.', 3, 'PNG verificado no buffer');
 
@@ -940,16 +962,16 @@ async function processGeminiJob() {
         }
 
         if (!thumbResult) {
-            console.warn('[MangaTranslator Gemini] Thumbnail não detectado após 15s, prosseguindo com envio...');
+            debugConsole('warn', '[MangaTranslator Gemini] Thumbnail não detectado após 15s, prosseguindo com envio...');
             sendLog('warn', 'GEMINI_STEP_3_WARN', 'Thumb não detectado explicitamente, prosseguindo com envio', {});
         } else {
-            console.log('[MangaTranslator Gemini] Thumbnail confirmado:', thumbResult);
+            debugConsole('log', '[MangaTranslator Gemini] Thumbnail confirmado:', thumbResult && { type: thumbResult.type, selector: thumbResult.selector });
             sendLog('success', 'GEMINI_STEP_3_OK', 'Thumbnail confirmado', { type: thumbResult.type, selector: thumbResult.selector });
         }
         await sleep(1000);
 
         reportProgress(`📤 ENVIANDO PROMPT...`, job.mangaTabId);
-        console.log('[MangaTranslator Gemini] Injetando prompt e enviando...');
+        debugConsole('log', '[MangaTranslator Gemini] Injetando prompt e enviando...');
         const fallbackPrompt = "Crie uma imagem traduzindo todas as falas desta imagem para o Português. Mantenha o sentido original e apenas altere ou modifique o texto na imagem.";
         let actualPrompt = fallbackPrompt;
         let usedFallback = true;
@@ -992,7 +1014,7 @@ async function processGeminiJob() {
             if (currentText.length === 0 || stopBtn) {
                 sendClicked = true;
                 window.__mangaTranslatorJobSent = true;
-                console.log('[MangaTranslator Gemini] Envio verificado no DOM (campo limpo ou gerando)!');
+                debugConsole('log', '[MangaTranslator Gemini] Envio verificado no DOM (campo limpo ou gerando)!');
                 sendLog('success', 'GEMINI_SEND_VERIFIED', 'Envio confirmado no DOM (campo limpo ou gerando)', { wait });
                 break;
             }
@@ -1002,14 +1024,14 @@ async function processGeminiJob() {
                 const isDisabled = sendBtn.disabled || sendBtn.getAttribute('aria-disabled') === 'true';
                 if (!isDisabled) {
                     clickSendButton(sendBtn);
-                    console.log('[MangaTranslator Gemini] Botão de envio acionado. Aguardando confirmação no DOM...');
+                    debugConsole('log', '[MangaTranslator Gemini] Botão de envio acionado. Aguardando confirmação no DOM...');
                     await sleep(1000);
                     const afterText = (activeEditable ? activeEditable.textContent || '' : '').trim();
                     const afterStop = document.querySelector('button[aria-label*="Interromper"], button[aria-label*="Stop"], button[aria-label*="Parar"], [data-test-id="stop-generating-button"]');
                     if (afterText.length === 0 || afterStop) {
                         sendClicked = true;
                         window.__mangaTranslatorJobSent = true;
-                        console.log('[MangaTranslator Gemini] Envio confirmado após disparo do botão!');
+                        debugConsole('log', '[MangaTranslator Gemini] Envio confirmado após disparo do botão!');
                         sendLog('success', 'GEMINI_SEND_SUCCESS', 'Botão de envio acionado com sucesso', { wait, label: sendBtn.getAttribute('aria-label') || 'send' });
                         break;
                     }
@@ -1019,7 +1041,7 @@ async function processGeminiJob() {
             // Se o botão permanecer desabilitado após algumas tentativas,
             // solicita ativação temporária (250ms) do background para destravar validação do Angular
             if (wait === 5 || wait === 15 || wait === 25) {
-                console.log('[MangaTranslator Gemini] Solicitando FORCE_SEND_ACTIVATION para segundo plano...', { wait });
+                debugConsole('log', '[MangaTranslator Gemini] Solicitando FORCE_SEND_ACTIVATION para segundo plano...', { wait });
                 chrome.runtime.sendMessage({
                     action: 'FORCE_SEND_ACTIVATION',
                     geminiTabId: myTabId,
@@ -1045,7 +1067,7 @@ async function processGeminiJob() {
             if (afterText.length === 0 || afterStop) {
                 sendClicked = true;
                 window.__mangaTranslatorJobSent = true;
-                console.log('[MangaTranslator Gemini] Envio confirmado após disparo!');
+                debugConsole('log', '[MangaTranslator Gemini] Envio confirmado após disparo!');
                 sendLog('success', 'GEMINI_SEND_SUCCESS', 'Envio confirmado após disparo', { wait });
                 break;
             }
@@ -1055,7 +1077,7 @@ async function processGeminiJob() {
             window.dispatchEvent(new CustomEvent('MANGA_TRANSLATOR_TRIGGER_SEND'));
             sendClicked = true;
             window.__mangaTranslatorJobSent = true;
-            console.log('[MangaTranslator Gemini] Envio com fallback TRIGGER_SEND finalizado.');
+            debugConsole('log', '[MangaTranslator Gemini] Envio com fallback TRIGGER_SEND finalizado.');
             sendLog('warn', 'GEMINI_SEND_FALLBACK', 'Envio com fallback TRIGGER_SEND finalizado', {});
         }
 
