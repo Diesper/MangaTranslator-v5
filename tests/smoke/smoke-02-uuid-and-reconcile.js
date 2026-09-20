@@ -25,15 +25,30 @@ assert(id1.startsWith('job_'));
 assert(id1.length > 10);
 
 // Teste simulando ausência de crypto.randomUUID (ambiente restrito / SW antigo)
-const originalRandomUUID = crypto.randomUUID;
+let originalRandomUUID = null;
 try {
-    delete crypto.randomUUID;
+    originalRandomUUID = crypto.randomUUID;
+    try {
+        crypto.randomUUID = undefined;
+    } catch (_e) {
+        try {
+            Object.defineProperty(crypto, 'randomUUID', { value: undefined, configurable: true, writable: true });
+        } catch (_e2) {}
+    }
     const fallbackId = generateId('fallback_');
     assert(fallbackId.startsWith('fallback_'));
     assert(fallbackId.length > 15, 'ID gerado pelo fallback determinístico deve ser não-vazio e único');
     console.log('  -> Fallback sem crypto.randomUUID OK:', fallbackId);
 } finally {
-    crypto.randomUUID = originalRandomUUID;
+    if (originalRandomUUID) {
+        try {
+            crypto.randomUUID = originalRandomUUID;
+        } catch (_e) {
+            try {
+                Object.defineProperty(crypto, 'randomUUID', { value: originalRandomUUID, configurable: true, writable: true });
+            } catch (_e2) {}
+        }
+    }
 }
 
 // ── 2. Teste de reconciliação de jobs (reconcileJobs) ─────────────────────────
