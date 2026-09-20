@@ -18,6 +18,19 @@ if (!window.__manga_translator_content_injected) {
         || (typeof self !== 'undefined' && self.MangaTranslatorGtcFingerprint)
         || null;
 
+    function generateContentId(prefix = '') {
+        if (gtcFingerprintApi && typeof gtcFingerprintApi.generateId === 'function') {
+            return gtcFingerprintApi.generateId(prefix);
+        }
+        const cryptoRef = typeof globalThis !== 'undefined' ? globalThis.crypto : null;
+        if (cryptoRef && typeof cryptoRef.randomUUID === 'function') return prefix + cryptoRef.randomUUID();
+        if (cryptoRef && typeof cryptoRef.getRandomValues === 'function') {
+            const bytes = cryptoRef.getRandomValues(new Uint8Array(16));
+            return `${prefix}${Array.from(bytes, byte => byte.toString(16).padStart(2, '0')).join('')}`;
+        }
+        return `${prefix}${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 14)}`;
+    }
+
     function sendRuntimeMessageAsync(message) {
         return new Promise((resolve) => {
             chrome.runtime.sendMessage(message, (response) => {
@@ -1776,7 +1789,7 @@ if (!window.__manga_translator_content_injected) {
             if(btn) { setBtnHTML(btn, 'INICIANDO...', true); if (staticPart) staticPart.style.background = '#ff9800'; else btn.style.background = '#ff9800'; }
 
             chrome.storage.local.get(['customPrompt', 'defaultPrompt'], (result) => {
-                _currentBatchId = crypto.randomUUID();
+                _currentBatchId = generateContentId();
                 chrome.runtime.sendMessage({
                     action: 'START_BATCH',
                     images: payloadToGemini,
@@ -1944,7 +1957,7 @@ if (!window.__manga_translator_content_injected) {
                         if (chapter) { chapter.url = window.location.href; chapter.title = canonicalTitle(document.title || 'Capítulo sem título'); chrome.storage.local.set({ chapterList: list }); }
                     }
                     if (chapter) { resolve(chapter.id); return; }
-                    let newId = 'chap_' + crypto.randomUUID();
+                    let newId = generateContentId('chap_');
                     list.push({ id: newId, url: window.location.href, title: canonicalTitle(document.title || 'Capítulo sem título'), timestamp: Date.now() });
                     chrome.storage.local.set({ chapterList: list }, () => {
                         if (chrome.runtime.lastError) { reject(new Error(`storage.set falhou: ${chrome.runtime.lastError.message}`)); return; }
