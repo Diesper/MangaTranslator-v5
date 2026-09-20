@@ -1,4 +1,4 @@
-// content_gemini.js — Manga Translator v4.0
+// content_gemini.js — Manga Translator v6.0
 
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 
