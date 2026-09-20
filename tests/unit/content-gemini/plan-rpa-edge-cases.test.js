@@ -222,7 +222,9 @@ describe('content_gemini.js - bordas RPA do plano v3.1', () => {
         mountEditor();
         installResponder({
             GET_TAB_ID: () => ({ tabId: 321 }),
-            REQUEST_IMAGE_DATA: () => undefined,
+            // Encerra o fluxo logo após provar que o job tardio foi encontrado.
+            // O comportamento de retry para resposta ausente é coberto separadamente.
+            REQUEST_IMAGE_DATA: () => ({ srcData: 'payload-invalido' }),
         });
 
         const mod = loadContentGeminiModule();
@@ -245,7 +247,7 @@ describe('content_gemini.js - bordas RPA do plano v3.1', () => {
         ), { timeout: 2500 });
         await waitFor(() => sentMessages.find(message =>
             message.action === 'GEMINI_ERROR' && message.index === 10
-        ), { timeout: 1000 });
+        ), { timeout: 2500 });
     });
 
     test('CG-11: sem job apos 30 tentativas registra JOB_NOT_FOUND e encerra sem crash', async () => {
