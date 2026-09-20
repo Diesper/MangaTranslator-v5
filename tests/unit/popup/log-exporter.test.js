@@ -2,13 +2,13 @@
  * log-exporter.test.js
  * ─────────────────────────────────────────────────────────────────────────────
  * Testa a visualização de logs, filtragem por nível de severidade, limpeza
- * e exportação formatada para arquivo de texto (.txt) via downloads API (v5.1).
+ * e exportação formatada para arquivo de texto (.txt) via downloads API na arquitetura atual.
  */
 
 const { loadExtensionPage, flushAsyncTasks } = require('../../helpers/load-extension-page.js');
 const { getStorageMock, getTabsMock, getDownloadsMock } = require('../../mocks/chrome-api.mock.js');
 
-describe('v5.1 Log Buffer e Exportador — popup.js', () => {
+describe('v6.0 Log Buffer e Exportador — popup.js', () => {
     let storageMock;
     let tabsMock;
     let downloadsMock;
