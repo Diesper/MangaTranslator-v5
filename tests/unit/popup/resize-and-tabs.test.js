@@ -103,6 +103,7 @@ describe('v5.1 Popup 2D Resizing e Agrupamento de Banidas — popup.js', () => {
             enabledDomains: ['site-a.com', 'site-b.com'],
             'bannedImages_site-a.com': ['https://site-a.com/ad1.png', 'https://site-a.com/ad2.png'],
             'bannedImages_site-b.com': ['https://site-b.com/banner.png'],
+            'siteMeta_site-a.com': { title: '<img src=x onerror=alert(1)>' },
         });
 
         const activeTab = await tabsMock.create({
@@ -129,5 +130,7 @@ describe('v5.1 Popup 2D Resizing e Agrupamento de Banidas — popup.js', () => {
 
         const folderCounts = Array.from(document.querySelectorAll('.site-folder-count')).map(el => el.textContent);
         expect(folderCounts).toEqual(['2 ban.', '1 ban.']);
+        expect(folders[0].querySelector('.site-folder-name').textContent).toBe('<img src=x onerror=alert(1)>');
+        expect(folders[0].querySelector('.site-folder-name img')).toBeNull();
     });
 });
