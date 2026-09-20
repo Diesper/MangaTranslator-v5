@@ -5,6 +5,15 @@
   scope.MangaTranslatorRouter.registerAction({
     name: 'report-error',
     meta: { allowedSources: ['any'] },
+    validate(request) {
+      if (typeof request.jobId !== 'string' || request.jobId.trim().length === 0) {
+        return { code: 'INVALID_PAYLOAD', message: 'jobId é obrigatório' };
+      }
+      if (typeof request.error !== 'string' || request.error.trim().length === 0 || request.error.length > 4096) {
+        return { code: 'INVALID_PAYLOAD', message: 'erro inválido' };
+      }
+      return null;
+    },
     async execute(request, context) {
       await context.ensureInitialized();
       const { mangaTabId, index, error, jobId, batchId } = request;
