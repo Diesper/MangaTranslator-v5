@@ -169,6 +169,30 @@ describe('CM-14/CM-15/CM-16/CM-17/CM-18/CM-19/CM-20/CM-51/CM-52/CM-53/CM-54/CM-7
         expect(startBatch.prompt).toBe('');
     });
 
+    test('em contexto sem crypto ainda gera batchId e inicia o lote', async () => {
+        const globalCryptoDescriptor = Object.getOwnPropertyDescriptor(global, 'crypto');
+        const windowCryptoDescriptor = Object.getOwnPropertyDescriptor(window, 'crypto');
+        Object.defineProperty(global, 'crypto', { value: undefined, configurable: true });
+        Object.defineProperty(window, 'crypto', { value: undefined, configurable: true });
+        try {
+            installRuntimeResponder();
+            await loadContentScript({
+                hostname: 'localhost',
+                domImages: [{ src: 'http://localhost/page-0.png', width: 800, height: 1200 }],
+            });
+
+            document.getElementById('manga-main-content').click();
+
+            const startBatch = await waitFor(() => sentMessages.find(message => message.action === 'START_BATCH'));
+            expect(startBatch.batchId).toMatch(/^[a-z0-9]+-[a-z0-9]+-[a-z0-9]+$/);
+        } finally {
+            if (globalCryptoDescriptor) Object.defineProperty(global, 'crypto', globalCryptoDescriptor);
+            else delete global.crypto;
+            if (windowCryptoDescriptor) Object.defineProperty(window, 'crypto', windowCryptoDescriptor);
+            else delete window.crypto;
+        }
+    });
+
     test('quando nao ha paginas validas mostra toast e nao envia START_BATCH', async () => {
         installRuntimeResponder();
         await loadContentScript({
