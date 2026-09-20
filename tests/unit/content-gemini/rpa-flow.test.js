@@ -273,13 +273,18 @@ describe('content_gemini.js - RPA real do Gemini', () => {
             sendMode: 'exact',
             onSubmit: () => {
                 setTimeout(() => {
-                    appendGeneratedImage('https://cdn.gemini.test/result-001.png');
+                    appendGeneratedImage('https://cdn.gemini.test/result-001.png?token=signed-secret');
                 }, 25);
             },
         });
 
         await loadScript({
             storage: { debugMode: true },
+            job: {
+                mangaTabId: 77,
+                index: 5,
+                prompt: 'prompt-private-text',
+            },
             responders: {
                 GET_TAB_ID: () => ({ tabId: 321 }),
                 REQUEST_IMAGE_DATA: () => ({ srcData: 'data:image/png;base64,QUJDRA==' }),
@@ -294,10 +299,16 @@ describe('content_gemini.js - RPA real do Gemini', () => {
         const exactLog = sentMessages.find(message =>
             message && message.action === 'LOG_ENTRY' && message.action_name === 'GEMINI_SEND_SUCCESS'
         );
+        const imageFoundLog = sentMessages.find(message =>
+            message && message.action === 'LOG_ENTRY' && message.action_name === 'GEMINI_IMG_FOUND'
+        );
+        const promptLog = sentMessages.find(message =>
+            message && message.action === 'LOG_ENTRY' && message.action_name === 'PROMPT_INJECTED'
+        );
 
         expect(fetchCall).toEqual(expect.objectContaining({
             action: 'FETCH_IMAGE_AS_BASE64',
-            url: 'https://cdn.gemini.test/result-001.png',
+            url: 'https://cdn.gemini.test/result-001.png?token=signed-secret',
         }));
         expect(extracted).toEqual(expect.objectContaining({
             action: 'GEMINI_IMAGE_EXTRACTED',
@@ -309,6 +320,10 @@ describe('content_gemini.js - RPA real do Gemini', () => {
             action: 'LOG_ENTRY',
             action_name: 'GEMINI_SEND_SUCCESS',
         }));
+        expect(imageFoundLog.extra).toEqual({ urlKind: 'https', host: 'cdn.gemini.test', hasQuery: true });
+        expect(JSON.stringify(imageFoundLog)).not.toContain('signed-secret');
+        expect(promptLog.extra).toEqual({ promptLen: 'prompt-private-text'.length });
+        expect(JSON.stringify(promptLog)).not.toContain('prompt-private-text');
     });
 
     test('CG-37: processa resultado blob sem usar o fallback do background', async () => {
@@ -380,6 +395,8 @@ describe('content_gemini.js - RPA real do Gemini', () => {
             action: 'LOG_ENTRY',
             action_name: 'PROMPT_FALLBACK',
         }));
+        expect(promptFallbackLog.extra).toEqual(expect.objectContaining({ fallbackLength: expect.any(Number) }));
+        expect(promptFallbackLog.extra).not.toHaveProperty('fallbackPrompt');
         expect(collectActions(sentMessages, 'GEMINI_IMAGE_EXTRACTED')[0]).toEqual(expect.objectContaining({
             action: 'GEMINI_IMAGE_EXTRACTED',
             mangaTabId: 77,
