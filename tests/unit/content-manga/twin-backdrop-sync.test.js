@@ -48,7 +48,7 @@ function dispatchToContent(runtimeMock, request, sender = { tab: { id: 1 } }) {
     });
 }
 
-describe('v5.1 Twin Backdrop Sync — content_manga.js', () => {
+describe('v6.0 Twin Backdrop Sync — content_manga.js', () => {
     let runtimeMock;
     let storageMock;
 
