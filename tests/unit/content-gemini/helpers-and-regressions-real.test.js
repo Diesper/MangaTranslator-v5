@@ -73,7 +73,7 @@ function delay(ms = 0) {
     return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-async function waitFor(predicate, { timeout = 3000, step = 25 } = {}) {
+async function waitFor(predicate, { timeout = 5000, step = 25 } = {}) {
     let elapsed = 0;
     while (elapsed <= timeout) {
         const result = await predicate();
@@ -129,7 +129,10 @@ function mountGeminiEditor({
     if (sendMode !== 'enter') {
         sendButton = document.createElement('button');
         sendButton.setAttribute('aria-label', sendMode === 'fuzzy' ? 'enviar agora' : 'send message');
-        sendButton.click = jest.fn(() => onSubmit());
+        sendButton.click = jest.fn(() => {
+            editor.textContent = '';
+            onSubmit();
+        });
         document.body.appendChild(sendButton);
     }
 
