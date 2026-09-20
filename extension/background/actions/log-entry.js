@@ -33,7 +33,7 @@
     name: 'log-entry',
     meta: {
       async: false,
-      // Mantém compatibilidade com todos os emissores aceitos pelo handler legado.
+      // Mantém compatibilidade com todos os emissores autorizados pelo contrato atual de logging.
       allowedSources: ['any'],
     },
     validate,
