@@ -81,6 +81,7 @@ describe('background.js - acoes legadas encaminhadas pelo roteador', () => {
         expect(routerApi.getAction('open-manga-root')).toBeDefined();
         expect(routerApi.getAction('download-image')).toBeDefined();
         expect(routerApi.getAction('open-existing-folder')).toBeDefined();
+        expect(routerApi.getAction('download-chapter')).toBeDefined();
     });
 
     test('LOG_ENTRY passa pelo roteador e mantém a confirmação legada', async () => {
