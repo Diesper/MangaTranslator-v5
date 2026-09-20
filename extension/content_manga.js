@@ -54,16 +54,6 @@ if (!window.__manga_translator_content_injected) {
     const BUTTON_MIN_HEIGHT = 48;
     const BUTTON_MAX_HEIGHT = 96;
 
-    function escapeInlineHTML(value) {
-        return String(value || '').replace(/[&<>'"]/g, ch => ({
-            '&': '&amp;',
-            '<': '&lt;',
-            '>': '&gt;',
-            "'": '&#39;',
-            '"': '&quot;',
-        }[ch]));
-    }
-
     function clampButtonHeight(btn) {
         if (!btn) return;
         const currentHeight = parseFloat(btn.style.height);
@@ -72,15 +62,39 @@ if (!window.__manga_translator_content_injected) {
         }
     }
 
+    // NOTA [P2 — inventário]: esta função recebe `text` vindo de dados variáveis
+    // (progresso do pipeline, e de request.text propagado por mensagens do
+    // background/Gemini — ver L1816). Por isso o rótulo é montado via
+    // `textContent`/DOM API em vez de concatenar em innerHTML. O SVG do ícone
+    // de stop (`STOP_SIGN_SVG`) é markup 100% estático e fixo no código-fonte,
+    // sem qualquer interpolação de dado externo, então segue via innerHTML de
+    // um nó isolado — não representa risco de injeção.
     function setBtnHTML(btn, text, showStop) {
         if (!btn) return;
         const mainContent = document.getElementById('manga-main-content');
         clampButtonHeight(btn);
-        const label = `<span style="display:block;min-width:0;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;line-height:1.15">${escapeInlineHTML(text)}</span>`;
-        const html = showStop
-            ? `<span style="display:flex;align-items:center;justify-content:center;gap:4px;min-width:0;max-width:100%;overflow:hidden;white-space:nowrap">${STOP_SIGN_SVG}${label}</span>`
-            : label;
-        if (mainContent) mainContent.innerHTML = html; else btn.innerHTML = html;
+        const target = mainContent || btn;
+
+        while (target.firstChild) target.removeChild(target.firstChild);
+
+        const label = document.createElement('span');
+        label.style.cssText = 'display:block;min-width:0;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;line-height:1.15';
+        label.textContent = text;
+
+        if (!showStop) {
+            target.appendChild(label);
+            return;
+        }
+
+        const wrapper = document.createElement('span');
+        wrapper.style.cssText = 'display:flex;align-items:center;justify-content:center;gap:4px;min-width:0;max-width:100%;overflow:hidden;white-space:nowrap';
+
+        const iconHolder = document.createElement('span');
+        iconHolder.style.cssText = 'display:inline-flex;flex-shrink:0';
+        iconHolder.innerHTML = STOP_SIGN_SVG; // markup estático, sem dados variáveis — ver nota acima
+        wrapper.appendChild(iconHolder);
+        wrapper.appendChild(label);
+        target.appendChild(wrapper);
     }
 
     let isPageEnabled = false;
