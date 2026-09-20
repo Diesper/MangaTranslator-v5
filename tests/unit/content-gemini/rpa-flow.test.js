@@ -138,6 +138,7 @@ function mountGeminiEditor({ sendMode = 'exact', onSubmit } = {}) {
             sendButton.setAttribute('aria-label', 'enviar agora');
         }
         sendButton.click = jest.fn(() => {
+            editor.textContent = '';
             onSubmit();
         });
         document.body.appendChild(sendButton);
