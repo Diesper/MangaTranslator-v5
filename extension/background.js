@@ -61,6 +61,7 @@ if (typeof importScripts === 'function') {
         importScripts('background/jobs-watchdog.js');
         importScripts('background/jobs-reconciliation.js');
         importScripts('background/jobs-dom-ack.js');
+        importScripts('background/jobs-lifecycle.js');
         importScripts('background/actions/log-entry.js');
         importScripts('background/actions/get-tab-id.js');
         importScripts('background/actions/relay-progress.js');
@@ -109,6 +110,7 @@ if (typeof importScripts === 'function') {
         require('./background/jobs-watchdog.js');
         require('./background/jobs-reconciliation.js');
         require('./background/jobs-dom-ack.js');
+        require('./background/jobs-lifecycle.js');
         require('./background/actions/log-entry.js');
         require('./background/actions/get-tab-id.js');
         require('./background/actions/relay-progress.js');
@@ -308,9 +310,10 @@ const jobsState = {
 let jobsWatchdog = null;
 let jobsReconciler = null;
 let jobsDomAck = null;
+let jobsLifecycle = null;
 
 function initializeJobsModules() {
-    if (jobsWatchdog && jobsReconciler && jobsDomAck) return;
+    if (jobsWatchdog && jobsReconciler && jobsDomAck && jobsLifecycle) return;
     const scope = typeof self !== 'undefined' ? self : globalThis;
     jobsWatchdog = scope.MangaTranslatorJobsWatchdog.createWatchdog({
         getJobIndex: () => jobIndex,
@@ -327,10 +330,29 @@ function initializeJobsModules() {
         processNextJob: () => processNextJob(),
     });
     jobsDomAck = scope.MangaTranslatorJobsDomAck.createDomAckDelivery({
-        updateJobState,
+        updateJobState: (...args) => updateJobState(...args),
         finalizeJob: (...args) => finalizeJob(...args),
         log,
         timeoutMs: DOM_ACK_TIMEOUT_MS,
+    });
+    jobsLifecycle = scope.MangaTranslatorJobsLifecycle.createLifecycle({
+        state: {
+            get jobQueue() { return jobQueue; }, set jobQueue(value) { jobQueue = value; },
+            get isProcessing() { return isProcessing; }, set isProcessing(value) { isProcessing = value; },
+            get stopRequested() { return stopRequested; }, set stopRequested(value) { stopRequested = value; },
+            get activeMangaTabId() { return activeMangaTabId; }, set activeMangaTabId(value) { activeMangaTabId = value; },
+            get currentBatchId() { return currentBatchId; }, set currentBatchId(value) { currentBatchId = value; },
+            get totalJobs() { return totalJobs; }, set totalJobs(value) { totalJobs = value; },
+            get completedJobs() { return completedJobs; }, set completedJobs(value) { completedJobs = value; },
+            get activeJobsCount() { return activeJobsCount; }, set activeJobsCount(value) { activeJobsCount = value; },
+            get _cachedMaxCon() { return _cachedMaxCon; }, set _cachedMaxCon(value) { _cachedMaxCon = value; },
+        },
+        log, syncState, sendProgress, armWatchdog, clearWatchdog,
+        indexAddJob, indexRemoveJob, indexJobsOfBatch, delay, generateId,
+        markFinalized: _markFinalized,
+        isFinalized: tabId => _finalizedTabs.has(tabId),
+        finalizedMarkerTtlMinutes: FINALIZATION_MARKER_TTL_MINUTES,
+        releaseGeminiScriptsIfIdle,
     });
 }
 
@@ -1070,6 +1092,37 @@ async function stopBatch(request) {
     if (!stopsCurrentBatch && isProcessing) processNextJob();
     return {};
 }
+
+// Fachadas compatíveis: ações e testes existentes continuam chamando os nomes
+// históricos, mas a implementação canônica agora vive em jobs-lifecycle.js.
+// A remoção física dos corpos antigos fica segura porque estas referências são
+// também o contrato temporário dos módulos já extraídos.
+const _legacyUpdateJobState = updateJobState;
+const _legacyAssertJobOwnership = assertJobOwnership;
+const _legacyProcessNextJob = processNextJob;
+const _legacyFinalizeJob = finalizeJob;
+updateJobState = (...args) => {
+    initializeJobsModules();
+    return jobsLifecycle.updateJobState(...args);
+};
+assertJobOwnership = (sender, jobId, callback) => {
+    initializeJobsModules();
+    jobsLifecycle.assertJobOwnership(sender, jobId)
+        .then(({ owns, tabId }) => callback(owns, tabId))
+        .catch(() => callback(false, sender && sender.tab ? sender.tab.id : null));
+};
+processNextJob = (...args) => {
+    initializeJobsModules();
+    return jobsLifecycle.processNextJob(...args);
+};
+finalizeJob = (...args) => {
+    initializeJobsModules();
+    return jobsLifecycle.finalizeJob(...args);
+};
+_refreshMaxCon = (...args) => {
+    initializeJobsModules();
+    return jobsLifecycle.refreshMaxConcurrency(...args);
+};
 
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
 

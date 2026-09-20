@@ -19,6 +19,10 @@
   let _cachedMaxCon = 1;
   const _finalizedTabs = new Set();
   let _initialized = false;
+  // chrome.storage.local não oferece uma transação entre chamadas.  Uma fila
+  // local preserva a ordem dos snapshots quando handlers concorrentes alteram o
+  // estado no mesmo ciclo de vida do service worker.
+  let _persistenceChain = Promise.resolve();
 
   function get() {
       return {
@@ -74,10 +78,27 @@
       return get();
   }
 
-  async function syncState() {
+  function syncState() {
       const snapshot = get();
-      await chrome.storage.local.set({ mt_state: snapshot });
-      return snapshot;
+      const write = () => chrome.storage.local.set({ mt_state: snapshot }).then(() => snapshot);
+      _persistenceChain = _persistenceChain.then(write, write);
+      return _persistenceChain;
+  }
+
+  // Use esta API para alterações que precisam ser observadas como uma única
+  // transição persistida.  O mutator executa somente depois que a transição
+  // anterior foi gravada, evitando o padrão read/modify/write concorrente.
+  function mutate(mutator) {
+      if (typeof mutator !== 'function') return Promise.resolve(get());
+      const run = async () => {
+          const result = await mutator(get());
+          if (result && typeof result === 'object') patch(result);
+          const snapshot = get();
+          await chrome.storage.local.set({ mt_state: snapshot });
+          return snapshot;
+      };
+      _persistenceChain = _persistenceChain.then(run, run);
+      return _persistenceChain;
   }
 
   // ── Manutenção do índice de jobs ─────────────────────────────────────────────
@@ -200,6 +221,7 @@
       generateId,
       restoreState, 
       syncState, 
+      mutate,
       ensureInitialized,
       indexAddJob, 
       indexRemoveJob, 

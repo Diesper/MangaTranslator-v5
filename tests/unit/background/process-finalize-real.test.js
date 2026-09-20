@@ -380,8 +380,8 @@ describe('background.js - processNextJob e finalizeJob reais', () => {
         await storageMock.set({
             debugMode: false,
             deleting_urls: [],
-            gemini_job_1900: { geminiTabId: 1900, mangaTabId: 404, index: 7 },
-            wd_data_1900: { mangaTabId: 404, index: 7, geminiTabId: 1900 },
+            gemini_job_1900: { geminiTabId: 1900, mangaTabId: 404, index: 7, jobId: 'job-1900' },
+            wd_data_1900: { mangaTabId: 404, index: 7, geminiTabId: 1900, jobId: 'job-1900' },
         });
         tabsMock._tabs.set(1900, {
             id: 1900,
@@ -407,6 +407,7 @@ describe('background.js - processNextJob e finalizeJob reais', () => {
             mangaTabId: 404,
             index: 7,
             src: 'data:image/png;base64,TRANSLATED',
+            jobId: 'job-1900',
         }, { tab: { id: 1900 } });
         await jest.advanceTimersByTimeAsync(1);
         const result = await resultPromise;
