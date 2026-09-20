@@ -109,6 +109,28 @@ describe('CM-55/CM-56/CM-57/CM-58/CM-59/CM-60/CM-61/CM-62/CM-63/CM-64: content_m
         expect(content.textContent).toContain('Falha no OCR');
     });
 
+    test('SHOW_ERROR_INTEGRATED trata HTML recebido como texto', async () => {
+        await loadContentScript({
+            hostname: 'localhost',
+            domImages: [
+                { src: 'http://localhost/page-0.png', width: 800, height: 1200 },
+            ],
+        });
+
+        const errorMsg = '<img src=x onerror=window.__mt_xss=true>';
+        await dispatchToContent(runtimeMock, {
+            action: 'SHOW_ERROR_INTEGRATED',
+            errorMsg,
+            imgIndex: 7,
+            isDebug: false,
+        });
+
+        const content = document.getElementById('manga-error-collapsible-content');
+        expect(content.querySelector('img')).toBeNull();
+        expect(content.textContent).toContain(errorMsg);
+        expect(window.__mt_xss).toBeUndefined();
+    });
+
     test('colapsar erro inicia countdown e esconde a linha ao final de 30s', async () => {
         await loadContentScript({
             hostname: 'localhost',
