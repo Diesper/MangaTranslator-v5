@@ -31,6 +31,7 @@ pendentes ou parcialmente implementados.
 13. [O que ficou de fora](#13-o-que-ficou-de-fora)
 14. [Histórico de estabilização da pipeline de CI e testes E2E](#14-histórico-de-estabilização-da-pipeline-de-ci-e-testes-e2e)
 15. [Rodada de limpeza P2/P3: innerHTML, aliases e fallbacks mortos](#15-rodada-de-limpeza-p2p3)
+16. [Verificação da sessão interrompida: lifecycle legado, suite completa e privacidade de logs](#16-verificação-da-sessão-interrompida-lifecycle-legado-suite-completa-e-privacidade-de-logs)
 
 ---
 
@@ -689,3 +690,67 @@ versão atual do código:
 
 Nenhuma alteração foi feita para este item; presume-se que rodadas de
 refatoração anteriores já eliminaram o que existia.
+
+---
+
+## 16. Verificação da sessão interrompida: lifecycle legado, suite completa e privacidade de logs
+
+> A sessão anterior (rodando localmente, fora deste ambiente) processava em
+> paralelo três itens do plano de auditoria — P1 "remover corpos legados de
+> lifecycle", P1 "executar e corrigir a suite completa" e P2 "privacidade de
+> logs em content_gemini.js" — e foi interrompida por limite de uso antes de
+> confirmar o resultado. Esta seção documenta a verificação desses três itens.
+
+### 16.1 P1 — Remoção de corpos legados de lifecycle: já estava correta no GitHub
+
+O commit `6e97259 refactor: remove legacy background lifecycle bodies`
+(307 linhas removidas de `background.js`) já estava no repositório antes
+desta verificação. Confirmado:
+
+- `node -c` válido em `background.js` e em todos os módulos de `background/`.
+- Nenhum corpo antigo de `processNextJob`, `finalizeJob`, `updateJobState`,
+  `assertJobOwnership`, `buildGeminiJobUrl` ou `deleteGeminiConversation`
+  remanescente — só as fachadas compatíveis, todas delegando para
+  `jobs-lifecycle.js`.
+- A lógica de deleção de conversa (mensagem `DELETE_CONVERSATION`, controle
+  de `deleting_urls`) **não foi perdida**: continua completa dentro de
+  `finalizeJob` em `jobs-lifecycle.js`, só deixou de existir como função
+  nomeada separada (`deleteGeminiConversation`).
+- Comparação de suíte (ver 16.2) confirma **zero regressão** introduzida por
+  este commit.
+
+### 16.2 P1 — Suite completa: rodada agora, com bisect contra o commit anterior
+
+O item "executar e corrigir a suite completa" não havia sido concluído
+(interrompido junto com o item de privacidade). Rodando
+`npx jest --testPathPattern=unit` (490 testes, 68 suítes):
+
+| Estado | Suítes falhando | Testes falhando | Testes passando |
+|---|---|---|---|
+| `cb5e023` (antes da remoção do lifecycle) | 10 | 32 | 458 |
+| `6e97259`…`75ee406` (depois da remoção + rodada P2/P3 da seção 15) | 10 | 32 | 458 |
+
+As duas listas de suítes falhando são **idênticas** (mesmos 10 arquivos,
+mesmos nomes de teste) — a única diferença observada entre as duas execuções
+foi o tempo de execução em milissegundos. Ou seja: as 32 falhas são um
+baseline pré-existente, não relacionado a nenhuma mudança desta rodada nem da
+remoção do lifecycle legado. Amostra de causa-raiz (`BG-01/BG-02` em
+`unit/background/helpers-real.test.js`): asserção de igualdade profunda que
+não bate com os defaults atuais de `restoreState` — mesma família de
+divergência "contrato legado vs. v5.1" já documentada na seção 11 para a
+suíte Jest completa (`test:ci`, 453 pass / 45 fail inclui `integration/` e
+`smoke/`, que não fazem parte desta comparação de 490 testes `unit/`).
+
+**Correção deste item permanece em aberto** — não faz parte do escopo desta
+verificação consertar as 32 falhas pré-existentes, só confirmar que a rodada
+de refatoração não piorou o número.
+
+### 16.3 P2 — Privacidade de logs em `content_gemini.js`: implementado agora
+
+Este item **não havia sido iniciado** quando a sessão anterior foi
+interrompida (só a suite completa e o lifecycle tinham progresso real). Foi
+implementado nesta verificação — ver seção 15 do changelog geral: commit
+`596e6a1`, com `debugConsole()` gateando as 24 chamadas `console.log/warn/
+error` por `debugMode` e sanitizando os 3 argumentos que carregavam dado mais
+sensível (jobId completo, objeto `Error` inteiro, referência DOM bruta de
+thumbnail).
