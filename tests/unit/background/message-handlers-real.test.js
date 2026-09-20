@@ -133,12 +133,14 @@ describe('background.js - handlers onMessage reais', () => {
         jest.useFakeTimers();
 
         backgroundModule.__setState({ activeJobsCount: 1, completedJobs: 0 });
-        const extractedResult = await dispatchToBackground(runtimeMock, {
+        const extractedResultPromise = dispatchToBackground(runtimeMock, {
             action: 'GEMINI_IMAGE_EXTRACTED',
             mangaTabId: mangaTab.id,
             index: 7,
             src: 'data:image/png;base64,FROM_GEMINI',
         }, { tab: { id: 3333 } });
+        await jest.advanceTimersByTimeAsync(1);
+        const extractedResult = await extractedResultPromise;
 
         expect(extractedResult.response).toEqual({ ok: true });
         expect(forwardedMessages).toContainEqual(expect.objectContaining({
