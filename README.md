@@ -85,7 +85,9 @@ npm run test:unit
 ```
 
 ### Testes E2E (Playwright)
+Fluxos reais de ponta a ponta no Chromium com a extensão carregada (tradução real, botão de parada, cache GTC, persistência no IndexedDB, auto-restauração no reload e leitor offline):
 ```bash
+cd tests
 npm run test:e2e
 ```
 
