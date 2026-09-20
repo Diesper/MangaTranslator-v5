@@ -2,13 +2,13 @@
  * resize-and-tabs.test.js
  * ─────────────────────────────────────────────────────────────────────────────
  * Testa o redimensionamento bidimensional (2D resizing) do popup e o
- * agrupamento de imagens banidas por domínio em pastas colapsáveis (v5.1).
+ * agrupamento de imagens banidas por domínio em pastas colapsáveis na arquitetura atual.
  */
 
 const { loadExtensionPage, flushAsyncTasks } = require('../../helpers/load-extension-page.js');
 const { getStorageMock, getTabsMock } = require('../../mocks/chrome-api.mock.js');
 
-describe('v5.1 Popup 2D Resizing e Agrupamento de Banidas — popup.js', () => {
+describe('v6.0 Popup 2D Resizing e Agrupamento de Banidas — popup.js', () => {
     let storageMock;
     let tabsMock;
 
