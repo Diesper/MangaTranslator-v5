@@ -9,7 +9,7 @@ const { getStorageMock } = require('../../mocks/chrome-api.mock.js');
 
 describe('RD-20/RD-21/RD-22: reader.js - Contador de Página e Progresso Real', () => {
     let storageMock;
-    let observerCallback;
+    let observerCallbacks;
 
     beforeEach(async () => {
         jest.resetModules();
@@ -18,9 +18,9 @@ describe('RD-20/RD-21/RD-22: reader.js - Contador de Página e Progresso Real', 
         localStorage.clear();
         document.documentElement.innerHTML = '<html><head></head><body></body></html>';
 
-        observerCallback = null;
+        observerCallbacks = [];
         window.IntersectionObserver = jest.fn().mockImplementation((cb) => {
-            observerCallback = cb;
+            observerCallbacks.push(cb);
             return {
                 observe: jest.fn(),
                 unobserve: jest.fn(),
@@ -60,10 +60,11 @@ describe('RD-20/RD-21/RD-22: reader.js - Contador de Página e Progresso Real', 
         expect(pageWraps).toHaveLength(5);
         expect(counterEl.textContent).toBe('1 / 5');
         expect(fillEl.style.width).toBe('20%');
-        expect(typeof observerCallback).toBe('function');
+        const counterObserverCallback = observerCallbacks[0];
+        expect(typeof counterObserverCallback).toBe('function');
 
         // Simula scroll: página 3 (índice 2) fica mais visível
-        observerCallback([
+        counterObserverCallback([
             { target: pageWraps[0], intersectionRatio: 0.1 },
             { target: pageWraps[2], intersectionRatio: 0.85 },
             { target: pageWraps[1], intersectionRatio: 0.3 },
@@ -73,7 +74,7 @@ describe('RD-20/RD-21/RD-22: reader.js - Contador de Página e Progresso Real', 
         expect(fillEl.style.width).toBe('60%');
 
         // Simula scroll até a última página (índice 4)
-        observerCallback([
+        counterObserverCallback([
             { target: pageWraps[4], intersectionRatio: 0.95 },
         ]);
 
@@ -101,7 +102,7 @@ describe('RD-20/RD-21/RD-22: reader.js - Contador de Página e Progresso Real', 
         const counterEl = document.getElementById('page-counter');
         const pageWraps = document.querySelectorAll('.reader-page-wrap');
 
-        observerCallback([
+        counterObserverCallback([
             { target: pageWraps[0], intersectionRatio: 0.5 },
             { target: pageWraps[1], intersectionRatio: 0.5 },
         ]);
