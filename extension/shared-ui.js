@@ -2,6 +2,7 @@
 // shared-ui.js — Funções utilitárias compartilhadas entre popup, options e reader
 // Extraídas para eliminar duplicação de código
 
+(function exposeSharedUi(scope) {
 function escapeHTML(str) {
     return String(str || '').replace(/[&<>'"]/g, tag => ({
         '&': '&amp;',
@@ -198,3 +199,15 @@ function deleteSavedTranslationForEntry(entry) {
         else if (typeof showSettingsStatus === 'function') showSettingsStatus('Falha ao apagar a tradução salva.', '#FF9800');
     });
 }
+
+Object.assign(scope, {
+    escapeHTML,
+    normalizeBlockedImages,
+    getHostFromUrl,
+    smRequest,
+    loadRestoreEntries,
+    removeIndexFromStoredCollection,
+    sendRuntimeMessageSafe,
+    deleteSavedTranslationForEntry,
+});
+})(globalThis);
