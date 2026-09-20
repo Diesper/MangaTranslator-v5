@@ -208,6 +208,8 @@ describe('content_gemini.js - bordas RPA do plano v3.1', () => {
     async function seedJob(job = {}) {
         await storageMock.set({
             gemini_job_321: {
+                jobId: 'job-321',
+                batchId: 'batch-test',
                 mangaTabId: 77,
                 index: 5,
                 prompt: 'Traduzir borda do plano',
@@ -229,6 +231,8 @@ describe('content_gemini.js - bordas RPA do plano v3.1', () => {
         setTimeout(() => {
             storageMock.set({
                 gemini_job_321: {
+                    jobId: 'job-321-late',
+                    batchId: 'batch-test',
                     mangaTabId: 77,
                     index: 10,
                     prompt: 'Job tardio',
