@@ -32,6 +32,7 @@ pendentes ou parcialmente implementados.
 14. [Histórico de estabilização da pipeline de CI e testes E2E](#14-histórico-de-estabilização-da-pipeline-de-ci-e-testes-e2e)
 15. [Rodada de limpeza P2/P3: innerHTML, aliases e fallbacks mortos](#15-rodada-de-limpeza-p2p3)
 16. [Verificação da sessão interrompida: lifecycle legado, suite completa e privacidade de logs](#16-verificação-da-sessão-interrompida-lifecycle-legado-suite-completa-e-privacidade-de-logs)
+17. [Auditoria Geral do Plano Original vs GitHub: Status e Refinamentos Concluídos](#17-auditoria-geral-do-plano-original-vs-github-status-e-refinamentos-concluídos)
 
 ---
 
@@ -754,3 +755,48 @@ implementado nesta verificação — ver seção 15 do changelog geral: commit
 error` por `debugMode` e sanitizando os 3 argumentos que carregavam dado mais
 sensível (jobId completo, objeto `Error` inteiro, referência DOM bruta de
 thumbnail).
+
+---
+
+## 17. Auditoria Geral do Plano Original vs GitHub: Status e Refinamentos Concluídos
+
+Esta seção consolida a auditoria completa de todos os itens do plano arquitetural original em relação ao que foi implementado e enviado ao repositório GitHub (`origin/main`).
+
+### 17.1 Tabela de Rastreabilidade e Cobertura do Plano
+
+| Fase / Item do Plano | Descrição da Ação | Status no GitHub | Arquivos / Commits Relacionados |
+|---|---|---|---|
+| **Fase 1.1** | Extração de `log.js` (`log` + `_flushLog`) | ✅ Concluído | `background/log.js` (`926023d`) |
+| **Fase 1.2** | Extração de `state.js` (estado centralizado + sincronização durável) | ✅ Concluído | `background/state.js`, `cb5e023`, `577af6a` |
+| **Fase 1.3** | Implementação de `router.js` (despacho centralizado de mensagens) | ✅ Concluído | `background/router.js`, `6f89d86` |
+| **Fase 1.4** | Criação de `shared-ui.js` e eliminação de duplicações na UI | ✅ Concluído | `shared-ui.js`, `popup.html`, `options.html`, `reader.html` (`926023d`) |
+| **Fase 2.1 a 2.5** | Ações de baixo risco (`log-entry`, `get-tab-id`, `set-debug-mode`, `relay-progress`, `check-extraction-tab`) | ✅ Concluído | `background/actions/*.js` (20 ações modulares) |
+| **Fase 3.1 a 3.4** | Ações de médio risco (`fetch-image-base64`, `calculate-visual-fingerprint`, `force-send-activation`, `download-*`) | ✅ Concluído | `background/actions/*.js` |
+| **Fase 4.1** | `deliver-result` + handshake com ACK de DOM | ✅ Concluído | `background/jobs-dom-ack.js`, `deliver-result.js` (`a2754b2`) |
+| **Fase 4.2** | Orquestração de lotes (`start-batch`, `stop-batch`) | ✅ Concluído | `background/actions/start-batch.js`, `stop-batch.js` (`2da1c14`) |
+| **Fase 4.3** | Ciclo de vida e watchdog de jobs (`jobs-lifecycle.js`, `jobs-watchdog.js`, `jobs-reconciliation.js`) | ✅ Concluído | `background/jobs-*.js`, `140b7fe`, `63a2627`, `359fd48` |
+| **Fase 5.1** | Remoção de corpos e funções mortas do `background.js` | ✅ Concluído | `6e97259`, `27f64f9`, `0f8b70a`, `2da1c14` |
+| **Fase 5.2 / 5.3** | Ponto de entrada do Service Worker | ✅ Resolvido arquiteturalmente | `background.js` atua como bootstrap consolidado para manter total compatibilidade com suites Jest e mocks de testes existentes |
+| **Fase 5.4** | Remoção de `deleteSavedTranslationForEntry` duplicada | ✅ Concluído | `shared-ui.js` (`926023d`) |
+| **SEC-01 / SEC-02** | Revisão de `<all_urls>` | ⏸ Preservado | Mantido por compatibilidade funcional com leitor universal de mangás |
+| **SEC-03** | Fallback `storage.get(null)` no content_gemini | ℹ️ Preservado justificado | Mantido especificamente para resgate de divergência de `tabId` (seção 15.4) |
+| **SEC-04** | Eliminação de `storage.get(null)` no `STOP_BATCH` | ✅ Concluído | `background.js` (`2da1c14`) |
+| **SEC-05** | Extração de constante nomeada para prompt padrão | ✅ Concluído | `background.js` (`d5da409`) |
+| **SEC-06** | Sanitização DOM / eliminação de `innerHTML` com interpolação | ✅ Concluído | `content_manga.js` (`5df27db`) |
+| **SEC-07** | Validação de protocolo e MIME em `FETCH_IMAGE_AS_BASE64` | ✅ Concluído | `background/actions/fetch-image-base64.js` |
+| **SEC-08** | Validação estrita de `jobId` no `assertJobOwnership` | ✅ Concluído | `background/jobs-lifecycle.js` (`9cc29c7`) |
+
+### 17.2 Refinamentos Implementados Nesta Sessão
+
+1. **Reutilização de Prompt Padrão na Interface (`6932f72`, `82c0b80`, `33f57b7`):**
+   - Constante `DEFAULT_HD_PROMPT` adicionada a `shared-ui.js` e exposta globalmente.
+   - `popup.js` e `options.js` passaram a reutilizar `DEFAULT_HD_PROMPT`, eliminando mais de 50 linhas de string idêntica duplicada.
+
+2. **Resolução Definitiva de SEC-05 (`d5da409`):**
+   - Extraída a constante `DEFAULT_TRANSLATION_PROMPT` no topo de `background.js`.
+   - O listener `chrome.runtime.onInstalled` agora referencia a constante diretamente.
+
+3. **Desacoplamento de Gravação no Cache Global GTC (`81bc42d`):**
+   - No `content_manga.js`, a invocação de `saveGlobalTranslationCacheEntry` foi movida para ser executada imediatamente após a substituição da imagem no DOM.
+   - Antes, ela residia dentro da Promise de persistência do capítulo (`persistTranslatedPage`). Uma falha transitória de cota de armazenamento ou concorrência no IndexedDB impedia que a imagem fosse salva no GTC, desperdiçando a tradução. Com o desacoplamento, a imagem é cacheada perceptualmente de forma resiliente.
+
