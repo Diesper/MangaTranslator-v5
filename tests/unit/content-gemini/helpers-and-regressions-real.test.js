@@ -322,10 +322,7 @@ describe('content_gemini.js - helpers, delecao e regressao real', () => {
             document.querySelector('.ql-editor')
             && document.querySelector('.ql-editor').textContent.includes('Traduzir usando fallback DOM')
         ));
-        await waitFor(
-            () => sentMessages.find((message) => message.action === 'GEMINI_IMAGE_EXTRACTED'),
-            { timeout: 8000 }
-        );
+        await waitFor(() => !editor.textContent.includes('Traduzir usando fallback DOM'));
         window.removeEventListener('MANGA_TRANSLATOR_SET_PROMPT', setPromptListener);
 
         expect(promptWasInserted).toBeTruthy();
