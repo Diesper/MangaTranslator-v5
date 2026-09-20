@@ -1328,7 +1328,9 @@ document.addEventListener('DOMContentLoaded', async () => {
         if (!confirm('Restaurar o prompt padrão?')) return;
         chrome.storage.local.remove('customPrompt', () => {
             chrome.storage.local.get(['defaultPrompt'], (data) => {
-                const HD_PROMPT = "Objetivo primário: voce vai criar uma imagem , exata da imagem fornecida e traduzir ela pro português brasileiro . \nNão altere nenhum pixel fora das áreas de texto e Remova o texto original dos balões de fala, preenchendo o fundo com a cor correspondente. \nConverta os diálogos para PT-BR, mantendo a informalidade do contexto. Tipografia: Renderize o novo texto em caixa alta, fonte padrão de HQ (sans-serif), alinhamento centralizado.\nEfeitos Sonoros: Traduza e recrie as onomatopeias  mantendo as fontes estilizadas, cores, contornos e inclinação originais. lembre-se que todas as palavras devem sem traduzidas sem exceção";
+                const HD_PROMPT = typeof DEFAULT_HD_PROMPT !== 'undefined'
+                    ? DEFAULT_HD_PROMPT
+                    : "Objetivo primário: voce vai criar uma imagem , exata da imagem fornecida e traduzir ela pro português brasileiro . \nNão altere nenhum pixel fora das áreas de texto e Remova o texto original dos balões de fala, preenchendo o fundo com a cor correspondente. \nConverta os diálogos para PT-BR, mantendo a informalidade do contexto. Tipografia: Renderize o novo texto em caixa alta, fonte padrão de HQ (sans-serif), alinhamento centralizado.\nEfeitos Sonoros: Traduza e recrie as onomatopeias  mantendo as fontes estilizadas, cores, contornos e inclinação originais. lembre-se que todas as palavras devem sem traduzidas sem exceção";
                 settingsPrompt.value = data.defaultPrompt || HD_PROMPT;
                 updateCharCount(settingsPrompt.value);
                 chrome.storage.local.set({ defaultPrompt: HD_PROMPT, customPrompt: HD_PROMPT });
