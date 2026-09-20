@@ -15,6 +15,61 @@
     const markerKey = tabId => `gemini_finalized_${tabId}`;
     const markerAlarm = tabId => `finalization_marker_${tabId}`;
 
+    // chrome.storage não oferece transação entre a marca e o snapshot. O índice
+    // persistido funciona como journal: enquanto accountingApplied é falso, o
+    // job fica no índice. Se o worker cair nesse intervalo, a reconciliação o
+    // encontra e aplica a transição exatamente uma vez.
+    async function applyFinalizationAccounting(geminiTabId, job, marker, { recovery = false } = {}) {
+      const transition = snapshot => {
+        const indexed = Array.isArray(snapshot.jobIndex) ? snapshot.jobIndex : [];
+        const belongsToJob = entry => entry && entry.geminiTabId === geminiTabId &&
+          (!job.jobId || !entry.jobId || entry.jobId === job.jobId);
+        const wasIndexed = indexed.some(belongsToJob);
+        // Em recovery, um índice já removido prova que o snapshot com a
+        // contabilidade foi salvo antes da suspensão; repetir seria duplicar.
+        if (recovery && !wasIndexed) return snapshot;
+        snapshot.jobIndex = indexed.filter(entry => !belongsToJob(entry));
+        if (!marker.fromError) snapshot.completedJobs = (Number(snapshot.completedJobs) || 0) + 1;
+        snapshot.activeJobsCount = Math.max(0, (Number(snapshot.activeJobsCount) || 0) - 1);
+        return snapshot;
+      };
+
+      if (typeof state.mutate === 'function') {
+        await state.mutate(transition);
+        return;
+      }
+
+      // Ponte para versões que ainda usam a fachada de estado do background.
+      const wasIndexed = indexJobsOfBatch(null).some(entry => entry && entry.geminiTabId === geminiTabId &&
+        (!job.jobId || !entry.jobId || entry.jobId === job.jobId));
+      if (recovery && !wasIndexed) return;
+      indexRemoveJob(geminiTabId);
+      if (!marker.fromError) state.completedJobs = (Number(state.completedJobs) || 0) + 1;
+      state.activeJobsCount = Math.max(0, (Number(state.activeJobsCount) || 0) - 1);
+      await syncState();
+    }
+
+    async function recoverPendingFinalization(entry) {
+      if (!entry || entry.geminiTabId === null || entry.geminiTabId === undefined) return false;
+      const geminiTabId = entry.geminiTabId;
+      const key = markerKey(geminiTabId);
+      const jobKey = `gemini_job_${geminiTabId}`;
+      const data = await chrome.storage.local.get([key, jobKey]);
+      const marker = data && data[key];
+      if (!marker || marker.expiresAt <= Date.now()) return false;
+      const job = (data && data[jobKey]) || entry;
+      if (marker.jobId && job.jobId && marker.jobId !== job.jobId) return false;
+
+      markFinalized(geminiTabId);
+      if (!marker.accountingApplied) {
+        await applyFinalizationAccounting(geminiTabId, job, marker, { recovery: true });
+        await chrome.storage.local.set({ [key]: { ...marker, accountingApplied: true, accountingRecoveredAt: Date.now() } });
+      }
+      clearWatchdog(geminiTabId, job.jobId || entry.jobId);
+      await chrome.storage.local.remove([jobKey, `wd_data_${geminiTabId}`]);
+      return true;
+    }
+
     function updateJobState(geminiTabId, patch = {}) {
       if (geminiTabId === null || geminiTabId === undefined) return Promise.resolve(null);
       const jobKey = `gemini_job_${geminiTabId}`;
@@ -140,13 +195,10 @@
       // pode finalizar a contabilidade pendente usando este registro.
       await chrome.storage.local.set({ [key]: marker });
       chrome.alarms.create(markerAlarm(geminiTabId), { delayInMinutes: finalizedMarkerTtlMinutes });
-      indexRemoveJob(geminiTabId);
-      clearWatchdog(geminiTabId, job.jobId);
-      if (!fromError) state.completedJobs += 1;
-      state.activeJobsCount = Math.max(0, state.activeJobsCount - 1);
+      await applyFinalizationAccounting(geminiTabId, job, marker);
       await chrome.storage.local.set({ [key]: { ...marker, accountingApplied: true } });
+      clearWatchdog(geminiTabId, job.jobId);
       await chrome.storage.local.remove(jobKey);
-      await syncState();
 
       if (data.debugMode === true) { processNextJob(); return true; }
       const executionMode = job.executionMode || data.geminiExecutionMode || 'temp_chat';
@@ -187,7 +239,7 @@
       return true;
     }
 
-    return { updateJobState, assertJobOwnership, refreshMaxConcurrency, processNextJob, finalizeJob };
+    return { updateJobState, assertJobOwnership, refreshMaxConcurrency, processNextJob, finalizeJob, recoverPendingFinalization };
   }
   scope.MangaTranslatorJobsLifecycle = { createLifecycle };
 })(typeof self !== 'undefined' ? self : globalThis);

@@ -2,7 +2,7 @@
 // background/jobs-reconciliation.js -- Rebuilds active job accounting after worker suspension.
 
 (function(scope) {
-  function createReconciler({ state, tabExists, log, syncState, processNextJob }) {
+  function createReconciler({ state, tabExists, log, syncState, processNextJob, recoverPendingFinalization }) {
     async function reconcile() {
       if (!Array.isArray(state.jobIndex) || state.jobIndex.length === 0) {
         state.activeJobsCount = 0;
@@ -11,8 +11,15 @@
 
       const alive = [];
       const dropped = [];
+      let recovered = 0;
       for (const entry of state.jobIndex) {
         if (!entry) continue;
+        // Uma marca de finalização significa que o resultado já foi aceito;
+        // ela vence a verificação da aba para não ressuscitar um slot pendente.
+        if (typeof recoverPendingFinalization === 'function' && await recoverPendingFinalization(entry)) {
+          recovered += 1;
+          continue;
+        }
         if (await tabExists(entry.geminiTabId)) alive.push(entry);
         else dropped.push(entry);
       }
@@ -32,14 +39,14 @@
       state.jobIndex = alive;
       state.activeJobsCount = alive.length;
       if (alive.length && !state.activeMangaTabId) state.activeMangaTabId = alive[0].mangaTabId || null;
-      return { alive: alive.length, dropped: dropped.length };
+      return { alive: alive.length, dropped: dropped.length, recovered };
     }
 
     async function reconcileAndContinue() {
       const result = await reconcile();
-      if (result.dropped || result.alive) {
+      if (result.dropped || result.alive || result.recovered) {
         await syncState();
-        if (result.dropped) processNextJob();
+        if (result.dropped || result.recovered) processNextJob();
       }
       return result;
     }

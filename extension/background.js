@@ -1,21 +1,10 @@
 'use strict';
 
 // ── Estado Global ─────────────────────────────────────────
-let jobQueue        = [];
-let isProcessing    = false;
-let stopRequested   = false;
-let activeMangaTabId = null;
-let currentBatchId = null;
-let extractionTabs  = {};   
-let totalJobs       = 0;
-let completedJobs   = 0;
-let activeJobsCount = 0;
-
-// ── Índice durável de jobs abertos ───────────────────────────────────────────
-// Evita varrer chrome.storage.local com get(null) (que carrega todas as imagens
-// Base64 do acervo para a memória do Service Worker). Cada entrada:
-//   { geminiTabId, jobId, batchId, mangaTabId, index }
-let jobIndex = [];
+// O estado de jobs pertence exclusivamente a background/state.js.  Não manter
+// cópias locais aqui é essencial no MV3: um worker reidratado não pode escolher
+// acidentalmente entre um espelho antigo e o snapshot durável.
+let backgroundState = null;
 
 const JOB_TIMEOUT_MINUTES = 4;
 const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
@@ -233,58 +222,43 @@ function getBackgroundStateApi() {
     return scope && scope.MangaTranslatorState;
 }
 
+function state() {
+    if (!backgroundState) backgroundState = getBackgroundStateApi();
+    if (!backgroundState) throw new Error('MangaTranslatorState indisponível');
+    return backgroundState;
+}
+
 function getStateSnapshot() {
-    return { jobQueue, isProcessing, stopRequested, activeMangaTabId, currentBatchId, extractionTabs, totalJobs, completedJobs, activeJobsCount, jobIndex };
+    return state().get();
 }
 
 function applyStateSnapshot(snapshot = {}) {
-    jobQueue = Array.isArray(snapshot.jobQueue) ? snapshot.jobQueue : [];
-    isProcessing = !!snapshot.isProcessing;
-    stopRequested = !!snapshot.stopRequested;
-    activeMangaTabId = snapshot.activeMangaTabId || null;
-    currentBatchId = snapshot.currentBatchId || null;
-    extractionTabs = snapshot.extractionTabs && typeof snapshot.extractionTabs === 'object' ? snapshot.extractionTabs : {};
-    totalJobs = Number(snapshot.totalJobs) || 0;
-    completedJobs = Number(snapshot.completedJobs) || 0;
-    activeJobsCount = Number(snapshot.activeJobsCount) || 0;
-    jobIndex = Array.isArray(snapshot.jobIndex) ? snapshot.jobIndex : [];
+    return state().patch(snapshot);
 }
 
 async function restoreState() {
-    const stateApi = getBackgroundStateApi();
+    const stateApi = state();
     if (stateApi && typeof stateApi.restoreState === 'function') {
         const restored = await stateApi.restoreState();
         if (restored) applyStateSnapshot(restored);
         return;
     }
-    const d = await chrome.storage.local.get(['mt_state']);
-    applyStateSnapshot(d.mt_state);
+    await stateApi.restoreState();
 }
 
 async function syncState() {
-    const snapshot = getStateSnapshot();
-    const stateApi = getBackgroundStateApi();
-    if (stateApi && typeof stateApi.patch === 'function' && typeof stateApi.syncState === 'function') {
-        stateApi.patch(snapshot);
-        await stateApi.syncState();
-        return;
-    }
-    await chrome.storage.local.set({ mt_state: snapshot });
+    await state().syncState();
 }
 
 // ── Manutenção do índice de jobs ─────────────────────────────────────────────
 function indexAddJob(entry) {
-    jobIndex = jobIndex.filter(j => j && j.geminiTabId !== entry.geminiTabId);
-    jobIndex.push(entry);
+    state().indexAddJob(entry);
 }
 function indexRemoveJob(geminiTabId) {
-    const before = jobIndex.length;
-    jobIndex = jobIndex.filter(j => j && j.geminiTabId !== geminiTabId);
-    return jobIndex.length !== before;
+    return state().indexRemoveJob(geminiTabId);
 }
 function indexJobsOfBatch(batchId) {
-    if (!batchId) return jobIndex.slice();
-    return jobIndex.filter(j => j && j.batchId === batchId);
+    return state().indexJobsOfBatch(batchId);
 }
 
 function tabExists(tabId) {
@@ -299,14 +273,6 @@ function tabExists(tabId) {
     });
 }
 
-const jobsState = {
-    get jobIndex() { return jobIndex; },
-    set jobIndex(value) { jobIndex = value; },
-    get activeJobsCount() { return activeJobsCount; },
-    set activeJobsCount(value) { activeJobsCount = value; },
-    get activeMangaTabId() { return activeMangaTabId; },
-    set activeMangaTabId(value) { activeMangaTabId = value; },
-};
 let jobsWatchdog = null;
 let jobsReconciler = null;
 let jobsDomAck = null;
@@ -316,18 +282,19 @@ function initializeJobsModules() {
     if (jobsWatchdog && jobsReconciler && jobsDomAck && jobsLifecycle) return;
     const scope = typeof self !== 'undefined' ? self : globalThis;
     jobsWatchdog = scope.MangaTranslatorJobsWatchdog.createWatchdog({
-        getJobIndex: () => jobIndex,
-        getExtractionTabs: () => extractionTabs,
+        getJobIndex: () => state().jobIndex,
+        getExtractionTabs: () => state().extractionTabs,
         finalizeJob: (...args) => finalizeJob(...args),
         log,
         timeoutMinutes: JOB_TIMEOUT_MINUTES,
     });
     jobsReconciler = scope.MangaTranslatorJobsReconciliation.createReconciler({
-        state: jobsState,
+        state: state(),
         tabExists,
         log,
         syncState,
         processNextJob: () => processNextJob(),
+        recoverPendingFinalization: entry => jobsLifecycle.recoverPendingFinalization(entry),
     });
     jobsDomAck = scope.MangaTranslatorJobsDomAck.createDomAckDelivery({
         updateJobState: (...args) => updateJobState(...args),
@@ -336,17 +303,7 @@ function initializeJobsModules() {
         timeoutMs: DOM_ACK_TIMEOUT_MS,
     });
     jobsLifecycle = scope.MangaTranslatorJobsLifecycle.createLifecycle({
-        state: {
-            get jobQueue() { return jobQueue; }, set jobQueue(value) { jobQueue = value; },
-            get isProcessing() { return isProcessing; }, set isProcessing(value) { isProcessing = value; },
-            get stopRequested() { return stopRequested; }, set stopRequested(value) { stopRequested = value; },
-            get activeMangaTabId() { return activeMangaTabId; }, set activeMangaTabId(value) { activeMangaTabId = value; },
-            get currentBatchId() { return currentBatchId; }, set currentBatchId(value) { currentBatchId = value; },
-            get totalJobs() { return totalJobs; }, set totalJobs(value) { totalJobs = value; },
-            get completedJobs() { return completedJobs; }, set completedJobs(value) { completedJobs = value; },
-            get activeJobsCount() { return activeJobsCount; }, set activeJobsCount(value) { activeJobsCount = value; },
-            get _cachedMaxCon() { return _cachedMaxCon; }, set _cachedMaxCon(value) { _cachedMaxCon = value; },
-        },
+        state: state(),
         log, syncState, sendProgress, armWatchdog, clearWatchdog,
         indexAddJob, indexRemoveJob, indexJobsOfBatch, delay, generateId,
         markFinalized: _markFinalized,
@@ -369,20 +326,19 @@ async function reconcileJobs() {
     return jobsReconciler.reconcile();
 }
 
-let _initialized = false;
 async function ensureInitialized() {
-    if (_initialized) return;
+    if (state()._initialized) return;
     // Um alarme pode disparar enquanto este worker já detém um lote vivo. Não
     // sobrescreva essa fila/extractionTabs com um snapshot antigo ou vazio.
-    const hasResidentWork = jobQueue.length > 0 || activeJobsCount > 0 ||
-        jobIndex.length > 0 || Object.keys(extractionTabs).length > 0;
+    const hasResidentWork = state().jobQueue.length > 0 || state().activeJobsCount > 0 ||
+        state().jobIndex.length > 0 || Object.keys(state().extractionTabs).length > 0;
     if (!hasResidentWork) await restoreState();
-    _initialized = true;
+    state()._initialized = true;
     try {
         const result = await reconcileJobs();
-        if (result.dropped > 0 || result.alive > 0) {
+        if (result.dropped > 0 || result.alive > 0 || result.recovered > 0) {
             await syncState();
-            if (result.dropped > 0) processNextJob();
+            if (result.dropped > 0 || result.recovered > 0) processNextJob();
         }
     } catch (_e) {}
 }
@@ -410,13 +366,6 @@ async function _flushLog() {
     _logFlushing = false;
 }
 
-// As ações migradas continuam lendo o estado que o worker legado já mantém.
-// A fachada evita criar uma segunda fonte de verdade antes da extração completa.
-const legacyActionState = {
-    get activeMangaTabId() { return activeMangaTabId; },
-    get currentBatchId() { return currentBatchId; },
-    get extractionTabs() { return extractionTabs; },
-};
 let registeredActionRouter = null;
 
 function routeRegisteredAction(request, sender, sendResponse) {
@@ -430,7 +379,7 @@ function routeRegisteredAction(request, sender, sendResponse) {
     if (!registeredActionRouter) {
         registeredActionRouter = routerApi.createMessageRouter({
             contextFactory: () => ({
-                state: legacyActionState,
+                state: state(),
                 log,
                 handleMarkerAndShow,
                 waitForDownload,
@@ -489,7 +438,7 @@ function clearWatchdog(geminiTabId, jobId) {
 //                            ↘ failed / cancelled
 // O estado fica no próprio registro gemini_job_<tabId>, de modo que uma
 // reidratação do Service Worker sabe exatamente em que ponto o job parou.
-function updateJobState(geminiTabId, patch = {}) {
+function legacyUpdateJobStateRemoved(geminiTabId, patch = {}) {
     if (geminiTabId === null || geminiTabId === undefined) return;
     const jobKey = `gemini_job_${geminiTabId}`;
     chrome.storage.local.get([jobKey], (data) => {
@@ -504,7 +453,7 @@ function updateJobState(geminiTabId, patch = {}) {
 // ── Validação do remetente ───────────────────────────────────────────────────
 // Só aceitamos resultados/erros vindos da aba que realmente detém o job.
 // Mensagens legadas (sem jobId) continuam aceitas para compatibilidade.
-function assertJobOwnership(sender, jobId, callback) {
+function legacyAssertJobOwnershipRemoved(sender, jobId, callback) {
     const tabId = sender && sender.tab ? sender.tab.id : null;
     if (!jobId) { callback(true, tabId); return; }
     if (tabId === null) { callback(false, tabId); return; }
@@ -545,24 +494,25 @@ chrome.runtime.onInstalled.addListener(() => {
 
 chrome.runtime.onStartup.addListener(async () => {
     await restoreState();
-    _initialized = true;
+    state()._initialized = true;
     
     // FIX M-5
-    extractionTabs = {};
+    state().extractionTabs = {};
 
-    const hadWork = jobQueue.length > 0 || activeJobsCount > 0 || jobIndex.length > 0;
+    const hadWork = state().jobQueue.length > 0 || state().activeJobsCount > 0 || state().jobIndex.length > 0;
 
     // Em onStartup o navegador foi reiniciado: nenhuma aba do Gemini sobrevive,
     // então a reconciliação sempre descarta os jobs órfãos e libera os slots.
     const reconciled = await reconcileJobs();
 
     if (hadWork) {
-        log('warn', 'bg', 'STARTUP_RECOVERY', `Service worker reiniciado: ${jobQueue.length} jobs na fila, ${reconciled.alive} ativos preservados, ${reconciled.dropped} órfãos descartados`, {
-            jobQueue: jobQueue.length,
+        log('warn', 'bg', 'STARTUP_RECOVERY', `Service worker reiniciado: ${state().jobQueue.length} jobs na fila, ${reconciled.alive} ativos preservados, ${reconciled.dropped} órfãos descartados, ${reconciled.recovered || 0} finalizações reconciliadas`, {
+            jobQueue: state().jobQueue.length,
             alive: reconciled.alive,
             dropped: reconciled.dropped,
+            recovered: reconciled.recovered || 0,
         });
-        isProcessing = jobQueue.length > 0;
+        state().isProcessing = state().jobQueue.length > 0;
         await syncState();
         processNextJob();
     } else {
@@ -597,7 +547,7 @@ chrome.alarms.onAlarm.addListener(async (alarm) => {
         // O alarme pode se chamar watchdog_<jobId> (UUID) ou watchdog_<tabId> (legado).
         // O índice durável resolve jobId → geminiTabId sem precisar de get(null),
         // que carregaria todas as imagens Base64 do acervo na memória do worker.
-        const indexed = jobIndex.find(j => j && (String(j.jobId) === suffix || String(j.geminiTabId) === suffix));
+        const indexed = state().jobIndex.find(j => j && (String(j.jobId) === suffix || String(j.geminiTabId) === suffix));
         const candidateKeys = [];
         if (indexed) candidateKeys.push(`wd_data_${indexed.geminiTabId}`);
         if (!candidateKeys.includes(`wd_data_${suffix}`)) candidateKeys.push(`wd_data_${suffix}`);
@@ -625,11 +575,11 @@ chrome.alarms.onAlarm.addListener(async (alarm) => {
             }
 
             finalizeJob(geminiTabId, wd.mangaTabId, true);
-            const orphanIds = Object.keys(extractionTabs).filter(tabId => extractionTabs[tabId] && extractionTabs[tabId].geminiTabId === geminiTabId);
+            const orphanIds = Object.keys(state().extractionTabs).filter(tabId => state().extractionTabs[tabId] && state().extractionTabs[tabId].geminiTabId === geminiTabId);
             orphanIds.forEach(tabId => {
                 const numId = Number(tabId);
                 chrome.tabs.remove(numId, () => { if (chrome.runtime.lastError) {} });
-                delete extractionTabs[numId];
+                delete state().extractionTabs[numId];
             });
         });
     }
@@ -692,7 +642,7 @@ function _refreshMaxCon() {
 }
 _refreshMaxCon();
 
-async function processNextJob() {
+async function legacyProcessNextJobRemoved() {
     if (stopRequested || (jobQueue.length === 0 && activeJobsCount === 0)) {
         // Nunca declarar o lote concluído enquanto houver job registrado no índice
         // durável: isso significa que uma aba do Gemini ainda está processando,
@@ -807,7 +757,7 @@ async function processNextJob() {
     }
 }
 
-function finalizeJob(geminiTabId, mangaTabId, fromError = false) {
+function legacyFinalizeJobRemoved(geminiTabId, mangaTabId, fromError = false) {
     if (_finalizedTabs.has(geminiTabId)) {
         log('warn', 'bg', 'FINALIZE_DUPLICATE', `finalizeJob ignorado (já finalizado)`, { geminiTabId });
         return;
@@ -1026,19 +976,20 @@ function handleMarkerAndShow(safeTitle, sendResponse) {
 async function startBatch(request, sender) {
     await ensureInitialized();
     const batchId = request.batchId || generateId();
-    currentBatchId = batchId;
-    stopRequested = false;
-    jobQueue = [];
-    completedJobs = 0;
-    activeJobsCount = jobIndex.length;
-    totalJobs = request.images.length;
-    activeMangaTabId = sender && sender.tab ? sender.tab.id : request.mangaTabId;
-    isProcessing = true;
+    const runtimeState = state();
+    runtimeState.currentBatchId = batchId;
+    runtimeState.stopRequested = false;
+    runtimeState.jobQueue = [];
+    runtimeState.completedJobs = 0;
+    runtimeState.activeJobsCount = runtimeState.jobIndex.length;
+    runtimeState.totalJobs = request.images.length;
+    runtimeState.activeMangaTabId = sender && sender.tab ? sender.tab.id : request.mangaTabId;
+    runtimeState.isProcessing = true;
 
     request.images.forEach(img => {
-        jobQueue.push({ mangaTabId: activeMangaTabId, index: img.index, prompt: request.prompt, batchId });
+        runtimeState.jobQueue.push({ mangaTabId: runtimeState.activeMangaTabId, index: img.index, prompt: request.prompt, batchId });
     });
-    log('info', 'bg', 'BATCH_START', `Iniciando ${totalJobs} imagens (batch: ${batchId.slice(0, 8)})`);
+    log('info', 'bg', 'BATCH_START', `Iniciando ${runtimeState.totalJobs} imagens (batch: ${batchId.slice(0, 8)})`);
     await Promise.all([_refreshMaxCon(), syncState()]);
     processNextJob();
     return { batchId };
@@ -1046,14 +997,15 @@ async function startBatch(request, sender) {
 
 async function stopBatch(request) {
     await ensureInitialized();
-    const targetBatchId = request.batchId || currentBatchId;
-    const stopsCurrentBatch = !targetBatchId || targetBatchId === currentBatchId;
-    jobQueue = jobQueue.filter(job => targetBatchId && job.batchId !== targetBatchId);
+    const runtimeState = state();
+    const targetBatchId = request.batchId || runtimeState.currentBatchId;
+    const stopsCurrentBatch = !targetBatchId || targetBatchId === runtimeState.currentBatchId;
+    runtimeState.jobQueue = runtimeState.jobQueue.filter(job => targetBatchId && job.batchId !== targetBatchId);
     if (stopsCurrentBatch) {
-        stopRequested = true;
-        isProcessing = false;
-        activeMangaTabId = null;
-        currentBatchId = null;
+        runtimeState.stopRequested = true;
+        runtimeState.isProcessing = false;
+        runtimeState.activeMangaTabId = null;
+        runtimeState.currentBatchId = null;
     }
     log('warn', 'bg', 'BATCH_STOP', `Batch parado (batch: ${(targetBatchId || '').slice(0, 8)})`);
 
@@ -1079,17 +1031,17 @@ async function stopBatch(request) {
     });
     if (keysToRemove.length > 0) await chrome.storage.local.remove(keysToRemove);
 
-    Object.keys(extractionTabs).map(Number).forEach(tabId => {
-        const info = extractionTabs[tabId];
+    Object.keys(runtimeState.extractionTabs).map(Number).forEach(tabId => {
+        const info = runtimeState.extractionTabs[tabId];
         if (targetBatchId && info && info.batchId && info.batchId !== targetBatchId) return;
         chrome.tabs.remove(tabId, () => { if (chrome.runtime.lastError) {} });
-        delete extractionTabs[tabId];
+        delete runtimeState.extractionTabs[tabId];
     });
 
-    activeJobsCount = jobIndex.length;
+    runtimeState.activeJobsCount = runtimeState.jobIndex.length;
     releaseGeminiScriptsIfIdle();
     await syncState();
-    if (!stopsCurrentBatch && isProcessing) processNextJob();
+    if (!stopsCurrentBatch && runtimeState.isProcessing) processNextJob();
     return {};
 }
 
@@ -1097,25 +1049,21 @@ async function stopBatch(request) {
 // históricos, mas a implementação canônica agora vive em jobs-lifecycle.js.
 // A remoção física dos corpos antigos fica segura porque estas referências são
 // também o contrato temporário dos módulos já extraídos.
-const _legacyUpdateJobState = updateJobState;
-const _legacyAssertJobOwnership = assertJobOwnership;
-const _legacyProcessNextJob = processNextJob;
-const _legacyFinalizeJob = finalizeJob;
-updateJobState = (...args) => {
+const updateJobState = (...args) => {
     initializeJobsModules();
     return jobsLifecycle.updateJobState(...args);
 };
-assertJobOwnership = (sender, jobId, callback) => {
+const assertJobOwnership = (sender, jobId, callback) => {
     initializeJobsModules();
     jobsLifecycle.assertJobOwnership(sender, jobId)
         .then(({ owns, tabId }) => callback(owns, tabId))
         .catch(() => callback(false, sender && sender.tab ? sender.tab.id : null));
 };
-processNextJob = (...args) => {
+const processNextJob = (...args) => {
     initializeJobsModules();
     return jobsLifecycle.processNextJob(...args);
 };
-finalizeJob = (...args) => {
+const finalizeJob = (...args) => {
     initializeJobsModules();
     return jobsLifecycle.finalizeJob(...args);
 };

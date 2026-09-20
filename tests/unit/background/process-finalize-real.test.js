@@ -376,6 +376,48 @@ describe('background.js - processNextJob e finalizeJob reais', () => {
         expect(backgroundModule.__getState()).toEqual(expect.objectContaining({ activeJobsCount: 1, completedJobs: 1 }));
     });
 
+    test('P0: restart entre a marca e a contabilidade reconcilia uma única vez', async () => {
+        // Simula a última escrita que sobreviveu ao descarte do worker: a marca
+        // existe, mas o snapshot ainda contém o job e os contadores antigos.
+        // Este é exatamente o intervalo entre marcar finalização e contabilizar.
+        const expiresAt = Date.now() + 60_000;
+        await storageMock.set({
+            mt_state: {
+                jobQueue: [], isProcessing: true, stopRequested: false,
+                activeMangaTabId: 62, currentBatchId: 'batch-restart', extractionTabs: {},
+                totalJobs: 1, completedJobs: 0, activeJobsCount: 1,
+                jobIndex: [{ geminiTabId: 2200, jobId: 'job-restart', mangaTabId: 62, index: 0, batchId: 'batch-restart' }],
+            },
+            gemini_job_2200: { geminiTabId: 2200, jobId: 'job-restart', mangaTabId: 62, index: 0 },
+            wd_data_2200: { geminiTabId: 2200, jobId: 'job-restart' },
+            gemini_finalized_2200: {
+                jobId: 'job-restart', fromError: false, finalizedAt: Date.now(),
+                expiresAt, accountingApplied: false,
+            },
+        });
+
+        // onStartup usa o mesmo caminho de reidratação usado por um worker
+        // recriado; a aba pode até continuar aberta, pois a marca prevalece.
+        tabsMock._tabs.set(2200, { id: 2200, url: 'https://gemini.google.com/app', active: false, status: 'complete', title: '' });
+        const startup = runtimeMock._startupListeners[0];
+        await startup();
+        await flush(8);
+
+        let stored = await storageMock.get(null);
+        expect(stored.mt_state).toEqual(expect.objectContaining({ completedJobs: 1, activeJobsCount: 0, jobIndex: [] }));
+        expect(stored.gemini_finalized_2200).toEqual(expect.objectContaining({ accountingApplied: true }));
+        expect(stored.gemini_job_2200).toBeUndefined();
+        expect(stored.wd_data_2200).toBeUndefined();
+
+        // Uma nova reconciliação não reencontra o journal e não pode somar o
+        // mesmo job novamente.
+        await startup();
+        await flush(6);
+        stored = await storageMock.get(['mt_state']);
+        expect(stored.mt_state.completedJobs).toBe(1);
+        expect(stored.mt_state.activeJobsCount).toBe(0);
+    });
+
     test('BG-77: aba do mangá fechada durante tradução não deixa job preso', async () => {
         await storageMock.set({
             debugMode: false,

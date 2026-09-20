@@ -5,16 +5,17 @@ const Module = require('module');
 function buildStateGetter() {
     return `
 function __getState() {
+    const runtimeState = state();
     return {
-        jobQueue,
-        isProcessing,
-        stopRequested,
-        activeMangaTabId,
-        extractionTabs,
-        totalJobs,
-        completedJobs,
-        activeJobsCount,
-        _cachedMaxCon,
+        jobQueue: runtimeState.jobQueue,
+        isProcessing: runtimeState.isProcessing,
+        stopRequested: runtimeState.stopRequested,
+        activeMangaTabId: runtimeState.activeMangaTabId,
+        extractionTabs: runtimeState.extractionTabs,
+        totalJobs: runtimeState.totalJobs,
+        completedJobs: runtimeState.completedJobs,
+        activeJobsCount: runtimeState.activeJobsCount,
+        _cachedMaxCon: runtimeState._cachedMaxCon,
         _logQueue,
         _logFlushing,
         _finalizedTabs: Array.from(_finalizedTabs),
@@ -27,15 +28,16 @@ function buildStateSetter() {
     return `
 function __setState(next = {}) {
     const has = (key) => Object.prototype.hasOwnProperty.call(next, key);
-    if (has('jobQueue')) jobQueue = next.jobQueue;
-    if (has('isProcessing')) isProcessing = next.isProcessing;
-    if (has('stopRequested')) stopRequested = next.stopRequested;
-    if (has('activeMangaTabId')) activeMangaTabId = next.activeMangaTabId;
-    if (has('extractionTabs')) extractionTabs = next.extractionTabs;
-    if (has('totalJobs')) totalJobs = next.totalJobs;
-    if (has('completedJobs')) completedJobs = next.completedJobs;
-    if (has('activeJobsCount')) activeJobsCount = next.activeJobsCount;
-    if (has('_cachedMaxCon')) _cachedMaxCon = next._cachedMaxCon;
+    const runtimeState = state();
+    if (has('jobQueue')) runtimeState.jobQueue = next.jobQueue;
+    if (has('isProcessing')) runtimeState.isProcessing = next.isProcessing;
+    if (has('stopRequested')) runtimeState.stopRequested = next.stopRequested;
+    if (has('activeMangaTabId')) runtimeState.activeMangaTabId = next.activeMangaTabId;
+    if (has('extractionTabs')) runtimeState.extractionTabs = next.extractionTabs;
+    if (has('totalJobs')) runtimeState.totalJobs = next.totalJobs;
+    if (has('completedJobs')) runtimeState.completedJobs = next.completedJobs;
+    if (has('activeJobsCount')) runtimeState.activeJobsCount = next.activeJobsCount;
+    if (has('_cachedMaxCon')) runtimeState._cachedMaxCon = next._cachedMaxCon;
     if (has('_logQueue')) _logQueue = next._logQueue;
     if (has('_logFlushing')) _logFlushing = next._logFlushing;
     if (has('_finalizedTabs')) {
