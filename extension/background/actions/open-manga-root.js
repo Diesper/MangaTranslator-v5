@@ -6,7 +6,7 @@
     name: 'open-manga-root',
 
     meta: {
-      // O handler legado não restringia a origem desta mensagem.
+      // Contrato atual mantém esta ação disponível a qualquer contexto da extensão.
       allowedSources: ['any'],
     },
 
