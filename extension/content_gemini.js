@@ -300,6 +300,40 @@ const TemporaryChatActivator = {
             }
         }
 
+        // A UI atual do Gemini também sinaliza o modo temporário por uma tela/banner
+        // informativo e, em algumas variantes, apenas por um botão de fechar.
+        // Use frases específicas para evitar considerar qualquer menção genérica a
+        // "temporário" como prova de que o modo está ativo.
+        const closeControls = document.querySelectorAll('button[aria-label], [role="button"][aria-label]');
+        for (const control of closeControls) {
+            const label = (control.getAttribute('aria-label') || '').trim().toLowerCase();
+            const isClose = label.includes('fechar') || label.includes('close');
+            const isTemporary = label.includes('momentân') || label.includes('momentan') ||
+                label.includes('temporár') || label.includes('temporar') || label.includes('temporary');
+            if (isClose && isTemporary) return true;
+        }
+
+        const pageText = (document.body && (document.body.innerText || document.body.textContent) || '')
+            .replace(/\s+/g, ' ')
+            .trim()
+            .toLowerCase();
+
+        const portugueseActiveScreen =
+            (pageText.includes('só dando uma passadinha') || pageText.includes('so dando uma passadinha')) &&
+            (pageText.includes('não aparecem nas conversas recentes') || pageText.includes('nao aparecem nas conversas recentes'));
+
+        const portugueseHistoryBanner =
+            (pageText.includes('conversas temporárias') || pageText.includes('conversas temporarias') ||
+             pageText.includes('conversas momentâneas') || pageText.includes('conversas momentaneas')) &&
+            (pageText.includes('não aparecem no seu histórico') || pageText.includes('nao aparecem no seu historico'));
+
+        const englishActiveScreen =
+            pageText.includes('just passing through') &&
+            (pageText.includes("temporary chats don’t appear in recent chats") ||
+             pageText.includes("temporary chats don't appear in recent chats"));
+
+        if (portugueseActiveScreen || portugueseHistoryBanner || englishActiveScreen) return true;
+
         return false;
     },
 
