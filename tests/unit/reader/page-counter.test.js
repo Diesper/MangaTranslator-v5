@@ -112,6 +112,41 @@ describe('RD-20/RD-21/RD-22: reader.js - Contador de Página e Progresso Real', 
         expect(counterEl.textContent).toBe('1 / 2');
     });
 
+    test('mantem a pagina globalmente mais visivel quando callback seguinte traz apenas outra pagina', async () => {
+        await storageMock.set({
+            chapterList: [{ id: 'chap_visibility', title: 'Visibility' }],
+            chap_visibility_images: Object.fromEntries(
+                Array.from({ length: 10 }, (_unused, index) => [index, `data:image/png;base64,P${index}`])
+            ),
+        });
+
+        await loadExtensionPage({
+            htmlPath: 'extension/reader.html',
+            scriptPath: 'extension/reader.js',
+            url: 'https://extension.test/reader.html?id=chap_visibility',
+            fireDOMContentLoaded: true,
+        });
+        await flushAsyncTasks(6);
+
+        const counterEl = document.getElementById('page-counter');
+        const pageWraps = document.querySelectorAll('.reader-page-wrap');
+        const counterObserverCallback = observerCallbacks[0];
+
+        counterObserverCallback([
+            { target: pageWraps[8], intersectionRatio: 0.6, isIntersecting: true },
+            { target: pageWraps[9], intersectionRatio: 0.9, isIntersecting: true },
+        ]);
+        expect(counterEl.textContent).toBe('10 / 10');
+
+        // O navegador pode emitir um callback subsequente contendo apenas a
+        // página 9, mesmo enquanto a página 10 segue mais visível.
+        counterObserverCallback([
+            { target: pageWraps[8], intersectionRatio: 0.7, isIntersecting: true },
+        ]);
+
+        expect(counterEl.textContent).toBe('10 / 10');
+    });
+
     test('trata capítulo com 0 imagens exibindo 0 / 0', async () => {
         await storageMock.set({
             chapterList: [{ id: 'chap_empty', title: 'Empty' }],
