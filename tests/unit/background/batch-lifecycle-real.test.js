@@ -239,6 +239,48 @@ describe('background.js - lifecycle real do batch', () => {
         expect(data.mt_state.jobQueue).toEqual([]);
     });
 
+    test('P0: STOP_BATCH de um lote antigo preserva jobs, fila e watchdogs do lote atual', async () => {
+        const jobA = await tabsMock.create({ url: 'https://gemini.google.com/app/a', active: false });
+        const jobB = await tabsMock.create({ url: 'https://gemini.google.com/app/b', active: false });
+        await storageMock.set({
+            mt_state: {
+                jobQueue: [{ mangaTabId: 99, index: 8, prompt: 'B', batchId: 'batch-b' }],
+                isProcessing: true,
+                stopRequested: false,
+                activeMangaTabId: 99,
+                currentBatchId: 'batch-b',
+                extractionTabs: {},
+                totalJobs: 2,
+                completedJobs: 0,
+                activeJobsCount: 2,
+                jobIndex: [
+                    { geminiTabId: jobA.id, jobId: 'job-a', batchId: 'batch-a', mangaTabId: 99, index: 1 },
+                    { geminiTabId: jobB.id, jobId: 'job-b', batchId: 'batch-b', mangaTabId: 99, index: 2 },
+                ],
+            },
+            [`gemini_job_${jobA.id}`]: { geminiTabId: jobA.id, jobId: 'job-a', batchId: 'batch-a' },
+            [`gemini_job_${jobB.id}`]: { geminiTabId: jobB.id, jobId: 'job-b', batchId: 'batch-b' },
+            [`wd_data_${jobA.id}`]: { geminiTabId: jobA.id, jobId: 'job-a' },
+            [`wd_data_${jobB.id}`]: { geminiTabId: jobB.id, jobId: 'job-b' },
+        });
+
+        const stop = await dispatchToBackground(runtimeMock, { action: 'STOP_BATCH', batchId: 'batch-a' });
+        expect(stop.response).toEqual({ ok: true });
+        await flush(8);
+
+        const data = await storageMock.get(null);
+        expect(tabsMock._tabs.has(jobA.id)).toBe(false);
+        expect(tabsMock._tabs.has(jobB.id)).toBe(true);
+        expect(data[`gemini_job_${jobA.id}`]).toBeUndefined();
+        expect(data[`gemini_job_${jobB.id}`]).toEqual(expect.objectContaining({ jobId: 'job-b' }));
+        expect(data[`wd_data_${jobB.id}`]).toEqual(expect.objectContaining({ jobId: 'job-b' }));
+        expect(data.mt_state).toEqual(expect.objectContaining({
+            currentBatchId: 'batch-b', isProcessing: true, stopRequested: false, activeJobsCount: 1,
+        }));
+        expect(data.mt_state.jobQueue).toEqual([expect.objectContaining({ batchId: 'batch-b' })]);
+        expect(data.mt_state.jobIndex).toEqual([expect.objectContaining({ jobId: 'job-b' })]);
+    });
+
     test('watchdog real envia erro integrado para a aba de manga e limpa o job ativo', async () => {
         const mangaTab = await tabsMock.create({ url: 'https://reader.test/chapter-1', active: true });
         const forwardedMessages = [];
