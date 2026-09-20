@@ -145,6 +145,8 @@ function buildGeminiMockHtml() {
       <div class="toolbar">
         <h1>Gemini Mock para Playwright</h1>
         <span id="mock-status">Aguardando entrada</span>
+        <button data-test-id="temp-chat-button" aria-label="Desativar conversa temporária" style="display:none">Desativar conversa temporária</button>
+        <div data-test-id="temp-chat-indicator" class="temp-chat-indicator" style="display:none">conversa temporária</div>
       </div>
 
       <div class="attachment-container">

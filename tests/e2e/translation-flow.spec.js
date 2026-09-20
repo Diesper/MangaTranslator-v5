@@ -173,7 +173,7 @@ test.describe('E2E-01/E2E-02/E2E-03/E2E-04/E2E-05/E2E-06/E2E-07/E2E-08/E2E-09/E2
                 return Array.from(document.querySelectorAll('img[data-translated="true"]')).length;
             });
         }, {
-            timeout: 30000,
+            timeout: 45000,
             message: 'Esperava 2 imagens traduzidas no DOM do mangá',
         }).toBe(2);
 

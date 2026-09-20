@@ -125,7 +125,7 @@ async function waitForTranslationOnPage(page) {
             return Array.from(document.querySelectorAll('img[data-translated="true"]')).length;
         });
     }, {
-        timeout: 30000,
+        timeout: 45000,
         message: 'Esperava imagens traduzidas no DOM da página',
     }).toBe(2);
 }

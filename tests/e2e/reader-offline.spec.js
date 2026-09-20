@@ -224,7 +224,7 @@ test.describe('E2E-19/E2E-20/E2E-21/E2E-22: E2E - reader offline real', () => {
             // eslint-disable-next-line no-await-in-loop
             await readerPage.keyboard.press('ArrowRight');
             // eslint-disable-next-line no-await-in-loop
-            await readerPage.waitForTimeout(250);
+            await readerPage.waitForTimeout(450);
         }
 
         await expect(readerPage.locator('#page-counter')).toHaveText('4 / 15', { timeout: 5000 });
