@@ -91,7 +91,7 @@ describe('background.js - processNextJob e finalizeJob reais', () => {
         await backgroundModule.processNextJob();
         await flush(6);
 
-        expect(forwardedMessages).toContainEqual({ action: 'BATCH_COMPLETE' });
+        expect(forwardedMessages).toContainEqual(expect.objectContaining({ action: 'BATCH_COMPLETE' }));
         expect(backgroundModule.__getState()).toEqual(expect.objectContaining({
             isProcessing: false,
             activeMangaTabId: null,
@@ -301,7 +301,7 @@ describe('background.js - processNextJob e finalizeJob reais', () => {
         expect(removeSpy).toHaveBeenCalledWith(1700, expect.any(Function));
     });
 
-    test('BG-27/BG-30/BG-31: finalizedTabs expira após 30s e cleanup de deleting_urls fecha a aba após 18s no modo minimized_window', async () => {
+    test('BG-27/BG-30/BG-31: marca de finalização expira após 10 min e cleanup de deleting_urls fecha a aba após 18s no modo minimized_window', async () => {
         await storageMock.set({
             debugMode: false,
             geminiExecutionMode: 'minimized_window',
@@ -344,7 +344,7 @@ describe('background.js - processNextJob e finalizeJob reais', () => {
         });
         tabsMock._tabs.set(1800, { id: 1800, url: 'https://reader.test/not-gemini-1800', active: false, status: 'complete', title: '' });
 
-        await jest.advanceTimersByTimeAsync(30_001);
+        await jest.advanceTimersByTimeAsync(10 * 60_000 + 1);
 
         backgroundModule.__setState({ activeJobsCount: 1, completedJobs: 1 });
         backgroundModule.finalizeJob(1800, 60, false);
@@ -354,6 +354,26 @@ describe('background.js - processNextJob e finalizeJob reais', () => {
             activeJobsCount: 0,
             completedJobs: 2,
         }));
+    });
+
+    test('P0: marca durável impede dupla finalização após perda da proteção em memória', async () => {
+        await storageMock.set({
+            debugMode: true,
+            gemini_job_2100: { geminiTabId: 2100, jobId: 'job-p0' },
+            wd_data_2100: { mangaTabId: 61, index: 5, geminiTabId: 2100, jobId: 'job-p0' },
+        });
+        tabsMock._tabs.set(2100, { id: 2100, url: 'https://gemini.google.com/app/job-p0', active: false, status: 'complete', title: '' });
+        backgroundModule.__setState({ activeJobsCount: 1, completedJobs: 0 });
+
+        backgroundModule.finalizeJob(2100, 61, false);
+        await flush(8);
+        expect((await storageMock.get(['gemini_finalized_2100'])).gemini_finalized_2100).toEqual(expect.objectContaining({ jobId: 'job-p0' }));
+
+        backgroundModule.__setState({ activeJobsCount: 1, completedJobs: 1, _finalizedTabs: [] });
+        backgroundModule.finalizeJob(2100, 61, false);
+        await flush(8);
+
+        expect(backgroundModule.__getState()).toEqual(expect.objectContaining({ activeJobsCount: 1, completedJobs: 1 }));
     });
 
     test('BG-77: aba do mangá fechada durante tradução não deixa job preso', async () => {
@@ -382,12 +402,14 @@ describe('background.js - processNextJob e finalizeJob reais', () => {
             completedJobs: 0,
         });
 
-        const result = await dispatchToBackground(runtimeMock, {
+        const resultPromise = dispatchToBackground(runtimeMock, {
             action: 'GEMINI_IMAGE_EXTRACTED',
             mangaTabId: 404,
             index: 7,
             src: 'data:image/png;base64,TRANSLATED',
         }, { tab: { id: 1900 } });
+        await jest.advanceTimersByTimeAsync(1);
+        const result = await resultPromise;
 
         expect(result.response).toEqual({ ok: true });
 
@@ -396,7 +418,7 @@ describe('background.js - processNextJob e finalizeJob reais', () => {
 
         expect(backgroundModule.__getState()).toEqual(expect.objectContaining({
             activeJobsCount: 0,
-            completedJobs: 1,
+            completedJobs: 0,
         }));
         expect(storageMock._getStore().gemini_job_1900).toBeUndefined();
 
