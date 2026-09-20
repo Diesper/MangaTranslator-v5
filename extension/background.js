@@ -1142,22 +1142,6 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
         return false;
     }
 
-    if (request.action === 'GEMINI_ERROR') {
-        const { mangaTabId, index, error, jobId, batchId } = request;
-        // Reject errors from stale batches
-        if (batchId && currentBatchId && batchId !== currentBatchId) {
-            finalizeJob(sender.tab.id, mangaTabId, true);
-            try { sendResponse({ ok: false }); } catch (e) {} return false;
-        }
-        chrome.storage.local.get(['debugMode'], (data) => {
-            chrome.tabs.sendMessage(mangaTabId, {
-                action: 'SHOW_ERROR_INTEGRATED', errorMsg: error, imgIndex: index, isDebug: !!data.debugMode, jobId, batchId
-            }, () => { if (chrome.runtime.lastError) {} });
-            finalizeJob(sender.tab.id, mangaTabId, true);
-        });
-        try { sendResponse({ ok: true }); } catch (e) {} return false;
-    }
-
     if (request.action === 'FETCH_IMAGE_AS_BASE64') {
         try {
             const parsedUrl = new URL(request.url);
