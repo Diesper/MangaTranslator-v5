@@ -65,6 +65,41 @@ function updateCounter(currentPage) {
     }
 }
 
+let counterScrollFrame = null;
+
+function updateCounterFromViewportCenter() {
+    if (!pageWraps.length) return;
+
+    const viewportCenter = window.innerHeight / 2;
+    let closestIdx = null;
+    let closestDistance = Infinity;
+
+    pageWraps.forEach((wrap, idx) => {
+        const rect = wrap.getBoundingClientRect();
+        if (rect.bottom <= 0 || rect.top >= window.innerHeight) return;
+
+        const pageCenter = rect.top + rect.height / 2;
+        const distance = Math.abs(pageCenter - viewportCenter);
+        if (distance < closestDistance) {
+            closestDistance = distance;
+            closestIdx = idx;
+        }
+    });
+
+    if (closestIdx !== null) updateCounter(closestIdx + 1);
+}
+
+function scheduleCounterFromViewport() {
+    if (counterScrollFrame !== null) return;
+    counterScrollFrame = requestAnimationFrame(() => {
+        counterScrollFrame = null;
+        updateCounterFromViewportCenter();
+    });
+}
+
+window.addEventListener('scroll', scheduleCounterFromViewport, { passive: true });
+window.addEventListener('resize', scheduleCounterFromViewport, { passive: true });
+
 document.addEventListener('keydown', (e) => {
     if (e.key === 'ArrowRight' || e.key === 'ArrowDown') {
         e.preventDefault();
