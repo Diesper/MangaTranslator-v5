@@ -133,11 +133,16 @@ describe('background.js - handlers onMessage reais', () => {
         jest.useFakeTimers();
 
         backgroundModule.__setState({ activeJobsCount: 1, completedJobs: 0 });
+        storageMock._setStore({
+            ...storageMock._getStore(),
+            gemini_job_3333: { geminiTabId: 3333, jobId: 'job-direct' },
+        });
         const extractedResultPromise = dispatchToBackground(runtimeMock, {
             action: 'GEMINI_IMAGE_EXTRACTED',
             mangaTabId: mangaTab.id,
             index: 7,
             src: 'data:image/png;base64,FROM_GEMINI',
+            jobId: 'job-direct',
         }, { tab: { id: 3333 } });
         await jest.advanceTimersByTimeAsync(1);
         const extractedResult = await extractedResultPromise;
