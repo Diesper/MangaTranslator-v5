@@ -5,7 +5,8 @@
   scope.MangaTranslatorRouter.registerAction({
     name: 'get-tab-id',
     meta: {
-      allowedSources: ['gemini'],
+      // O handler legado respondia para qualquer contexto da extensão.
+      allowedSources: ['any'],
       async: false,
     },
     execute(_request, context) {
