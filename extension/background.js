@@ -760,7 +760,7 @@ const finalizeJob = (...args) => {
     initializeJobsModules();
     return jobsLifecycle.finalizeJob(...args);
 };
-_refreshMaxCon = (...args) => {
+const _refreshMaxCon = (...args) => {
     initializeJobsModules();
     return jobsLifecycle.refreshMaxConcurrency(...args);
 };
