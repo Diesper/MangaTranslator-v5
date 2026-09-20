@@ -42,7 +42,7 @@ const observer = new IntersectionObserver((entries) => {
     entries.forEach(entry => {
         const idx = parseInt(entry.target.dataset.pageIdx, 10);
         if (!isNaN(idx)) {
-            pageVisibilityRatios.set(idx, entry.isIntersecting ? entry.intersectionRatio : 0);
+            pageVisibilityRatios.set(idx, entry.isIntersecting === false ? 0 : entry.intersectionRatio);
         }
     });
 
