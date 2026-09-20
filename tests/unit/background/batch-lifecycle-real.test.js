@@ -107,7 +107,10 @@ describe('background.js - lifecycle real do batch', () => {
             images: [{ index: 4 }, { index: 9 }],
         });
 
-        expect(start.response).toEqual({ ok: true });
+        expect(start.response).toEqual(expect.objectContaining({
+            ok: true,
+            batchId: expect.any(String),
+        }));
 
         await waitFor(async () => {
             const data = await storageMock.get(['mt_state']);
@@ -124,7 +127,12 @@ describe('background.js - lifecycle real do batch', () => {
             totalJobs: 2,
             activeJobsCount: 1,
         }));
-        expect(state.mt_state.jobQueue).toEqual([{ mangaTabId: 77, index: 9, prompt: 'Traduzir' }]);
+        expect(state.mt_state.jobQueue).toEqual([expect.objectContaining({
+            mangaTabId: 77,
+            index: 9,
+            prompt: 'Traduzir',
+            batchId: expect.any(String),
+        })]);
         expect(geminiJob.value).toEqual(expect.objectContaining({
             mangaTabId: 77,
             index: 4,
@@ -255,6 +263,10 @@ describe('background.js - lifecycle real do batch', () => {
         const geminiJob = await waitFor(() => getSingleGeminiJob(storageMock));
         const geminiTabId = geminiJob.tabId;
 
+        await waitFor(async () => {
+            const data = await storageMock.get([`wd_data_${geminiTabId}`]);
+            return data[`wd_data_${geminiTabId}`] || null;
+        });
         expect(await storageMock.get([`wd_data_${geminiTabId}`])).toEqual(expect.objectContaining({
             [`wd_data_${geminiTabId}`]: expect.objectContaining({
                 mangaTabId: mangaTab.id,
@@ -263,7 +275,7 @@ describe('background.js - lifecycle real do batch', () => {
             }),
         }));
 
-        alarmsMock._fire(`watchdog_${geminiTabId}`);
+        alarmsMock._fire(`watchdog_${geminiJob.value.jobId}`);
         await flush(10);
         await delay(650);
 
