@@ -1,4 +1,4 @@
-// storage-manager.js — Manga Translator v5.1.1
+// storage-manager.js — Manga Translator v6.0
 //
 // Camada de persistência de páginas traduzidas. Roda EXCLUSIVAMENTE no
 // Service Worker (background.js) e nas páginas da extensão — nunca como
