@@ -55,6 +55,7 @@ if (typeof importScripts === 'function') {
         importScripts('background/actions/force-send-activation.js');
         importScripts('background/actions/request-image-data.js');
         importScripts('background/actions/open-manga-root.js');
+        importScripts('background/actions/download-image.js');
     } catch (e) {}
     try {
         // gtc-fingerprint.js expõe self.MangaTranslatorGtcFingerprint:
@@ -89,6 +90,7 @@ if (typeof importScripts === 'function') {
         require('./background/actions/force-send-activation.js');
         require('./background/actions/request-image-data.js');
         require('./background/actions/open-manga-root.js');
+        require('./background/actions/download-image.js');
     } catch (e) {}
     try {
         gtcIndexedDbApi = require('./gtc-indexeddb.js');
@@ -335,7 +337,7 @@ function routeRegisteredAction(request, sender, sendResponse) {
 
     if (!registeredActionRouter) {
         registeredActionRouter = routerApi.createMessageRouter({
-            contextFactory: () => ({ state: legacyActionState, log, handleMarkerAndShow }),
+            contextFactory: () => ({ state: legacyActionState, log, handleMarkerAndShow, waitForDownload }),
         });
     }
 
@@ -344,6 +346,7 @@ function routeRegisteredAction(request, sender, sendResponse) {
         'CHECK_IF_EXTRACTION_TAB',
         'REQUEST_IMAGE_DATA',
         'FETCH_IMAGE_AS_BASE64',
+        'DOWNLOAD_IMAGE',
     ]);
     const sendResponseCompat = response => {
         if (legacyResponseActions.has(request.action) && response && response.ok === true) {
