@@ -36,18 +36,26 @@ try {
     } else { applyWidth(800); }
 } catch(e) { applyWidth(800); }
 
+const pageVisibilityRatios = new Map();
+
 const observer = new IntersectionObserver((entries) => {
-    let mostVisible = null; let maxRatio = 0;
     entries.forEach(entry => {
-        if (entry.intersectionRatio > maxRatio) {
-            maxRatio = entry.intersectionRatio;
-            mostVisible = entry.target;
+        const idx = parseInt(entry.target.dataset.pageIdx, 10);
+        if (!isNaN(idx)) {
+            pageVisibilityRatios.set(idx, entry.isIntersecting ? entry.intersectionRatio : 0);
         }
     });
-    if (mostVisible) {
-        const idx = parseInt(mostVisible.dataset.pageIdx);
-        if (!isNaN(idx)) updateCounter(idx + 1);
-    }
+
+    let mostVisibleIdx = null;
+    let maxRatio = 0;
+    pageVisibilityRatios.forEach((ratio, idx) => {
+        if (ratio > maxRatio) {
+            maxRatio = ratio;
+            mostVisibleIdx = idx;
+        }
+    });
+
+    if (mostVisibleIdx !== null) updateCounter(mostVisibleIdx + 1);
 }, { threshold: Array.from({ length: 21 }, (_, i) => i * 0.05) });
 
 function updateCounter(currentPage) {
