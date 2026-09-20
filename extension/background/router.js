@@ -72,7 +72,7 @@
     };
   }
 
-  function createMessageRouter({ gtcHandler, smHandler }) {
+  function createMessageRouter({ gtcHandler, smHandler, contextFactory } = {}) {
     const log = scope.MangaTranslatorLog ? scope.MangaTranslatorLog.log : function() {};
 
     return function onMessage(request, sender, sendResponse) {
@@ -123,7 +123,10 @@
       }
 
       // 6. Contexto
-      const context = createContext(sender);
+      const context = {
+        ...createContext(sender),
+        ...(typeof contextFactory === 'function' ? contextFactory(sender) : {}),
+      };
 
       // 7. Executar
       if (actionDef.meta && actionDef.meta.async === false) {
