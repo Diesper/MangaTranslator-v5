@@ -261,11 +261,19 @@ class ChromeRuntimeMock {
     });
 
     if (!responded && callback) {
-      responseTimeoutId = setTimeout(() => {
-        this.lastError = { message: 'The message channel closed before a response was received.' };
-        callback(undefined);
-        this.lastError = null;
-      }, asyncChannelOpen ? 500 : 50);
+      if (this._messageListeners.length === 0) {
+        this.lastError = { message: 'Could not establish connection. Receiving end does not exist.' };
+        setTimeout(() => {
+          callback(undefined);
+          this.lastError = null;
+        }, 0);
+      } else {
+        responseTimeoutId = setTimeout(() => {
+          this.lastError = { message: 'The message channel closed before a response was received.' };
+          callback(undefined);
+          this.lastError = null;
+        }, asyncChannelOpen ? 500 : 50);
+      }
     }
   }
 
@@ -434,7 +442,10 @@ function initChromeMocks() {
     downloadsMock = new ChromeDownloadsMock();
 
     global.chrome = {
-      storage:   { local: storageMock },
+      storage:   {
+        local: storageMock,
+        onChanged: storageMock.onChanged,
+      },
       tabs:      tabsMock,
       alarms:    alarmsMock,
       runtime:   runtimeMock,

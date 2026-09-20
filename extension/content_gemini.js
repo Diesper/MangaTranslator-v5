@@ -215,9 +215,12 @@ const TemporaryChatActivator = {
 
     isAlreadyActive(btn) {
         if (btn) {
-            const txt = (btn.innerText || btn.textContent || '').trim().toLowerCase();
+            const txt = (
+                (btn.innerText || btn.textContent || '') + ' ' +
+                (btn.getAttribute ? (btn.getAttribute('aria-label') || '') + ' ' + (btn.getAttribute('title') || '') : '')
+            ).trim().toLowerCase();
             // Se o texto é "Desativar conversa momentânea", então já está ATIVO!
-            if (txt.includes('desativar') && (txt.includes('moment') || txt.includes('conversa') || txt.includes('temporár') || txt.includes('temporary'))) {
+            if (txt.includes('desativar') && (txt.includes('moment') || txt.includes('conversa') || txt.includes('temporár') || txt.includes('temporary') || txt.includes('chat'))) {
                 return true;
             }
             // Se diz explicitamente "Ativar", está INATIVO

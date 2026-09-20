@@ -1739,11 +1739,13 @@ document.addEventListener('DOMContentLoaded', async () => {
                 renderLogs();
                 if (!window.logListenerAdded) {
                     window.logListenerAdded = true;
-                    chrome.storage.onChanged.addListener((changes, area) => {
-                        if (area === 'local' && changes.translatorLog) {
-                            renderLogs();
-                        }
-                    });
+                    if (chrome?.storage?.onChanged?.addListener) {
+                        chrome.storage.onChanged.addListener((changes, area) => {
+                            if (area === 'local' && changes.translatorLog) {
+                                renderLogs();
+                            }
+                        });
+                    }
                 }
             } else {
                 if (window.logPoller) {

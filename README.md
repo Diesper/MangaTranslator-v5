@@ -3,7 +3,7 @@
 > Extensão para navegadores Chromium (Manifest V3) para tradução automática, contínua e em alta resolução de mangás e quadrinhos na web utilizando o Google Gemini.
 
 [![Manifest V3](https://img.shields.io/badge/Chrome_Extension-Manifest_V3-4285F4?logo=googlechrome&logoColor=white)](https://developer.chrome.com/docs/extensions/mv3/intro/)
-[![CI](https://github.com/actions/workflows/ci.yml/badge.svg)](.github/workflows/ci.yml)
+[![CI](https://github.com/Diesper/MangaTranslator-v5/actions/workflows/ci.yml/badge.svg)](https://github.com/Diesper/MangaTranslator-v5/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![Tests: 100% Passed](https://img.shields.io/badge/Tests-Passing-brightgreen.svg)](tests/)
 

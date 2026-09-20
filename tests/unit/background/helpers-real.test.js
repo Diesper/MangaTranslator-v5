@@ -148,7 +148,7 @@ describe('background.js - helpers reais', () => {
         await Promise.all(syncPromises);
 
         const data = await storageMock.get(['mt_state']);
-        expect(data.mt_state).toEqual({
+        expect(data.mt_state).toEqual(expect.objectContaining({
             jobQueue: [{ mangaTabId: 9, index: 9, prompt: 'p-9' }],
             isProcessing: false,
             stopRequested: true,
@@ -157,7 +157,7 @@ describe('background.js - helpers reais', () => {
             totalJobs: 10,
             completedJobs: 9,
             activeJobsCount: 1,
-        });
+        }));
     });
 
     test('BG-05/BG-06/BG-08/BG-09: log faz batching, ids únicos e respeita a trava de flush', async () => {

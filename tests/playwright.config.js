@@ -53,6 +53,6 @@ module.exports = defineConfig({
     webServer: {
         command: `"${process.execPath}" "${path.join(__dirname, 'e2e/fixtures/gemini-mock-server.js')}"`,
         port: 3999,
-        reuseExistingServer: !process.env.CI,
+        reuseExistingServer: true,
     },
 });

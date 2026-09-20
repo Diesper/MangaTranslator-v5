@@ -17,7 +17,7 @@
     "test:smoke": "node smoke/run-smoke.js",
     "test:e2e": "node run-e2e.js",
     "test:all": "node run-all-tests.js",
-    "test:coverage": "jest --config jest.config.js --coverage --testPathPattern=(unit|integration)",
+    "test:coverage": "jest --config jest.config.js --coverage --testPathPattern=\"(unit|integration)\"",
     "test:watch": "jest --config jest.config.js --watch --testPathPattern=unit",
     "test:ci": "jest --config jest.config.js --ci --coverage --forceExit",
     "test:images": "node e2e/fixtures/create-test-images.js",
