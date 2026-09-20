@@ -6,7 +6,7 @@
     name: 'calculate-visual-fingerprint',
 
     meta: {
-      // The legacy handler accepted this message from every extension context.
+      // Compatibility contract: this action remains available to every extension context.
       allowedSources: ['any'],
     },
 
