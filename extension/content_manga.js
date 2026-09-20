@@ -637,9 +637,22 @@ if (!window.__manga_translator_content_injected) {
             const icon = errorLine ? errorLine.querySelector('#manga-error-toggle-icon') : null;
             
             if (!collapsibleContent || !collapsibleContainer || !errorLine) return;
-            collapsibleContent.innerHTML = (imgIndex !== null && imgIndex !== undefined) 
-                ? `<strong style="font-size:13px">⚠️ ERRO — IMAGEM ${imgIndex}</strong><br><span style="font-size:12px;font-weight:normal;line-height:1.4">${errorMsg}</span>`
-                : `<span style="font-size:12px">✅ ${errorMsg}</span>`;
+            const message = String(errorMsg || '');
+            collapsibleContent.replaceChildren();
+            if (imgIndex !== null && imgIndex !== undefined) {
+                const title = document.createElement('strong');
+                title.style.fontSize = '13px';
+                title.textContent = `⚠️ ERRO — IMAGEM ${imgIndex}`;
+                const detail = document.createElement('span');
+                detail.style.cssText = 'font-size:12px;font-weight:normal;line-height:1.4';
+                detail.textContent = message;
+                collapsibleContent.append(title, document.createElement('br'), detail);
+            } else {
+                const detail = document.createElement('span');
+                detail.style.fontSize = '12px';
+                detail.textContent = `✅ ${message}`;
+                collapsibleContent.appendChild(detail);
+            }
             collapsibleContent.style.padding = '12px 15px';
 
             if (imgIndex !== null && imgIndex !== undefined) {
