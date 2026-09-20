@@ -692,7 +692,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                     const header = document.createElement('div');
                     header.className = 'site-folder-header';
                     header.innerHTML = `
-                        <img class="site-folder-favicon" src="https://www.google.com/s2/favicons?domain=${host}&sz=32" alt="" onerror="this.style.display='none'">
+                        ${getSiteMarker(host, 'site-folder-favicon')}
                         <span class="site-folder-name-container">
                             <span class="site-folder-name" title="${escapeHTML(host)}">${escapeHTML(siteTitle)}</span>
                             <button class="folder-edit-btn" title="Editar nome da pasta">✏️</button>
@@ -820,7 +820,10 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
 
     function getHostFromUrl(urlStr) { try { return new URL(urlStr).hostname; } catch { return 'desconhecido'; } }
-    function getFavicon(host) { return `https://www.google.com/s2/favicons?domain=${host}&sz=32`; }
+    function getSiteMarker(host, className) {
+        const initial = String(host || '?').replace(/^www\./, '').charAt(0).toUpperCase() || '?';
+        return `<span class="${className}" aria-hidden="true">${escapeHTML(initial)}</span>`;
+    }
 
     let _toolbarBound = false;
     function initToolbarOnce() {
@@ -919,7 +922,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                     const header = document.createElement('div');
                     header.className = 'site-folder-header';
                     header.innerHTML = `
-                        <img class="site-folder-favicon" src="${getFavicon(host)}" alt="" onerror="this.style.display='none'">
+                        ${getSiteMarker(host, 'site-folder-favicon')}
                         <span class="site-folder-name-container">
                             <span class="site-folder-name" title="${escapeHTML(host)}">${escapeHTML(siteTitle)}</span>
                             <button class="folder-edit-btn" title="Editar nome da pasta">✏️</button>
@@ -1399,11 +1402,10 @@ document.addEventListener('DOMContentLoaded', async () => {
                 arrow.textContent = '▶';
                 arrow.setAttribute('aria-hidden', 'true');
 
-                const favicon = document.createElement('img');
+                const favicon = document.createElement('span');
                 favicon.className = 'settings-site-favicon';
-                favicon.src = `https://www.google.com/s2/favicons?domain=${host}&sz=32`;
-                favicon.alt = '';
-                favicon.onerror = () => { favicon.style.display = 'none'; };
+                favicon.setAttribute('aria-hidden', 'true');
+                favicon.textContent = String(host || '?').replace(/^www\./, '').charAt(0).toUpperCase() || '?';
 
                 const hostSpan = document.createElement('span');
                 hostSpan.className = 'settings-site-host';
