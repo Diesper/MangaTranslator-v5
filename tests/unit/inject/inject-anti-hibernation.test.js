@@ -1,3 +1,6 @@
+const fs = require('fs');
+const path = require('path');
+
 /**
  * inject-anti-hibernation.test.js
  * ─────────────────────────────────────────────────────────────────────────────
@@ -17,6 +20,12 @@
  */
 
 describe('INJ-01/INJ-02/INJ-03/INJ-04/INJ-05/INJ-06/INJ-07/INJ-08/INJ-09/INJ-10/INJ-11/INJ-12/INJ-13/INJ-14/INJ-15/INJ-16/INJ-17: inject.js — Sistema Anti-Hibernação (Cobertura Completa)', () => {
+
+    test('a ativação exige o marcador explícito, inclusive em localhost', () => {
+        const source = fs.readFileSync(path.resolve(__dirname, '../../../extension/inject.js'), 'utf8');
+        expect(source).toContain('if (!isTranslatorTab) {');
+        expect(source).not.toContain("hostname.includes('127.0.0.1')");
+    });
 
     // ── 1. Guard de Idempotência ──────────────────────────────────────────────
 
