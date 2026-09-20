@@ -59,8 +59,6 @@ module.exports = {
     clearWatchdog,
     armWatchdog,
     sendProgress,
-    buildGeminiJobUrl,
-    deleteGeminiConversation,
     _refreshMaxCon,
     processNextJob,
     finalizeJob,
