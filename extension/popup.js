@@ -819,7 +819,6 @@ document.addEventListener('DOMContentLoaded', async () => {
         });
     }
 
-    function getHostFromUrl(urlStr) { try { return new URL(urlStr).hostname; } catch { return 'desconhecido'; } }
     function getSiteMarker(host, className) {
         const initial = String(host || '?').replace(/^www\./, '').charAt(0).toUpperCase() || '?';
         return `<span class="${className}" aria-hidden="true">${escapeHTML(initial)}</span>`;
