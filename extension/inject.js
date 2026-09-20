@@ -6,7 +6,7 @@
     // 0. Guarda de Isolamento: Executar apenas se for aba de tradução
     const isTranslatorTab = window.location.href.includes('mangatranslator') ||
                             sessionStorage.getItem('mangatranslator_tab') === 'true';
-    if (!isTranslatorTab && !window.location.hostname.includes('127.0.0.1')) {
+    if (!isTranslatorTab) {
         return;
     }
     try { sessionStorage.setItem('mangatranslator_tab', 'true'); } catch (e) {}
