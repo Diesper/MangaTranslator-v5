@@ -245,8 +245,13 @@ describe('content_gemini.js - RPA real do Gemini', () => {
         setWindowLocation(pathname);
 
         if (job) {
+            const normalizedJob = {
+                jobId: `job-${tabId}`,
+                batchId: 'batch-test',
+                ...job,
+            };
             await storageMock.set({
-                [`gemini_job_${tabId}`]: job,
+                [`gemini_job_${tabId}`]: normalizedJob,
                 ...storage,
             });
         } else {
