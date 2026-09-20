@@ -20,6 +20,36 @@
   const _finalizedTabs = new Set();
   let _initialized = false;
 
+  function get() {
+      return {
+          jobQueue: Array.isArray(jobQueue) ? jobQueue.slice() : [],
+          isProcessing: !!isProcessing,
+          stopRequested: !!stopRequested,
+          activeMangaTabId,
+          currentBatchId,
+          extractionTabs: { ...extractionTabs },
+          totalJobs,
+          completedJobs,
+          activeJobsCount,
+          jobIndex: Array.isArray(jobIndex) ? jobIndex.slice() : [],
+      };
+  }
+
+  function patch(nextState = {}) {
+      if (!nextState || typeof nextState !== 'object') return get();
+      if (Object.prototype.hasOwnProperty.call(nextState, 'jobQueue')) jobQueue = Array.isArray(nextState.jobQueue) ? nextState.jobQueue : [];
+      if (Object.prototype.hasOwnProperty.call(nextState, 'isProcessing')) isProcessing = !!nextState.isProcessing;
+      if (Object.prototype.hasOwnProperty.call(nextState, 'stopRequested')) stopRequested = !!nextState.stopRequested;
+      if (Object.prototype.hasOwnProperty.call(nextState, 'activeMangaTabId')) activeMangaTabId = nextState.activeMangaTabId || null;
+      if (Object.prototype.hasOwnProperty.call(nextState, 'currentBatchId')) currentBatchId = nextState.currentBatchId || null;
+      if (Object.prototype.hasOwnProperty.call(nextState, 'extractionTabs')) extractionTabs = nextState.extractionTabs && typeof nextState.extractionTabs === 'object' ? nextState.extractionTabs : {};
+      if (Object.prototype.hasOwnProperty.call(nextState, 'totalJobs')) totalJobs = Number(nextState.totalJobs) || 0;
+      if (Object.prototype.hasOwnProperty.call(nextState, 'completedJobs')) completedJobs = Number(nextState.completedJobs) || 0;
+      if (Object.prototype.hasOwnProperty.call(nextState, 'activeJobsCount')) activeJobsCount = Number(nextState.activeJobsCount) || 0;
+      if (Object.prototype.hasOwnProperty.call(nextState, 'jobIndex')) jobIndex = Array.isArray(nextState.jobIndex) ? nextState.jobIndex : [];
+      return get();
+  }
+
   // ── Utilitários ────────────────────────────────────────────────────────────
   function generateId(prefix = '') {
       try {
@@ -39,24 +69,15 @@
   // ── Persistência de Estado ─────────────────────────────────────────────────
   async function restoreState() {
       const d = await chrome.storage.local.get(['mt_state']);
-      if (d.mt_state) {
-          jobQueue          = d.mt_state.jobQueue || [];
-          isProcessing      = d.mt_state.isProcessing || false;
-          stopRequested     = d.mt_state.stopRequested || false;
-          activeMangaTabId  = d.mt_state.activeMangaTabId || null;
-          currentBatchId = d.mt_state.currentBatchId || null;
-          extractionTabs    = d.mt_state.extractionTabs || {};  
-          totalJobs         = d.mt_state.totalJobs || 0;
-          completedJobs     = d.mt_state.completedJobs || 0;
-          activeJobsCount   = d.mt_state.activeJobsCount || 0;
-          jobIndex          = Array.isArray(d.mt_state.jobIndex) ? d.mt_state.jobIndex : [];
-      }
+      if (!d.mt_state) return null;
+      patch(d.mt_state);
+      return get();
   }
 
   async function syncState() {
-      await chrome.storage.local.set({
-          mt_state: { jobQueue, isProcessing, stopRequested, activeMangaTabId, currentBatchId, extractionTabs, totalJobs, completedJobs, activeJobsCount, jobIndex }
-      });
+      const snapshot = get();
+      await chrome.storage.local.set({ mt_state: snapshot });
+      return snapshot;
   }
 
   // ── Manutenção do índice de jobs ─────────────────────────────────────────────
@@ -146,6 +167,8 @@
   }
 
   scope.MangaTranslatorState = {
+      get,
+      patch,
       // Getters/setters for state
       get jobQueue() { return jobQueue; },
       set jobQueue(v) { jobQueue = v; },
@@ -174,7 +197,7 @@
       set _initialized(v) { _initialized = v; },
       
       // Functions
-      generateId, 
+      generateId,
       restoreState, 
       syncState, 
       ensureInitialized,
