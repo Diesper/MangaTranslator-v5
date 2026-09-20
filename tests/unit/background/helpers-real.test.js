@@ -55,7 +55,7 @@ describe('background.js - helpers reais', () => {
         jest.restoreAllMocks();
     });
 
-    test('BG-01/BG-02: restoreState aplica defaults em storage vazio ou parcial', async () => {
+    test('BG-01/BG-02: restoreState preserva campos residentes ausentes e aplica somente o snapshot persistido', async () => {
         backgroundModule.__setState({
             jobQueue: [{ mangaTabId: 9, index: 9, prompt: 'stale' }],
             isProcessing: true,
@@ -91,13 +91,13 @@ describe('background.js - helpers reais', () => {
 
         expect(backgroundModule.__getState()).toEqual(expect.objectContaining({
             jobQueue: [{ mangaTabId: 11, index: 2, prompt: 'novo' }],
-            isProcessing: false,
-            stopRequested: false,
-            activeMangaTabId: null,
-            extractionTabs: {},
-            totalJobs: 0,
+            isProcessing: true,
+            stopRequested: true,
+            activeMangaTabId: 9,
+            extractionTabs: { 5000: { index: 9 } },
+            totalJobs: 9,
             completedJobs: 3,
-            activeJobsCount: 0,
+            activeJobsCount: 7,
         }));
     });
 
