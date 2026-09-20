@@ -44,6 +44,19 @@ function _markFinalized(geminiTabId) {
 
 if (typeof importScripts === 'function') {
     try {
+        importScripts('background/router.js');
+        importScripts('background/actions/log-entry.js');
+        importScripts('background/actions/get-tab-id.js');
+        importScripts('background/actions/relay-progress.js');
+        importScripts('background/actions/check-extraction-tab.js');
+        importScripts('background/actions/set-debug-mode.js');
+        importScripts('background/actions/fetch-image-base64.js');
+        importScripts('background/actions/calculate-visual-fingerprint.js');
+        importScripts('background/actions/force-send-activation.js');
+        importScripts('background/actions/request-image-data.js');
+        importScripts('background/actions/open-manga-root.js');
+    } catch (e) {}
+    try {
         // gtc-fingerprint.js expõe self.MangaTranslatorGtcFingerprint:
         //   - SHA-256 (visual-v1/v2)
         //   - dHash   (visual-v2)
@@ -64,6 +77,19 @@ if (typeof importScripts === 'function') {
         }
     } catch (e) {}
 } else if (typeof require === 'function') {
+    try {
+        require('./background/router.js');
+        require('./background/actions/log-entry.js');
+        require('./background/actions/get-tab-id.js');
+        require('./background/actions/relay-progress.js');
+        require('./background/actions/check-extraction-tab.js');
+        require('./background/actions/set-debug-mode.js');
+        require('./background/actions/fetch-image-base64.js');
+        require('./background/actions/calculate-visual-fingerprint.js');
+        require('./background/actions/force-send-activation.js');
+        require('./background/actions/request-image-data.js');
+        require('./background/actions/open-manga-root.js');
+    } catch (e) {}
     try {
         gtcIndexedDbApi = require('./gtc-indexeddb.js');
     } catch (e) {}
@@ -289,6 +315,56 @@ async function _flushLog() {
         }
     } catch (e) {}
     _logFlushing = false;
+}
+
+// As ações migradas continuam lendo o estado que o worker legado já mantém.
+// A fachada evita criar uma segunda fonte de verdade antes da extração completa.
+const legacyActionState = {
+    get activeMangaTabId() { return activeMangaTabId; },
+    get extractionTabs() { return extractionTabs; },
+};
+let registeredActionRouter = null;
+
+function routeRegisteredAction(request, sender, sendResponse) {
+    const scope = typeof self !== 'undefined' ? self : globalThis;
+    const routerApi = scope && scope.MangaTranslatorRouter;
+    if (!routerApi || !request || typeof request.action !== 'string') return null;
+
+    const actionName = routerApi.resolveActionName(request.action);
+    if (!actionName || !routerApi.getAction(actionName)) return null;
+
+    if (!registeredActionRouter) {
+        registeredActionRouter = routerApi.createMessageRouter({
+            contextFactory: () => ({ state: legacyActionState, log, handleMarkerAndShow }),
+        });
+    }
+
+    const legacyResponseActions = new Set([
+        'GET_TAB_ID',
+        'CHECK_IF_EXTRACTION_TAB',
+        'REQUEST_IMAGE_DATA',
+        'FETCH_IMAGE_AS_BASE64',
+    ]);
+    const sendResponseCompat = response => {
+        if (legacyResponseActions.has(request.action) && response && response.ok === true) {
+            const { ok: _ok, ...legacyResponse } = response;
+            sendResponse(legacyResponse);
+            return;
+        }
+        if (request.action === 'FETCH_IMAGE_AS_BASE64' && response && response.ok === false && response.error) {
+            const error = typeof response.error === 'object'
+                ? response.error.message || response.error.code
+                : response.error;
+            sendResponse({ error });
+            return;
+        }
+        sendResponse(response);
+    };
+
+    return {
+        handled: true,
+        keepAlive: registeredActionRouter(request, sender, sendResponseCompat),
+    };
 }
 
 function armWatchdog(mangaTabId, index, geminiTabId, jobId) {
@@ -862,6 +938,11 @@ function handleMarkerAndShow(safeTitle, sendResponse) {
 }
 
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
+
+    const routedAction = routeRegisteredAction(request, sender, sendResponse);
+    if (routedAction && routedAction.handled) {
+        return routedAction.keepAlive;
+    }
 
     if (handleGtcRuntimeMessage(request, sender, sendResponse)) {
         return true;
