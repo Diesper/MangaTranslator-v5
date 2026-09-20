@@ -260,6 +260,8 @@ describe('content_gemini.js - helpers, delecao e regressao real', () => {
 
         await storageMock.set({
             gemini_job_321: {
+                jobId: 'job-321',
+                batchId: 'batch-test',
                 mangaTabId: 77,
                 index: 4,
                 prompt: 'Traduzir sem duplicar texto',
@@ -295,6 +297,8 @@ describe('content_gemini.js - helpers, delecao e regressao real', () => {
 
         await storageMock.set({
             gemini_job_321: {
+                jobId: 'job-321',
+                batchId: 'batch-test',
                 mangaTabId: 77,
                 index: 9,
                 prompt: 'Traduzir usando execCommand',
@@ -336,6 +340,8 @@ describe('content_gemini.js - helpers, delecao e regressao real', () => {
 
         await storageMock.set({
             gemini_job_321: {
+                jobId: 'job-321',
+                batchId: 'batch-test',
                 mangaTabId: 77,
                 index: 11,
                 prompt: 'Traduzir via fallback DOM',
@@ -365,6 +371,8 @@ describe('content_gemini.js - helpers, delecao e regressao real', () => {
         document.body.innerHTML = '<div class="ql-editor" contenteditable="true"></div>';
         await storageMock.set({
             gemini_job_321: {
+                jobId: 'job-321',
+                batchId: 'batch-test',
                 mangaTabId: 77,
                 index: 2,
                 prompt: 'Nao deve rodar',
