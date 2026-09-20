@@ -36,6 +36,18 @@ function generateId(prefix = '') {
 }
 
 const _finalizedTabs = new Set();
+const FINALIZATION_MARKER_TTL_MINUTES = 10;
+
+function finalizationMarkerKey(geminiTabId) {
+    return `gemini_finalized_${geminiTabId}`;
+}
+
+function armFinalizationMarkerCleanup(geminiTabId) {
+    chrome.alarms.create(`finalization_marker_${geminiTabId}`, {
+        delayInMinutes: FINALIZATION_MARKER_TTL_MINUTES,
+    });
+}
+
 function _markFinalized(geminiTabId) {
     _finalizedTabs.add(geminiTabId);
     const cleanupTimer = setTimeout(() => _finalizedTabs.delete(geminiTabId), 30_000);
@@ -545,6 +557,11 @@ chrome.runtime.onConnect.addListener(port => {
 
 chrome.alarms.onAlarm.addListener(async (alarm) => {
     await ensureInitialized();
+    if (alarm.name.startsWith('finalization_marker_')) {
+        const geminiTabId = alarm.name.replace('finalization_marker_', '');
+        chrome.storage.local.remove(finalizationMarkerKey(geminiTabId));
+        return;
+    }
     if (alarm.name === 'nextJobAlarm') {
         processNextJob();
         return;
@@ -773,13 +790,30 @@ function finalizeJob(geminiTabId, mangaTabId, fromError = false) {
         log('warn', 'bg', 'FINALIZE_DUPLICATE', `finalizeJob ignorado (já finalizado)`, { geminiTabId });
         return;
     }
-    _markFinalized(geminiTabId);
-
-    indexRemoveJob(geminiTabId);
 
     const jobKey = `gemini_job_${geminiTabId}`;
-    chrome.storage.local.get([jobKey, 'geminiExecutionMode', 'debugMode'], (stData) => {
+    const markerKey = finalizationMarkerKey(geminiTabId);
+    chrome.storage.local.get([jobKey, markerKey, 'geminiExecutionMode', 'debugMode'], (stData) => {
         const jobInfo = stData[jobKey] || {};
+        const finalized = stData[markerKey];
+        const sameJob = !jobInfo.jobId || !finalized || finalized.jobId === jobInfo.jobId;
+        if (finalized && sameJob && finalized.expiresAt > Date.now()) {
+            _markFinalized(geminiTabId);
+            log('warn', 'bg', 'FINALIZE_DUPLICATE', `finalizeJob ignorado (marca durável)`, { geminiTabId, jobId: finalized.jobId });
+            return;
+        }
+
+        _markFinalized(geminiTabId);
+        const marker = {
+            jobId: jobInfo.jobId || null,
+            fromError: Boolean(fromError),
+            finalizedAt: Date.now(),
+            expiresAt: Date.now() + FINALIZATION_MARKER_TTL_MINUTES * 60_000,
+        };
+        chrome.storage.local.set({ [markerKey]: marker }, () => {
+            if (chrome.runtime.lastError) return;
+            armFinalizationMarkerCleanup(geminiTabId);
+            indexRemoveJob(geminiTabId);
         clearWatchdog(geminiTabId, jobInfo.jobId);
         if (!fromError) {
             completedJobs++;
@@ -855,6 +889,7 @@ function finalizeJob(geminiTabId, mangaTabId, fromError = false) {
                     if (cleanupTimer && typeof cleanupTimer.unref === 'function') cleanupTimer.unref();
                 });
             });
+        });
         });
     });
 }
