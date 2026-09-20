@@ -75,6 +75,8 @@ if (typeof importScripts === 'function') {
         importScripts('background/actions/deliver-result-from-tab.js');
         importScripts('background/actions/report-error.js');
         importScripts('background/actions/deliver-result.js');
+        importScripts('background/actions/start-batch.js');
+        importScripts('background/actions/stop-batch.js');
     } catch (e) {}
     try {
         // gtc-fingerprint.js expõe self.MangaTranslatorGtcFingerprint:
@@ -117,6 +119,8 @@ if (typeof importScripts === 'function') {
         require('./background/actions/deliver-result-from-tab.js');
         require('./background/actions/report-error.js');
         require('./background/actions/deliver-result.js');
+        require('./background/actions/start-batch.js');
+        require('./background/actions/stop-batch.js');
     } catch (e) {}
     try {
         gtcIndexedDbApi = require('./gtc-indexeddb.js');
@@ -375,6 +379,8 @@ function routeRegisteredAction(request, sender, sendResponse) {
                 ensureInitialized,
                 deliverResultToManga,
                 finalizeJob,
+                startBatch,
+                stopBatch,
             }),
         });
     }
@@ -1001,6 +1007,76 @@ function handleMarkerAndShow(safeTitle, sendResponse) {
     });
 }
 
+async function startBatch(request, sender) {
+    await ensureInitialized();
+    const batchId = request.batchId || generateId();
+    currentBatchId = batchId;
+    stopRequested = false;
+    jobQueue = [];
+    completedJobs = 0;
+    activeJobsCount = jobIndex.length;
+    totalJobs = request.images.length;
+    activeMangaTabId = sender && sender.tab ? sender.tab.id : request.mangaTabId;
+    isProcessing = true;
+
+    request.images.forEach(img => {
+        jobQueue.push({ mangaTabId: activeMangaTabId, index: img.index, prompt: request.prompt, batchId });
+    });
+    log('info', 'bg', 'BATCH_START', `Iniciando ${totalJobs} imagens (batch: ${batchId.slice(0, 8)})`);
+    await Promise.all([_refreshMaxCon(), syncState()]);
+    processNextJob();
+    return { batchId };
+}
+
+async function stopBatch(request) {
+    await ensureInitialized();
+    const targetBatchId = request.batchId || currentBatchId;
+    const stopsCurrentBatch = !targetBatchId || targetBatchId === currentBatchId;
+    jobQueue = jobQueue.filter(job => targetBatchId && job.batchId !== targetBatchId);
+    if (stopsCurrentBatch) {
+        stopRequested = true;
+        isProcessing = false;
+        activeMangaTabId = null;
+        currentBatchId = null;
+    }
+    log('warn', 'bg', 'BATCH_STOP', `Batch parado (batch: ${(targetBatchId || '').slice(0, 8)})`);
+
+    let entries = indexJobsOfBatch(targetBatchId);
+    if (entries.length === 0) {
+        const allStorage = await chrome.storage.local.get(null);
+        entries = Object.keys(allStorage)
+            .filter(key => key.startsWith('gemini_job_'))
+            .map(key => allStorage[key])
+            .filter(job => job && (!targetBatchId || job.batchId === targetBatchId));
+    }
+
+    const keysToRemove = [];
+    entries.forEach(entry => {
+        if (!entry) return;
+        if (entry.geminiTabId || entry.geminiTabId === 0) {
+            chrome.tabs.remove(entry.geminiTabId, () => { if (chrome.runtime.lastError) {} });
+            keysToRemove.push(`gemini_job_${entry.geminiTabId}`, `wd_data_${entry.geminiTabId}`);
+        }
+        const alarmName = entry.jobId ? `watchdog_${entry.jobId}` : `watchdog_${entry.geminiTabId}`;
+        chrome.alarms.clear(alarmName, () => {});
+        indexRemoveJob(entry.geminiTabId);
+    });
+    if (keysToRemove.length > 0) await chrome.storage.local.remove(keysToRemove);
+
+    Object.keys(extractionTabs).map(Number).forEach(tabId => {
+        const info = extractionTabs[tabId];
+        if (targetBatchId && info && info.batchId && info.batchId !== targetBatchId) return;
+        chrome.tabs.remove(tabId, () => { if (chrome.runtime.lastError) {} });
+        delete extractionTabs[tabId];
+    });
+
+    activeJobsCount = jobIndex.length;
+    releaseGeminiScriptsIfIdle();
+    await syncState();
+    if (!stopsCurrentBatch && isProcessing) processNextJob();
+    return {};
+}
+
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
 
     const routedAction = routeRegisteredAction(request, sender, sendResponse);
@@ -1019,91 +1095,6 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     if (request.action === 'LOG_ENTRY') {
         log(request.level, request.source, request.action_name, request.detail, request.extra);
         sendResponse({ ok: true }); return false;
-    }
-
-    if (request.action === 'START_BATCH') {
-        ensureInitialized().then(() => {
-            const batchId = request.batchId || generateId();
-            currentBatchId = batchId;
-            stopRequested  = false;
-            jobQueue       = [];
-            completedJobs  = 0;
-            // Jobs de um lote anterior que ainda estejam vivos continuam ocupando slot.
-            activeJobsCount = jobIndex.length;
-            totalJobs      = request.images.length;
-            activeMangaTabId = sender.tab ? sender.tab.id : request.mangaTabId;
-            
-            isProcessing = true; 
-
-            request.images.forEach(img => jobQueue.push({ mangaTabId: activeMangaTabId, index: img.index, prompt: request.prompt, batchId }));
-            log('info', 'bg', 'BATCH_START', `Iniciando ${totalJobs} imagens (batch: ${batchId.slice(0,8)})`);
-
-            Promise.all([_refreshMaxCon(), syncState()]).then(() => {
-                sendResponse({ ok: true, batchId });
-                processNextJob();
-            });
-        });
-        return true;
-    }
-
-    if (request.action === 'STOP_BATCH') {
-        ensureInitialized().then(() => {
-            const targetBatchId = request.batchId || currentBatchId;
-            stopRequested   = true;
-            jobQueue        = [];
-            isProcessing    = false;
-            activeJobsCount = 0;
-            activeMangaTabId = null;
-            currentBatchId = null;
-            log('warn', 'bg', 'BATCH_STOP', `Batch parado (batch: ${(targetBatchId || '').slice(0,8)})`);
-
-            // Cancela apenas o que pertence ao lote alvo. Nunca chrome.alarms.clearAll(),
-            // que destruiria os watchdogs de um lote iniciado logo em seguida.
-            const applyStop = (entries) => {
-                const keysToRemove = [];
-                entries.forEach(entry => {
-                    if (!entry) return;
-                    if (entry.geminiTabId || entry.geminiTabId === 0) {
-                        chrome.tabs.remove(entry.geminiTabId, () => { if (chrome.runtime.lastError) {} });
-                        keysToRemove.push(`gemini_job_${entry.geminiTabId}`);
-                        keysToRemove.push(`wd_data_${entry.geminiTabId}`);
-                    }
-                    const alarmName = entry.jobId ? `watchdog_${entry.jobId}` : `watchdog_${entry.geminiTabId}`;
-                    chrome.alarms.clear(alarmName, () => {});
-                    indexRemoveJob(entry.geminiTabId);
-                });
-                if (keysToRemove.length > 0) chrome.storage.local.remove(keysToRemove);
-
-                // Abas de extração pertencentes ao lote alvo
-                Object.keys(extractionTabs).map(Number).forEach(tabId => {
-                    const info = extractionTabs[tabId];
-                    if (targetBatchId && info && info.batchId && info.batchId !== targetBatchId) return;
-                    chrome.tabs.remove(tabId, () => { if (chrome.runtime.lastError) {} });
-                    delete extractionTabs[tabId];
-                });
-
-                releaseGeminiScriptsIfIdle();
-                syncState().then(() => {
-                    try { sendResponse({ ok: true }); } catch (e) {}
-                });
-            };
-
-            const indexed = indexJobsOfBatch(targetBatchId);
-            if (indexed.length > 0) {
-                applyStop(indexed);
-            } else {
-                // Fallback (índice vazio: instalação recém-atualizada ou jobs
-                // gravados fora do fluxo normal) — varredura única do storage.
-                chrome.storage.local.get(null, (allStorage) => {
-                    const entries = Object.keys(allStorage)
-                        .filter(k => k.startsWith('gemini_job_'))
-                        .map(k => allStorage[k])
-                        .filter(jobData => jobData && (!targetBatchId || jobData.batchId === targetBatchId));
-                    applyStop(entries);
-                });
-            }
-        });
-        return true; 
     }
 
     if (request.action === 'FORCE_SEND_ACTIVATION') {
