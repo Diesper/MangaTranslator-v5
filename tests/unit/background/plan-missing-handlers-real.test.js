@@ -256,12 +256,13 @@ describe('REG-09/IPC-07/IPC-08: background.js - handlers faltantes do plano v3.1
             action: 'CHECK_IF_EXTRACTION_TAB',
         }, { tab: { id: 987654 } });
 
-        expect(hit.response).toEqual({
+        expect(hit.response).toEqual(expect.objectContaining({
             isExtractionTab: true,
             mangaTabId: 22,
             index: 4,
             geminiTabId: geminiTab.id,
-        });
+            jobId: 'job-result-url',
+        }));
         expect(miss.response).toEqual({ isExtractionTab: false });
         expect(backgroundModule.__getState().extractionTabs[extractionTab.id]).toEqual(expect.objectContaining({
             mangaTabId: 22,
