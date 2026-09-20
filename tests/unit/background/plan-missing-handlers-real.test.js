@@ -136,7 +136,11 @@ describe('REG-09/IPC-07/IPC-08: background.js - handlers faltantes do plano v3.1
         }, { tab: { id: 123 } });
 
         expect(result.keepAlive).toBe(true);
-        expect(result.response).toEqual({ ok: true });
+        expect(result.response).toEqual(expect.objectContaining({
+            ok: true,
+            batchId: expect.any(String),
+        }));
+        const batchId = result.response.batchId;
 
         await waitFor(() => tabsMock._tabs.size === 3);
 
@@ -145,7 +149,10 @@ describe('REG-09/IPC-07/IPC-08: background.js - handlers faltantes do plano v3.1
         expect(state.totalJobs).toBe(5);
         expect(state.completedJobs).toBe(0);
         expect(state.activeJobsCount).toBe(3);
-        expect(state.jobQueue).toEqual([{ mangaTabId: 123, index: 3, prompt: 'prompt novo' }, { mangaTabId: 123, index: 4, prompt: 'prompt novo' }]);
+        expect(state.jobQueue).toEqual([
+            { mangaTabId: 123, index: 3, prompt: 'prompt novo', batchId },
+            { mangaTabId: 123, index: 4, prompt: 'prompt novo', batchId },
+        ]);
 
         const storage = await waitFor(async () => {
             const data = await storageMock.get(null);
@@ -157,11 +164,12 @@ describe('REG-09/IPC-07/IPC-08: background.js - handlers faltantes do plano v3.1
 
         expect(geminiJobKeys).toHaveLength(3);
         expect(watchdogKeys).toHaveLength(3);
-        expect(Array.from(tabsMock._tabs.values()).map(tab => tab.url)).toEqual([
-            'https://gemini.google.com/app?mangatranslator=true',
-            'https://gemini.google.com/app?mangatranslator=true',
-            'https://gemini.google.com/app?mangatranslator=true',
-        ]);
+        Array.from(tabsMock._tabs.values()).forEach(tab => {
+            const url = new URL(tab.url);
+            expect(url.origin + url.pathname).toBe('https://gemini.google.com/app');
+            expect(url.searchParams.get('mangatranslator')).toBe('true');
+            expect(url.searchParams.get('jobId')).toEqual(expect.any(String));
+        });
     });
 
     test('BG-46: STOP_BATCH remove abas Gemini, watchdogs, jobs e extractionTabs', async () => {
@@ -170,23 +178,30 @@ describe('REG-09/IPC-07/IPC-08: background.js - handlers faltantes do plano v3.1
         const extractionTab = await tabsMock.create({ url: 'https://cdn.test/result.png', active: false });
 
         await storageMock.set({
-            [`gemini_job_${geminiA.id}`]: { geminiTabId: geminiA.id, mangaTabId: 10, index: 0 },
-            [`gemini_job_${geminiB.id}`]: { geminiTabId: geminiB.id, mangaTabId: 10, index: 1 },
-            [`wd_data_${geminiA.id}`]: { geminiTabId: geminiA.id, mangaTabId: 10, index: 0 },
-            [`wd_data_${geminiB.id}`]: { geminiTabId: geminiB.id, mangaTabId: 10, index: 1 },
+            [`gemini_job_${geminiA.id}`]: { geminiTabId: geminiA.id, mangaTabId: 10, index: 0, jobId: 'job-a', batchId: 'batch-stop' },
+            [`gemini_job_${geminiB.id}`]: { geminiTabId: geminiB.id, mangaTabId: 10, index: 1, jobId: 'job-b', batchId: 'batch-stop' },
+            [`wd_data_${geminiA.id}`]: { geminiTabId: geminiA.id, mangaTabId: 10, index: 0, jobId: 'job-a' },
+            [`wd_data_${geminiB.id}`]: { geminiTabId: geminiB.id, mangaTabId: 10, index: 1, jobId: 'job-b' },
         });
-        alarmsMock.create(`watchdog_${geminiA.id}`, { delayInMinutes: 4 });
-        alarmsMock.create(`watchdog_${geminiB.id}`, { delayInMinutes: 4 });
+        alarmsMock.create('watchdog_job-a', { delayInMinutes: 4 });
+        alarmsMock.create('watchdog_job-b', { delayInMinutes: 4 });
         backgroundModule.__setState({
             isProcessing: true,
             activeJobsCount: 2,
             activeMangaTabId: 10,
             extractionTabs: {
-                [extractionTab.id]: { mangaTabId: 10, index: 9, geminiTabId: geminiA.id },
+                [extractionTab.id]: { mangaTabId: 10, index: 9, geminiTabId: geminiA.id, batchId: 'batch-stop' },
             },
         });
+        global.MangaTranslatorState.patch({
+            currentBatchId: 'batch-stop',
+            jobIndex: [
+                { geminiTabId: geminiA.id, mangaTabId: 10, index: 0, jobId: 'job-a', batchId: 'batch-stop' },
+                { geminiTabId: geminiB.id, mangaTabId: 10, index: 1, jobId: 'job-b', batchId: 'batch-stop' },
+            ],
+        });
 
-        const result = await dispatchToBackground(runtimeMock, { action: 'STOP_BATCH' });
+        const result = await dispatchToBackground(runtimeMock, { action: 'STOP_BATCH', batchId: 'batch-stop' });
         expect(result.keepAlive).toBe(true);
         expect(result.response).toEqual({ ok: true });
 
@@ -207,12 +222,22 @@ describe('REG-09/IPC-07/IPC-08: background.js - handlers faltantes do plano v3.1
     test('BG-51/BG-53/BG-54: GEMINI_RESULT_URL registra extraction tab e CHECK_IF_EXTRACTION_TAB distingue hit/miss', async () => {
         const geminiTab = await tabsMock.create({ url: 'https://gemini.google.com/app/chat', active: false });
 
+        await storageMock.set({
+            [`gemini_job_${geminiTab.id}`]: {
+                geminiTabId: geminiTab.id,
+                mangaTabId: 22,
+                index: 4,
+                jobId: 'job-result-url',
+            },
+        });
+
         const result = await dispatchToBackground(runtimeMock, {
             action: 'GEMINI_RESULT_URL',
             mangaTabId: 22,
             index: 4,
             url: 'https://lh3.googleusercontent.com/generated.png',
-        }, { tab: { id: geminiTab.id } });
+            jobId: 'job-result-url',
+        }, { tab: { id: geminiTab.id, url: 'https://gemini.google.com/app/chat' } });
 
         expect(result.response).toEqual({ ok: true });
 
@@ -238,38 +263,47 @@ describe('REG-09/IPC-07/IPC-08: background.js - handlers faltantes do plano v3.1
             geminiTabId: geminiTab.id,
         });
         expect(miss.response).toEqual({ isExtractionTab: false });
-        expect(backgroundModule.__getState().extractionTabs[extractionTab.id]).toEqual({
+        expect(backgroundModule.__getState().extractionTabs[extractionTab.id]).toEqual(expect.objectContaining({
             mangaTabId: 22,
             index: 4,
             geminiTabId: geminiTab.id,
-        });
+            jobId: 'job-result-url',
+        }));
     });
 
     test('BG-57/BG-58: FETCH_IMAGE_AS_BASE64 converte blob em dataURL e responde erro em falha de fetch', async () => {
         global.fetch = jest.fn();
         global.fetch.mockResolvedValueOnce({
+            ok: true,
+            status: 200,
+            headers: { get: () => 'image/png' },
             blob: async () => new Blob(['image-bytes'], { type: 'image/png' }),
         });
         runtimeMock._messageListeners = [];
         backgroundModule = loadBackgroundModule(BACKGROUND_PATH);
         await flush(4);
 
+        const contentSender = { tab: { id: 222, url: 'https://manga.test/chapter' } };
         const success = await dispatchToBackground(runtimeMock, {
             action: 'FETCH_IMAGE_AS_BASE64',
             url: 'https://cdn.test/page.png',
-        });
+        }, contentSender);
 
         expect(success.keepAlive).toBe(true);
         expect(success.response).toEqual({
             dataUrl: 'data:image/png;base64,UkVBRA==',
         });
-        expect(global.fetch).toHaveBeenCalledWith('https://cdn.test/page.png');
+        expect(global.fetch).toHaveBeenCalledWith('https://cdn.test/page.png', expect.objectContaining({
+            credentials: 'omit',
+            cache: 'no-store',
+            signal: expect.any(Object),
+        }));
 
         global.fetch.mockRejectedValueOnce(new Error('HTTP 404'));
         const failure = await dispatchToBackground(runtimeMock, {
             action: 'FETCH_IMAGE_AS_BASE64',
             url: 'https://cdn.test/missing.png',
-        });
+        }, contentSender);
 
         expect(failure.keepAlive).toBe(true);
         expect(failure.response).toEqual({ error: 'HTTP 404' });
