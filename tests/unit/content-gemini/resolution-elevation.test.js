@@ -112,6 +112,7 @@ function mountGeminiEditor({ onSubmit } = {}) {
     const sendButton = document.createElement('button');
     sendButton.setAttribute('aria-label', 'send message');
     sendButton.click = jest.fn(() => {
+        editor.textContent = '';
         onSubmit();
     });
     document.body.appendChild(sendButton);
