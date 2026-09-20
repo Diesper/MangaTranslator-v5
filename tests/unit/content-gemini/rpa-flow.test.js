@@ -326,7 +326,7 @@ describe('content_gemini.js - RPA real do Gemini', () => {
             action: 'LOG_ENTRY',
             action_name: 'GEMINI_SEND_SUCCESS',
         }));
-        expect(imageFoundLog.extra).toEqual({ urlKind: 'https', host: 'cdn.gemini.test', hasQuery: true });
+        expect(imageFoundLog.extra).toEqual({ urlKind: '[redacted]', host: 'cdn.gemini.test', hasQuery: true });
         expect(JSON.stringify(imageFoundLog)).not.toContain('signed-secret');
         expect(promptLog.extra).toEqual({ promptLen: 'prompt-private-text'.length });
         expect(JSON.stringify(promptLog)).not.toContain('prompt-private-text');
@@ -462,16 +462,16 @@ describe('content_gemini.js - RPA real do Gemini', () => {
         expect(collectActions(sentMessages, 'GEMINI_ERROR')).toHaveLength(0);
     });
 
-    test('CG-30/CG-39: cai para Enter e usa GEMINI_RESULT_URL quando a extracao HTTP falha', async () => {
-        const { editor } = mountGeminiEditor({
-            sendMode: 'enter',
-            onSubmit: () => {
-                setTimeout(() => {
-                    appendGeneratedImage('https://cdn.gemini.test/result-fallback.png');
-                }, 1300);
-            },
+    test('CG-30/CG-39: usa fallback MAIN-world e GEMINI_RESULT_URL quando a extracao HTTP falha', async () => {
+        mountGeminiEditor({ sendMode: 'enter', onSubmit: () => {} });
+        const triggerSend = jest.fn(() => {
+            const editor = document.querySelector('.ql-editor');
+            if (editor) editor.textContent = '';
+            setTimeout(() => {
+                appendGeneratedImage('https://cdn.gemini.test/result-fallback.png');
+            }, 1300);
         });
-        editor.dispatchEvent = jest.fn(editor.dispatchEvent.bind(editor));
+        window.addEventListener('MANGA_TRANSLATOR_TRIGGER_SEND', triggerSend, { once: true });
 
         await loadScript({
             storage: { debugMode: true },
@@ -485,8 +485,8 @@ describe('content_gemini.js - RPA real do Gemini', () => {
         await waitFor(() => collectActions(sentMessages, 'GEMINI_RESULT_URL')[0], { timeout: 35000 });
 
         const fallback = collectActions(sentMessages, 'GEMINI_RESULT_URL')[0];
-        const enterLog = sentMessages.find(message =>
-            message && message.action === 'LOG_ENTRY' && message.action_name === 'GEMINI_SEND_ENTER_FALLBACK'
+        const fallbackLog = sentMessages.find(message =>
+            message && message.action === 'LOG_ENTRY' && message.action_name === 'GEMINI_SEND_FALLBACK'
         );
 
         expect(fallback).toEqual(expect.objectContaining({
@@ -495,13 +495,10 @@ describe('content_gemini.js - RPA real do Gemini', () => {
             index: 5,
             url: 'https://cdn.gemini.test/result-fallback.png',
         }));
-        expect(enterLog).toEqual(expect.objectContaining({
+        expect(triggerSend).toHaveBeenCalledTimes(1);
+        expect(fallbackLog).toEqual(expect.objectContaining({
             action: 'LOG_ENTRY',
-            action_name: 'GEMINI_SEND_ENTER_FALLBACK',
-        }));
-        expect(editor.dispatchEvent).toHaveBeenCalledWith(expect.objectContaining({
-            type: 'keydown',
-            key: 'Enter',
+            action_name: 'GEMINI_SEND_FALLBACK',
         }));
     }, 40000);
 
@@ -542,7 +539,7 @@ describe('content_gemini.js - RPA real do Gemini', () => {
         }));
     });
 
-    test('CG-36: encerra com GEMINI_ERROR quando o polling estoura o timeout de 2 minutos', async () => {
+    test('CG-36: encerra com GEMINI_ERROR quando o polling estoura o timeout de 4 minutos', async () => {
         mountGeminiEditor({
             sendMode: 'exact',
             onSubmit: () => {
@@ -573,7 +570,7 @@ describe('content_gemini.js - RPA real do Gemini', () => {
             action: 'GEMINI_ERROR',
             mangaTabId: 77,
             index: 5,
-            error: 'Tempo limite (2 min)',
+            error: 'Tempo limite (4 min)',
         }));
         expect(timeoutLog).toEqual(expect.objectContaining({
             action: 'LOG_ENTRY',
