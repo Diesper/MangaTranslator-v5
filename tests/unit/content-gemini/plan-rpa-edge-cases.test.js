@@ -306,7 +306,7 @@ describe('content_gemini.js - bordas RPA do plano v3.1', () => {
         expect(clearIntervalSpy).toHaveBeenCalled();
     });
 
-    test('CG-21: ausencia de thumbnail apos paste gera GEMINI_ERROR', async () => {
+    test('CG-21: ausencia de thumbnail registra warning e permite continuar o pipeline', async () => {
         mountEditor({ attachThumbnail: false });
         await seedJob();
         jest.useFakeTimers();
@@ -323,10 +323,17 @@ describe('content_gemini.js - bordas RPA do plano v3.1', () => {
             await jest.advanceTimersByTimeAsync(500);
         }
 
-        const error = sentMessages.find(message => message.action === 'GEMINI_ERROR');
-        expect(error).toEqual(expect.objectContaining({
-            error: expect.stringContaining('Thumb (imagem enviada) não foi encontrado'),
+        const warning = sentMessages.find(message =>
+            message.action === 'LOG_ENTRY' && message.action_name === 'GEMINI_STEP_3_WARN'
+        );
+        expect(warning).toEqual(expect.objectContaining({
+            level: 'warn',
+            action_name: 'GEMINI_STEP_3_WARN',
         }));
+        expect(sentMessages.some(message =>
+            message.action === 'GEMINI_ERROR' &&
+            String(message.error || '').includes('Thumb (imagem enviada) não foi encontrado')
+        )).toBe(false);
     });
 
     test('CG-28/CG-29: botoes desabilitados ou ocultos sao ignorados ate achar botao valido', async () => {
