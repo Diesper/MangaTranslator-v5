@@ -1,4 +1,4 @@
-// options.js — Manga Translator v4.0
+// options.js — Manga Translator v6.0
 
 document.addEventListener('DOMContentLoaded', () => {
     const promptEl = document.getElementById('prompt');
