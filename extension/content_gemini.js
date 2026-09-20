@@ -935,6 +935,16 @@ async function processGeminiJob() {
         const liveEditor = document.querySelector('rich-textarea, .ql-editor, [contenteditable="true"]') || editor;
         const liveEditable = getEditableElement(liveEditor) || liveEditor;
 
+        // O Gemini pode manter o editor no DOM enquanto ele ainda está bloqueado.
+        // Não tente colar/injetar conteúdo em um editor explicitamente desabilitado:
+        // além de falhar silenciosamente, isso prolonga o job até o watchdog.
+        const editorIsDisabled = [liveEditor, liveEditable].some(el => el && (
+            el.disabled === true ||
+            (el.getAttribute && el.getAttribute('aria-disabled') === 'true') ||
+            (el.getAttribute && el.getAttribute('contenteditable') === 'false')
+        ));
+        assert(!editorIsDisabled, 'Editor do Gemini está desabilitado.', 2);
+
         reportProgress(`📎 ANEXANDO IMAGEM...`, job.mangaTabId);
         debugConsole('log', '[MangaTranslator Gemini] Anexando imagem...');
         const file = dataURLtoFile(job.srcData, 'manga_page.png');
