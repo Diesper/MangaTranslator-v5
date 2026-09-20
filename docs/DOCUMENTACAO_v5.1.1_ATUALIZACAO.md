@@ -7,6 +7,14 @@
 Rodada que fecha os itens P0/P1 do plano de refatoração que ainda estavam
 pendentes ou parcialmente implementados.
 
+> **Estado consolidado em 20/09/2026:** esta documentação foi revisada após a
+> estabilização completa do Service Worker, dos testes Jest, dos E2E e da
+> pipeline de CI. O baseline funcional validado imediatamente antes desta
+> atualização documental é o commit `ec3a9a49d8d7`, com **81/81 suítes Jest,
+> 574/574 testes Jest e 8/8 testes E2E Playwright aprovados**. Trechos históricos
+> que descreviam falhas toleradas foram preservados apenas quando úteis para
+> rastreabilidade e marcados como superados.
+
 **Arquivos alterados:** `manifest.json`, `background.js`, `content_manga.js`,
 `content_gemini.js`, `storage-manager.js`, `gtc-indexeddb.js`, `popup.js`,
 `options.js`, `reader.js`, `tests/package.json`.
@@ -33,6 +41,7 @@ pendentes ou parcialmente implementados.
 15. [Rodada de limpeza P2/P3: innerHTML, aliases e fallbacks mortos](#15-rodada-de-limpeza-p2p3)
 16. [Verificação da sessão interrompida: lifecycle legado, suite completa e privacidade de logs](#16-verificação-da-sessão-interrompida-lifecycle-legado-suite-completa-e-privacidade-de-logs)
 17. [Auditoria Geral do Plano Original vs GitHub: Status e Refinamentos Concluídos](#17-auditoria-geral-do-plano-original-vs-github-status-e-refinamentos-concluídos)
+18. [Estabilização final pós-refatoração: runtime, testes e CI](#18-estabilização-final-pós-refatoração-runtime-testes-e-ci)
 
 ---
 
@@ -202,8 +211,11 @@ opening → running → result_received → dom_applied → (registro removido)
 
 `STOP_BATCH` e o handler do watchdog usavam `chrome.storage.local.get(null)`, que
 carregava **todas as imagens Base64 do acervo** para a memória do worker. Ambos
-passaram a usar o índice durável; a varredura completa ficou apenas como fallback
-para índice vazio (instalação recém-atualizada).
+passaram a usar o índice durável. O fallback de varredura completa por
+`chrome.storage.local.get(null)` no `STOP_BATCH` foi posteriormente removido
+após a auditoria comprovar que todo registro `gemini_job_*` é acompanhado por
+`indexAddJob()` e que a reconciliação MV3 já trata `jobIndex` como fonte de
+verdade durável.
 
 O watchdog também resolve `jobId` (UUID) → `geminiTabId` pelo índice, corrigindo o
 `parseInt` que retornava `NaN` para UUID.
@@ -224,8 +236,9 @@ retorna Promise e `START_BATCH` aguarda antes de despachar.
 ## 4. Identidade de lote
 
 - `assertJobOwnership()`: um resultado só é aceito se a aba remetente for a dona
-  daquele `jobId` (registro `gemini_job_<sender.tab.id>`). Mensagens legadas sem
-  `jobId` continuam aceitas para compatibilidade.
+  daquele `jobId` (registro `gemini_job_<sender.tab.id>`). O contrato atual é
+  **estrito**: ausência de `jobId` ou de `sender.tab.id` resulta em
+  `owns:false`; não existe bypass legado para mensagens sem identidade.
 - **Aba de extração:** `GEMINI_RESULT_URL` agora guarda `jobId`/`batchId` em
   `extractionTabs`, `CHECK_IF_EXTRACTION_TAB` devolve esses campos e o content
   script os reenvia em `IMAGE_READY_FROM_NEW_TAB`. Antes, esse caminho perdia a
@@ -253,32 +266,67 @@ retorna Promise e `START_BATCH` aguarda antes de despachar.
    - `content_gemini.js` possui a guarda `window.__mt_gemini_started` e contacta o background via mensagem `CLAIM_JOB`.
    - Se o usuário abre o Gemini para uso manual pessoal, o background não possui job registrado para aquela aba (`claim` retorna nulo). O `content_gemini.js` encerra sua execução de imediato, sem abrir porta `keep-alive`, sem registrar `MutationObserver` e sem tocar no DOM.
 
-### Papel das Funções em `background.js` (BG-F24)
+### Estado atual do bootstrap em `background.js`
 
-No `background.js`, as funções de ciclo de vida dinâmico foram mantidas intencionalmente como stubs no-op seguros:
+A decisão arquitetural continua a mesma: a injeção no Gemini é **estática pelo
+`manifest.json`**. O que mudou depois da primeira rodada foi apenas a limpeza do
+bootstrap.
 
-```javascript
-function scriptingAvailable() { return false; }
-async function registerGeminiScripts() { return true; }
-async function unregisterGeminiScripts() { return true; }
-function releaseGeminiScriptsIfIdle() {}
-```
+Os antigos stubs `scriptingAvailable`, `registerGeminiScripts`,
+`unregisterGeminiScripts` e `releaseGeminiScriptsIfIdle` foram removidos após
+a auditoria comprovar que não havia mais chamadores funcionais que dependessem
+deles. Portanto, o estado atual é mais simples:
 
-Essas funções garantem compatibilidade com pontos de chamada legados no ciclo de vida de jobs sem disparar exceções de runtime ou chamadas desnecessárias à API `chrome.scripting`.
+- `manifest.json` continua sendo a única fonte de registro dos content scripts
+  do Gemini;
+- `background.js` não tenta registrar ou remover scripts dinamicamente;
+- `content_gemini.js` continua inerte em abas sem job válido, por meio de
+  `CLAIM_JOB`/ownership;
+- não existe mais camada de compatibilidade baseada em stubs de
+  `chrome.scripting`.
 
-> **Veredito para Manutenção Futura:** O estado estático no `manifest.json` é o **estado desejado de produção**. Os stubs em `background.js` não devem ser reativados para `chrome.scripting` nem removidos se houver chamadores ativos.
+> **Diretriz de manutenção:** não reintroduzir registro dinâmico nem stubs de
+> scripting sem uma necessidade funcional nova e um teste E2E que cubra a
+> injeção no `document_start`.
+
 
 ---
 
-## 6. Conversa temporária fail-closed
+## 6. Conversa temporária: detecção nativa e compatibilidade
 
-`findButtonByPosition()` foi **removida** (função e chamada). Qualquer heurística
-geométrica pode clicar no controle errado, e o custo de errar aqui é enviar a
-página do mangá para uma conversa **permanente** da conta do usuário.
+A automação de conversa temporária evoluiu desde a primeira versão desta
+documentação. A descrição anterior de comportamento estritamente
+*fail-closed* não representa mais o código atual.
 
-A única fonte aceita agora é semântica: texto, `aria-label`, `title` ou
-`data-test-id` reconhecidos por `findTempChatButton()`. Sem sinal semântico →
-nenhum upload acontece.
+O fluxo atual usa duas camadas para localizar o controle:
+
+1. `findTempChatButton()` — busca semântica por texto, `aria-label`,
+   `title` e atributos conhecidos;
+2. `findButtonByPosition()` — fallback de compatibilidade para mudanças da UI
+   do Gemini quando o seletor semântico não encontra o controle.
+
+A correção mais recente foi reforçar `isAlreadyActive()` para reconhecer a UI
+nativa atual do Gemini sem clicar novamente quando a conversa temporária já está
+ativa. São reconhecidos:
+
+- controles de fechar com `aria-label` contendo `fechar/close` e termos de
+  conversa `temporária/momentânea`;
+- a tela em português com **"só dando uma passadinha"** combinada ao aviso de que
+  a conversa não aparece nas conversas recentes;
+- banners em português informando que conversas temporárias/momentâneas não
+  aparecem no histórico;
+- a tela equivalente em inglês, **"just passing through"** + aviso de
+  `temporary chats`.
+
+`ensureTemporaryChatActive(12)` tenta localizar/confirmar o modo por até
+12 segundos e retorna `{ success:false, notFound:true }` quando não consegue.
+O modo de execução e o restante do fluxo decidem como tratar esse resultado.
+
+> **Nota de manutenção:** como existe fallback posicional, alterações futuras na
+> UI do Gemini devem ser cobertas por testes de detecção/ativação antes de ampliar
+> heurísticas geométricas. O objetivo é privilegiar sinais semânticos e evitar
+> cliques em controles não relacionados.
+
 
 ---
 
@@ -466,39 +514,50 @@ Cache global de traduções por fingerprint visual.
 
 ---
 
-## 11. Estratégia de testes, baseline conhecido e CI
+## 11. Estratégia de testes, baseline atual e CI
 
-> **Resolução de Incerteza (INCERTO — baseline de testes):**
-> A suíte legada Jest (`npm test`) possui 45 falhas conhecidas decorrentes de asserções que contradizem a arquitetura moderna v5.1. Esta seção define a pirâmide de testes do projeto, documenta os motivos das falhas do Jest como o **baseline conhecido de migração**, e estabelece os critérios de aprovação da pipeline de CI.
+> **Estado atual:** o antigo baseline de falhas toleradas foi eliminado. A suíte
+> Jest foi alinhada aos contratos v5.1 e passou a ser novamente **bloqueante** na
+> pipeline. O CI não usa mais `npm run test:ci || true` nem
+> `continue-on-error` no job de unit/integration.
 
 ### Pirâmide de Testes e Fontes da Verdade
 
-| Nível | Suíte / Comando | Taxa de Sucesso | Papel e Cobertura |
+| Nível | Suíte / Comando | Estado validado | Papel e Cobertura |
 |---|---|:---:|---|
-| **E2E (Ponta a Ponta)** | `npm run test:e2e` (Playwright) | **100% (8/8)** | Navegador Chromium real, Service Worker MV3 real, injeção de scripts no DOM, comunicação IPC real, persistência atômica no IndexedDB, auto-restore no F5 e Leitor Offline. |
-| **Testes de Fumaça** | `npm run test:smoke` (Node runner) | **100% (6/6)** | Código de produção real com mocks mínimos de Chrome API e `fake-indexeddb`. Cobre concorrência, persistência atômica de 10 páginas simultâneas, ciclo de vida e roteamento `SM_*`. |
-| **Testes Visuais** | `npm run test:visual-v3` | **100%** | Validação matemática e visual de dHash, aHash, pHash, wHash e queries correlacionadas sem produto cruzado. |
-| **Sintaxe e Manifesto** | `validate-manifest` / `check-syntax` | **100%** | Validação estrita do `manifest.json` MV3 e compilação de todos os arquivos JS. |
-| **Suíte Unitária Legada** | `npm run test:ci` (Jest) | 453 pass / 45 fail | Testes unitários antigos (v3/v4) mantidos como baseline de transição com tolerância em CI (`continue-on-error: true`). |
+| **Jest unitário + integração** | `npm run test:ci` | **81/81 suítes, 574/574 testes ✅** | Contratos de background, lifecycle, roteamento, Gemini RPA, manga, reader, cache, storage e integrações. |
+| **E2E (Ponta a Ponta)** | `npm run test:e2e` (Playwright) | **8/8 ✅, sem flaky no baseline final** | Chromium real, Service Worker MV3 real, IPC, persistência IndexedDB, cache, auto-restore, bulk translation e leitor offline. |
+| **Testes de Fumaça** | `npm run test:smoke` | **100% ✅** | Concorrência, persistência atômica, lifecycle e roteamento `SM_*`. |
+| **Testes Visuais** | `npm run test:visual-v3` | **100% ✅** | Fingerprints perceptuais e consultas correlacionadas. |
+| **Sintaxe JS** | job `JS Syntax Check` | **100% ✅** | Usa `find extension -name "*.js"` e inclui arquivos aninhados de `background/`, evitando que módulos novos escapem da validação. |
+| **Manifesto** | job `Manifest Validation` | **100% ✅** | Validação do `manifest.json` MV3. |
+| **Cobertura** | `npm run test:coverage` | **job aprovado no baseline final** | Relatório de cobertura e artefato HTML. Continua deliberadamente não bloqueante (`continue-on-error` / `|| true`) para não transformar indisponibilidade do upload/relatório em falha funcional. |
 
-### O Baseline Conhecido de Falhas do Jest (Contratos Legados vs v5.1)
+### Regras atuais da pipeline
 
-As 45 falhas da suíte Jest são esperadas até a reescrita dos testes unitários legados, agrupando-se nas seguintes causas raiz:
+1. **Jest bloqueia regressão.** O job `unit-and-integration` roda em Node 20 e
+   Node 22 e falha se `npm run test:ci` falhar.
+2. **E2E não é mascarado.** Em `main`, o job Playwright usa
+   `if: always() && github.ref == 'refs/heads/main'`, portanto ainda roda quando
+   o job anterior falha e sua própria falha aparece como falha real.
+3. **Execuções obsoletas são canceladas.** O grupo de `concurrency` usa branch +
+   workflow e `cancel-in-progress: true`, evitando várias pipelines completas
+   concorrendo após commits sequenciais.
+4. **Sintaxe é recursiva.** Módulos extraídos para `extension/background/**`
+   são verificados, não apenas os `*.js` da raiz de `extension/`.
+5. **Cobertura é observabilidade, não gate funcional.** O gate funcional é
+   formado por sintaxe, manifesto, smoke/visual, Jest e E2E.
 
-1. **`UPDATE_IMAGE` sem `expectAck`:**
-   - *Produção v5.1:* O background envia `expectAck: true` e aguarda a confirmação do content script para liberar o slot.
-   - *Falha no Jest:* Mocks antigos avançavam timers fixos e não forneciam o callback de resposta (`sendResponse({ ok: true })`), causando timeout.
-2. **`chap_*_images` gravado pelo content script:**
-   - *Produção v5.1:* O content script **nunca** escreve imagens no `chrome.storage.local`. Ele despacha `SM_SAVE_PAGE` para o `StorageManager` gravar no IndexedDB (`manga_translator_data`).
-   - *Falha no Jest:* Asserções antigas verificam `storage[`${chapterId}_images`]`, chave deliberadamente descontinuada para evitar estouro de cota (10 MB).
-3. **`'Tempo limite (2 min)'` vs `'Tempo limite (4 min)'`:**
-   - *Produção v5.1:* O watchdog de timeout em `content_gemini.js` foi aumentado para 4 minutos (`Tempo limite (4 min)` / `WAIT_TIMEOUT_MS = 240000`) para suportar prompts complexos e conexões instáveis.
-   - *Falha no Jest:* O teste `CG-36` busca a string literal legada `'Tempo limite (2 min)'`.
-4. **`GTC_QUERY_BY_PERCEPTUAL_CROP`:**
-   - *Produção v5.1:* Substituído pela consulta perceptual correlacionada multihash (`queryPerceptualCorrelated` / `GTC_QUERY_PERCEPTUAL_V2`), eliminando o produto cruzado de hashes.
-   - *Falha no Jest:* Testes legados ainda disparam o opcode individual antigo.
+### Regressão específica de carregamento do Service Worker
 
-> **Diretriz de CI:** O comando `npm run test:ci || true` é executado com `continue-on-error: true` para manter a visibilidade do relatório de cobertura sem bloquear o pipeline, sendo que a garantia de regressão é exercida pelos **Smoke Tests**, **Visual Tests** e **E2E Playwright**.
+Foi adicionado
+`tests/unit/background/background-strict-load.test.js`. O teste executa
+`background.js` em um processo Node limpo, com mocks mínimos de Chrome, para
+capturar erros que poderiam ser escondidos por globais vazadas entre suítes.
+
+Esse teste nasceu após a regressão em que uma atribuição a `_refreshMaxCon`
+sem declaração derrubava o Service Worker inteiro em modo `'use strict'`.
+
 
 ---
 
@@ -561,6 +620,100 @@ Para garantir que a esteira de integração contínua (GitHub Actions) ficasse 1
 - **Virtual Display (Xvfb):** Adicionado `xvfb-run --auto-servernum` para permitir que o Chromium headless renderize a extensão sem erros gráficos no Ubuntu Linux.
 - **Porta 3999:** Adicionado `reuseExistingServer: true` no `playwright.config.js` para prevenir conflitos de porta.
 - **Escape de Aspas no Jest:** Corrigido `--testPathPattern=\"(unit|integration)\"` no `package.json` para eliminar erro de sintaxe (`Syntax error: "(" unexpected`) no shell Linux.
+
+
+### 6. Regressão de inicialização do Service Worker em modo estrito
+
+Após a remoção dos corpos legados de lifecycle, a fachada `_refreshMaxCon`
+permaneceu como atribuição a identificador não declarado:
+
+```javascript
+_refreshMaxCon = (...args) => { ... };
+```
+
+Como `background.js` inicia com `'use strict'`, isso gerava
+`ReferenceError: _refreshMaxCon is not defined` durante o boot e impedia o
+registro dos listeners do Service Worker. A correção foi declarar a fachada:
+
+```javascript
+const _refreshMaxCon = (...args) => {
+    initializeJobsModules();
+    return jobsLifecycle.refreshMaxConcurrency(...args);
+};
+```
+
+Commit: `96e899f`.
+
+### 7. CI deixou de mascarar falhas reais
+
+A pipeline antiga podia ficar verde mesmo com Jest/E2E quebrados. Foram
+aplicadas três mudanças:
+
+- `acf8ebf`: remove `npm run test:ci || true` e
+  `continue-on-error` do job de testes; amplia syntax-check para todos os JS
+  aninhados;
+- `1eeb28b`: E2E passa a rodar em `main` mesmo se o job anterior falhar e
+  deixa de tolerar falha;
+- `285f77e`: cancela execuções superseded da mesma branch.
+
+### 8. Alinhamento da suíte Jest aos contratos v5.1
+
+As falhas que antes eram tratadas como "baseline legado" foram corrigidas sem
+rebaixar os contratos de produção. Entre os alinhamentos:
+
+- ownership estrito com `jobId` nos fixtures;
+- `START_BATCH` retornando `{ok,batchId}`;
+- `STOP_BATCH` baseado em `jobIndex/currentBatchId`;
+- `GEMINI_RESULT_URL` e abas de extração carregando `jobId/batchId`;
+- `FETCH_IMAGE_AS_BASE64` validando remetente, status HTTP, MIME e opções de
+  fetch;
+- `restoreState()` testado como patch, preservando campos residentes ausentes
+  do snapshot;
+- cache perceptual testado pelo contrato único
+  `GTC_QUERY_PERCEPTUAL_V2`;
+- mocks RPA passaram a modelar **consumo real do editor** após envio, em vez de
+  considerar apenas o clique no botão como sucesso.
+
+### 9. Leitor: contador estável com virtualização/lazy-load
+
+O contador do leitor passou a manter razões de visibilidade entre callbacks do
+`IntersectionObserver` e ganhou uma segunda fonte de atualização baseada na
+página visível mais próxima do centro do viewport durante `scroll`/`resize`.
+
+Commits de runtime: `b5f0e80`, `e4ffada`, `74ad410`.
+
+O E2E também foi sincronizado com a materialização real da página virtualizada:
+o teste aguarda a imagem terminar o lazy-load, espera dois
+`requestAnimationFrame` e recentraliza a página antes de exigir
+`10 / 15`. Isso removeu a flutuação `9 / 15` → `10 / 15` que aparecia em
+algumas execuções.
+
+Commit de teste: `ec3a9a4`.
+
+### 10. Imports obrigatórios agora falham de forma explícita
+
+Os dois blocos de `importScripts` do caminho real do Service Worker não
+silenciam mais falhas de módulos obrigatórios. Em erro de carregamento, o
+background registra uma mensagem explícita e relança a exceção.
+
+Commit: `ff8e437`.
+
+Isso evita o estado mais perigoso para manutenção: extensão parcialmente
+inicializada, sem módulos essenciais, mas sem erro de boot visível.
+
+### 11. Baseline final desta rodada
+
+A execução de referência imediatamente anterior à atualização da documentação
+foi o workflow **35544649714**, no commit `ec3a9a49d8d7`:
+
+| Verificação | Resultado |
+|---|---|
+| Jest unitário/integrado | **81/81 suítes; 574/574 testes ✅** |
+| Playwright E2E | **8/8 ✅; sem flaky** |
+| JS Syntax Check | **✅** |
+| Manifest Validation | **✅** |
+| Smoke / Visual | **✅** |
+| Code Coverage | **✅** |
 
 ---
 
@@ -720,31 +873,28 @@ desta verificação. Confirmado:
 - Comparação de suíte (ver 16.2) confirma **zero regressão** introduzida por
   este commit.
 
-### 16.2 P1 — Suite completa: rodada agora, com bisect contra o commit anterior
+### 16.2 P1 — Suite completa: histórico do baseline antigo e fechamento
 
-O item "executar e corrigir a suite completa" não havia sido concluído
-(interrompido junto com o item de privacidade). Rodando
-`npx jest --testPathPattern=unit` (490 testes, 68 suítes):
+Na verificação original, `npx jest --testPathPattern=unit` ainda mostrava
+10 suítes / 32 testes falhando tanto antes quanto depois da remoção do lifecycle.
+A comparação foi útil naquele momento para provar que o commit `6e97259` não
+havia criado aquelas falhas.
 
-| Estado | Suítes falhando | Testes falhando | Testes passando |
-|---|---|---|---|
-| `cb5e023` (antes da remoção do lifecycle) | 10 | 32 | 458 |
-| `6e97259`…`75ee406` (depois da remoção + rodada P2/P3 da seção 15) | 10 | 32 | 458 |
+Esse estado é **histórico e foi superado**. A rodada posterior alinhou os testes
+aos contratos v5.1 e corrigiu regressões reais descobertas durante a migração.
 
-As duas listas de suítes falhando são **idênticas** (mesmos 10 arquivos,
-mesmos nomes de teste) — a única diferença observada entre as duas execuções
-foi o tempo de execução em milissegundos. Ou seja: as 32 falhas são um
-baseline pré-existente, não relacionado a nenhuma mudança desta rodada nem da
-remoção do lifecycle legado. Amostra de causa-raiz (`BG-01/BG-02` em
-`unit/background/helpers-real.test.js`): asserção de igualdade profunda que
-não bate com os defaults atuais de `restoreState` — mesma família de
-divergência "contrato legado vs. v5.1" já documentada na seção 11 para a
-suíte Jest completa (`test:ci`, 453 pass / 45 fail inclui `integration/` e
-`smoke/`, que não fazem parte desta comparação de 490 testes `unit/`).
+Estado atual validado:
 
-**Correção deste item permanece em aberto** — não faz parte do escopo desta
-verificação consertar as 32 falhas pré-existentes, só confirmar que a rodada
-de refatoração não piorou o número.
+| Métrica | Baseline antigo desta seção | Baseline atual |
+|---|---:|---:|
+| Suítes Jest falhando | 10 | **0** |
+| Testes Jest falhando | 32 (unit isolado) / 45 (suite CI antiga) | **0** |
+| Suítes Jest aprovadas | 68 no recorte unit antigo | **81/81** |
+| Testes Jest aprovados | 458 no recorte antigo | **574/574** |
+| E2E | ainda em estabilização | **8/8, sem flaky** |
+
+A correção completa e os commits correspondentes estão documentados nas
+seções 14 e 18.
 
 ### 16.3 P2 — Privacidade de logs em `content_gemini.js`: implementado agora
 
@@ -799,4 +949,179 @@ Esta seção consolida a auditoria completa de todos os itens do plano arquitetu
 3. **Desacoplamento de Gravação no Cache Global GTC (`81bc42d`):**
    - No `content_manga.js`, a invocação de `saveGlobalTranslationCacheEntry` foi movida para ser executada imediatamente após a substituição da imagem no DOM.
    - Antes, ela residia dentro da Promise de persistência do capítulo (`persistTranslatedPage`). Uma falha transitória de cota de armazenamento ou concorrência no IndexedDB impedia que a imagem fosse salva no GTC, desperdiçando a tradução. Com o desacoplamento, a imagem é cacheada perceptualmente de forma resiliente.
+
+---
+
+## 18. Estabilização final pós-refatoração: runtime, testes e CI
+
+> Esta seção registra a rodada executada depois da auditoria da seção 17. O
+> objetivo foi transformar o estado "arquitetura modularizada, mas com baseline
+> legado tolerado" em "extensão carregando no navegador + pipeline estrita
+> totalmente verde".
+
+### 18.1 Falha fatal que impedia a extensão de iniciar
+
+**Sintoma no Edge/Chromium:**
+
+```text
+Uncaught ReferenceError: _refreshMaxCon is not defined
+```
+
+**Causa raiz.** O commit que removeu os corpos legados de lifecycle deixou a
+fachada `_refreshMaxCon` como atribuição sem declaração. Em
+`background.js`, que roda sob `'use strict'`, a exceção ocorre durante a
+avaliação do arquivo, antes de o worker terminar de registrar IPC/listeners.
+
+**Correção:** `const _refreshMaxCon = (...args) => ...`
+(`96e899f`).
+
+A partir dessa correção, os oito cenários E2E que antes falhavam em cascata
+voltaram a executar no Chromium real.
+
+### 18.2 Bootstrap obrigatório com fail-fast
+
+O caminho real de navegador (`typeof importScripts === 'function'`) agora
+trata falha de módulo obrigatório como erro fatal explícito:
+
+```javascript
+} catch (e) {
+    console.error('[MangaTranslator background] Falha ao carregar módulos obrigatórios do background.', e);
+    throw e;
+}
+```
+
+O mesmo vale para `gtc-fingerprint.js`, `gtc-indexeddb.js` e
+`storage-manager.js`.
+
+**Importante:** os `catch` do fallback Node/`require` usados por harnesses de
+teste continuam independentes; o fail-fast foi aplicado ao boot real do
+Service Worker.
+
+Commit: `ff8e437`.
+
+### 18.3 Contratos de background consolidados
+
+Os testes antigos foram atualizados para refletir, sem enfraquecer, os contratos
+atuais:
+
+- `assertJobOwnership()` exige `jobId` e ownership da aba;
+- `START_BATCH` expõe `batchId`;
+- jobs de fila e storage carregam `jobId/batchId`;
+- abas de extração preservam identidade ponta a ponta;
+- `STOP_BATCH` usa somente índice durável;
+- `restoreState()` possui semântica de patch;
+- `FETCH_IMAGE_AS_BASE64` exige remetente válido, resposta HTTP válida e MIME
+  de imagem.
+
+Principais commits: `df0b2a3`, `f63fdfd`, `56fc141`,
+`d7657b1`.
+
+### 18.4 Gemini RPA: correções reais e testes mais fiéis
+
+Além do alinhamento de fixtures, três comportamentos reais foram fortalecidos.
+
+**Detecção de conversa temporária ativa (`bdc0cf4`).** A UI nativa atual do
+Gemini é reconhecida por indicadores textuais/ARIA específicos, evitando
+reativação desnecessária.
+
+**Editor explicitamente desabilitado (`0ecb521`).** Se o editor atual ou seu
+elemento editável expõe `disabled`, `aria-disabled="true"` ou
+`contenteditable="false"`, o job aborta na etapa de editor em vez de tentar
+injeção silenciosa e esperar o watchdog.
+
+**Erros ARIA durante geração (`fa3c72a`).** O polling passou a observar
+`.message-error`, `.error-text` e `[role="alert"]`; texto de erro real
+encerra a espera e é reportado como `GEMINI_ERROR`.
+
+Os mocks RPA também foram corrigidos para representar o contrato real de envio:
+o clique sozinho não confirma envio. O editor precisa ser consumido/esvaziado
+ou a UI precisa demonstrar que a geração começou. Isso remove falsos positivos
+de teste.
+
+### 18.5 Reader: contador, observers e layout virtualizado
+
+O leitor cria observers distintos para contador, lazy-load e unload. Os testes
+antigos capturavam apenas o último callback criado, o que fazia o teste do
+contador acionar acidentalmente o observer de unload. Os fixtures agora
+identificam o observer correto.
+
+No runtime:
+
+- `pageVisibilityRatios` mantém estado entre batches do
+  `IntersectionObserver`;
+- entradas que omitem `isIntersecting` em mocks continuam compatíveis;
+- `updateCounterFromViewportCenter()` seleciona a página visível cujo centro
+  está mais próximo do centro da janela;
+- atualização por scroll/resize é limitada por `requestAnimationFrame`.
+
+No E2E, a asserção da página 10 passou a aguardar o lazy-load terminar antes de
+recentralizar o wrapper, evitando que a mudança de altura de placeholder
+(400 px) para imagem real (~600 px no fixture) desloque a página 10 e produza
+`9 / 15` intermitente.
+
+### 18.6 CI: de "verde permissivo" para gate real
+
+A pipeline agora distingue claramente testes funcionais obrigatórios de
+telemetria de cobertura:
+
+- Jest não possui `|| true`;
+- unit/integration não possui `continue-on-error`;
+- E2E em `main` roda mesmo quando dependências falham, para expor também o
+  estado do navegador;
+- E2E não possui `continue-on-error`;
+- syntax-check percorre recursivamente `extension/**/*.js`;
+- workflows superseded na mesma branch são cancelados;
+- cobertura/Codecov continua não bloqueante por escolha de infraestrutura.
+
+### 18.7 Rastreabilidade completa da rodada posterior à seção 17
+
+#### Runtime / infraestrutura
+
+| Commit | Mudança |
+|---|---|
+| `96e899f` | declara `_refreshMaxCon` e restaura o boot do worker em strict mode |
+| `acf8ebf` | remove mascaramento do Jest e valida JS aninhado |
+| `b8d4d20` | adiciona regressão de carregamento estrito do background |
+| `1eeb28b` | torna E2E visível/bloqueante em `main` |
+| `bdc0cf4` | reconhece UI nativa de conversa temporária já ativa |
+| `0ecb521` | aborta job com editor explicitamente desabilitado |
+| `fa3c72a` | reconhece erros `role="alert"` durante geração |
+| `b5f0e80` | preserva visibilidade do reader entre callbacks |
+| `e4ffada` | compatibilidade com entries sem `isIntersecting` |
+| `285f77e` | cancela pipelines superseded |
+| `74ad410` | deriva página ativa pelo centro do viewport |
+| `ff8e437` | fail-fast em módulos obrigatórios do worker |
+
+#### Testes / contratos
+
+| Commit | Mudança |
+|---|---|
+| `dd473d3`, `82a2ead` | selecionam corretamente o observer do contador do reader |
+| `df0b2a3` | fixture de resultado direto passa a usar ownership atual |
+| `f63fdfd`, `56fc141` | handlers legados alinhados ao contrato v5.1 |
+| `d7657b1` | `restoreState` validado com semântica de patch |
+| `4353cf6` | fixtures perceptuais migradas para `GTC_QUERY_PERCEPTUAL_V2` |
+| `af49a99`, `c817053`, `3f5ec28`, `5bdce0f` | mocks RPA modelam consumo real do prompt |
+| `ae91401`, `67e3a75`, `2af3823`, `61140b6` | jobs de teste recebem `jobId/batchId` |
+| `270c42b`, `1bfbf9d`, `3c4e4a6`, `b734968` | resultados simulados só aparecem após confirmação de envio/polling |
+| `58aa8c1` | ausência de thumbnail alinhada ao comportamento warn-and-continue |
+| `8abb04e`, `00be096`, `8e52d6f`, `df44d30` | fallbacks, privacidade, UI errors e timeout RPA alinhados |
+| `449da10` | CG-23 fica restrito ao contrato de injeção de prompt |
+| `a1f91a6` | regressão de visibilidade entre batches do observer |
+| `ec3a9a4` | E2E aguarda layout virtualizado antes do contador |
+
+### 18.8 Critério de manutenção daqui para frente
+
+O baseline antigo de "falhas conhecidas toleradas" **não deve ser recriado**.
+Uma mudança futura só deve ser considerada estável quando:
+
+1. o Service Worker carrega sem exceção em strict mode;
+2. sintaxe e manifesto passam;
+3. smoke/visual passam;
+4. Jest continua 100% verde;
+5. E2E em Chromium continua 100% verde **sem flaky**;
+6. mudanças de contrato atualizam simultaneamente runtime, teste e esta
+   documentação.
+
+Baseline funcional desta seção: `ec3a9a49d8d7c46bcd8a945d144c1ec388588679`.
 
