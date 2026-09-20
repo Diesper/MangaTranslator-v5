@@ -1114,18 +1114,6 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
         return true;
     }
 
-    if (request.action === 'GEMINI_RESULT_URL') {
-        const { mangaTabId, index, url, jobId, batchId } = request;
-        const originTabId = sender.tab ? sender.tab.id : null;
-        chrome.tabs.create({ url, active: false }, (newTab) => {
-            // A identidade do lote/job precisa atravessar a aba de extração,
-            // senão o resultado volta anônimo e escapa da validação de batch.
-            extractionTabs[newTab.id] = { mangaTabId, index, geminiTabId: originTabId, jobId, batchId };
-            syncState(); 
-        });
-        sendResponse({ ok: true }); return false;
-    }
-
     if (request.action === 'GEMINI_IMAGE_EXTRACTED') {
         const { mangaTabId, index, src, jobId, batchId } = request;
         const geminiTabId = sender.tab ? sender.tab.id : -1;
@@ -1150,35 +1138,6 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
         if (extractionTabs[tabId]) sendResponse({ isExtractionTab: true, ...extractionTabs[tabId] });
         else sendResponse({ isExtractionTab: false });
         return false;
-    }
-
-    if (request.action === 'IMAGE_READY_FROM_NEW_TAB') {
-        const senderTabId = sender.tab ? sender.tab.id : null;
-        const mapping = (senderTabId !== null && extractionTabs[senderTabId]) || {};
-        const mangaTabId  = request.mangaTabId  || mapping.mangaTabId;
-        const index       = (request.index !== undefined && request.index !== null) ? request.index : mapping.index;
-        const geminiTabId = request.geminiTabId || mapping.geminiTabId;
-        const jobId       = request.jobId  || mapping.jobId;
-        const batchId     = request.batchId || mapping.batchId;
-        const src         = request.src;
-
-        // Validate: reject results from cancelled/unknown batches
-        if (batchId && currentBatchId && batchId !== currentBatchId) {
-            log('warn', 'bg', 'STALE_RESULT_TAB', `Resultado de extraction tab ignorado de batch antigo`, { batchId: (batchId||'').slice(0,8) });
-            if (senderTabId !== null) {
-                chrome.tabs.remove(senderTabId, () => { if (chrome.runtime.lastError) {} });
-                delete extractionTabs[senderTabId];
-            }
-            finalizeJob(geminiTabId, mangaTabId, true);
-            try { sendResponse({ ok: false }); } catch (e) {} return false;
-        }
-        if (senderTabId !== null) {
-            chrome.tabs.remove(senderTabId, () => { if (chrome.runtime.lastError) {} });
-            delete extractionTabs[senderTabId];
-        }
-        syncState(); 
-        deliverResultToManga({ mangaTabId, index, src, jobId, batchId, geminiTabId });
-        try { sendResponse({ ok: true }); } catch (e) {} return false;
     }
 
     if (request.action === 'GEMINI_ERROR') {
