@@ -1,4 +1,4 @@
-// content_manga.js — Manga Translator v4.0 (visual-v4)
+// content_manga.js — Manga Translator v6.0 (fingerprint schema visual-v4)
 
 if (!window.__manga_translator_content_injected) {
     window.__manga_translator_content_injected = true;
@@ -334,7 +334,7 @@ if (!window.__manga_translator_content_injected) {
         return {};
     }
 
-    // ── COMPATIBILIDADE (v5.1.1) ─────────────────────────────────────────────
+    // ── COMPATIBILIDADE DE API PERCEPTUAL ──────────────────────────────────────
     // As três funções abaixo consultavam o cache por LISTAS independentes de
     // wHash e pHash, o que permitia produto cruzado entre páginas diferentes.
     // O pipeline agora usa queryPerceptualCorrelated(). Elas ficam aqui apenas
@@ -376,7 +376,7 @@ if (!window.__manga_translator_content_injected) {
         return {};
     }
 
-    // ── queryPerceptualCorrelated (v5.1.1) ───────────────────────────────────
+    // ── queryPerceptualCorrelated — consultas correlacionadas ─────────────────
     //
     // Substitui as consultas por listas independentes. Cada imagem vira uma
     // query com o SEU par de hashes e as SUAS dimensões; a resposta volta
@@ -504,7 +504,7 @@ if (!window.__manga_translator_content_injected) {
     }
 
     // The GTC implementation is injected immediately before this script. Keep
-    // these local bindings so the rest of this legacy content script preserves
+    // these local bindings so the rest of this content script preserves
     // its existing call sites while the cache boundary lives in one module.
     const cmGtcClient = window.MangaTranslatorGtcClient;
     if (!cmGtcClient) {
