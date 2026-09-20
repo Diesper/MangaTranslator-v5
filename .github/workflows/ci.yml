@@ -93,7 +93,7 @@ jobs:
       - name: Criar imagens de teste
         run: npm run test:images
 
-      - name: Rodar Testes de Fumaça (v5.1.1 Smoke Tests)
+      - name: Rodar Testes de Fumaça (v6.0 Smoke Tests)
         run: npm run test:smoke
 
       - name: Rodar Testes Visuais Perceptuais (v3 e v4)
