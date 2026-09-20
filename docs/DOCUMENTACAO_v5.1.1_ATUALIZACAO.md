@@ -30,6 +30,7 @@ pendentes ou parcialmente implementados.
 12. [Como aplicar e o que observar](#12-como-aplicar)
 13. [O que ficou de fora](#13-o-que-ficou-de-fora)
 14. [Histórico de estabilização da pipeline de CI e testes E2E](#14-histórico-de-estabilização-da-pipeline-de-ci-e-testes-e2e)
+15. [Rodada de limpeza P2/P3: innerHTML, aliases e fallbacks mortos](#15-rodada-de-limpeza-p2p3)
 
 ---
 
@@ -558,3 +559,133 @@ Para garantir que a esteira de integração contínua (GitHub Actions) ficasse 1
 - **Virtual Display (Xvfb):** Adicionado `xvfb-run --auto-servernum` para permitir que o Chromium headless renderize a extensão sem erros gráficos no Ubuntu Linux.
 - **Porta 3999:** Adicionado `reuseExistingServer: true` no `playwright.config.js` para prevenir conflitos de porta.
 - **Escape de Aspas no Jest:** Corrigido `--testPathPattern=\"(unit|integration)\"` no `package.json` para eliminar erro de sintaxe (`Syntax error: "(" unexpected`) no shell Linux.
+
+---
+
+## 15. Rodada de limpeza P2/P3
+
+> Fecha os itens de prioridade P2 e P3 do plano de auditoria/refatoração
+> (innerHTML remanescente, aliases legados e fallbacks de varredura de
+> storage). Cada mudança foi commitada e enviada individualmente por
+> arquivo, com validação de sintaxe (`node -c`) e, quando aplicável,
+> execução da suíte real de testes antes do push.
+
+**Arquivos alterados:** `content_manga.js`, `content_gemini.js`, `background.js`,
+`background/jobs-lifecycle.js`.
+**Arquivos novos:** nenhum.
+**Comportamento funcional:** inalterado em todos os itens — nenhuma mudança
+desta rodada altera o formato de mensagens, payloads ou fluxo observável pelo
+usuário.
+
+### 15.1 `setBtnHTML` migrado de `innerHTML` para DOM API
+
+**Onde:** `content_manga.js`, função `setBtnHTML(btn, text, showStop)`.
+
+**Problema.** Era o único bloco de `innerHTML` do content script que recebia
+dado variável: o parâmetro `text` inclui, entre outras origens, `request.text`
+propagado por uma mensagem `PROGRESS` vinda do background/Gemini. O código já
+escapava a string manualmente (`escapeInlineHTML`) antes de concatenar em um
+template `innerHTML`, o que era seguro, mas dependia de o desenvolvedor lembrar
+de escapar em toda chamada futura.
+
+**Correção.** `setBtnHTML` agora monta o rótulo via `document.createElement` +
+`textContent` (escaping automático e nativo do DOM), e usa `innerHTML` apenas
+para inserir o `STOP_SIGN_SVG` — um SVG 100% estático e fixo no código-fonte,
+sem qualquer interpolação de dado externo. `escapeInlineHTML` foi removida por
+ficar sem uso.
+
+Os demais `innerHTML` do arquivo (`errorLine`, `seHandle`, aviso de debug mode,
+toast de conclusão) permanecem como estavam: são templates com apenas texto
+literal fixo nos dois branches possíveis, sem interpolação de dado externo —
+não se enquadram no critério de "dado variável" do plano.
+
+### 15.2 Alias legado `APPLY_RESULT` removido
+
+**Onde:** `content_manga.js`, listener `chrome.runtime.onMessage`.
+
+O handler aceitava tanto `request.action === 'UPDATE_IMAGE'` quanto
+`'APPLY_RESULT'`. Busca em todo o repositório confirmou que **nenhum** produtor
+emite mais `APPLY_RESULT` — o único emissor de entrega de resultado
+(`background/jobs-dom-ack.js`) já envia exclusivamente `UPDATE_IMAGE`. A
+condição do plano para remoção (todos os produtores usando `UPDATE_IMAGE` e
+`jobId`) já estava satisfeita: `assertJobOwnership` (`jobs-lifecycle.js`) exige
+`jobId` obrigatoriamente e retorna `owns:false` sem ele, sem bypass legado.
+
+`OPEN_CHAPTER_FOLDER` e `DOWNLOAD_CHAPTER_AND_SHOW`, que mapeiam para a mesma
+ação canônica `download-chapter` no roteador, **não** foram tocados: são dois
+produtores distintos e ativos em `popup.js`, com semânticas diferentes (abrir
+pasta já baixada vs. baixar e mostrar) — não um alias morto.
+
+### 15.3 Stub de scripting e sinal de anti-hibernação sem uso
+
+**Onde:** `background.js`, `background/jobs-lifecycle.js`, `content_gemini.js`.
+
+- `releaseGeminiScriptsIfIdle` era um stub *no-op* (`function() {}`) herdado da
+  época em que os scripts do Gemini eram registrados dinamicamente via
+  `chrome.scripting` — hoje são estáticos no `manifest.json` (ver capítulo 5).
+  Removido junto com sua fiação: 2 chamadas em `background.js` e o parâmetro
+  injetado + 1 chamada em `background/jobs-lifecycle.js`.
+- `content_gemini.js` disparava `window.dispatchEvent(new
+  CustomEvent('MANGA_TRANSLATOR_ACTIVATE_ANTI_HIBERNATION'))` para sinalizar
+  `inject.js`. Confirmado que **não existe** nenhum
+  `addEventListener('MANGA_TRANSLATOR_ACTIVATE_ANTI_HIBERNATION', ...)` em
+  lugar nenhum do código: `inject.js` já ativa a anti-hibernação
+  automaticamente na própria injeção (guardada por checagem de URL/
+  `sessionStorage`, ver capítulo 5), sem depender de evento externo. O
+  `dispatchEvent` era enviado para o vazio.
+
+Nenhum teste referenciava os símbolos removidos.
+
+### 15.4 Fallback `storage.local.get(null)` eliminado no `STOP_BATCH`
+
+**Onde:** `background.js`, função `stopBatch`.
+
+**Análise de confiabilidade do índice.** Há um único ponto em todo o código
+que cria um registro `gemini_job_*` (`jobs-lifecycle.js`, dentro do fluxo de
+abertura de aba do Gemini): ele grava o registro no storage e, na linha
+seguinte — sem `await` entre as duas instruções —, chama `indexAddJob(...)`
+incondicionalmente. Não existe nenhum outro caminho de código que escreva um
+registro de job sem também indexá-lo. Além disso, `reconcileJobs`
+(`background/jobs-reconciliation.js`) já reconstrói toda a contabilidade após
+o Service Worker ser descartado e recriado usando **exclusivamente**
+`state.jobIndex`, sem nenhuma varredura de storage — ou seja, o sistema já
+trata o índice persistido como fonte de verdade única em todos os outros
+pontos.
+
+**Correção.** O fallback que fazia `chrome.storage.local.get(null)` (varredura
+completa do storage) quando `indexJobsOfBatch` retornava vazio foi removido;
+`stopBatch` agora confia apenas no índice persistido.
+
+**Validação.** Suíte real (`npx jest`, `tests/`) executada antes do push:
+
+| Suíte | Resultado |
+|---|---|
+| `unit/background/batch-lifecycle-real.test.js` | 6/6 ✅ (inclui cenário de `STOP_BATCH` de lote antigo preservando jobs do lote atual) |
+| `unit/background/batch-actions.test.js` | 2/2 ✅ |
+| `unit/background/plan-missing-handlers-real.test.js` | 4 falhas pré-existentes (confirmadas via `git stash` — já falhavam antes desta mudança; teste legado desatualizado em relação ao formato de resposta atual do roteador, sem relação com o fallback removido) |
+
+**Não alterado.** O fallback `storage.local.get(null)` em `content_gemini.js`
+(resgate de job órfão do lado do content script, usado quando o `tabId` visto
+pela aba do Gemini diverge da chave criada pelo background) foi mantido —
+tem propósito diferente do índice do background e não se enquadra na condição
+do plano.
+
+### 15.5 Helpers perceptuais e globais `window` mortos: nada encontrado
+
+Busca exaustiva não encontrou código morto correspondente a este item na
+versão atual do código:
+
+- Os 20 membros da API pública de `gtc-fingerprint.js` foram checados um a
+  um; os 7 que pareciam suspeitos à primeira vista (`buildFingerprintSource`,
+  `hashStringSha256`, `hammingDistance` e os 4 thresholds
+  `*_MATCH_THRESHOLD*`) são usados **internamente** pelo próprio módulo para
+  compor `createFingerprintFromDescriptor` e os matchers de hash — expostos
+  na API pública também, mas não mortos.
+- `gtc-indexeddb.js`: nenhuma função com apenas uma ocorrência (definição sem
+  chamada).
+- Globais `window.__*` em `content_manga.js`, `content_gemini.js` e
+  `inject.js`: os 7 nomes únicos identificados aparecem todos com padrão de
+  escrita **e** leitura — nenhum "write-only" órfão.
+
+Nenhuma alteração foi feita para este item; presume-se que rodadas de
+refatoração anteriores já eliminaram o que existia.
