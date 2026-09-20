@@ -1172,8 +1172,11 @@ async function processGeminiJob() {
                     }
                 }
 
-                const errorMsg = document.querySelector('.message-error, .error-text');
-                if (errorMsg && errorMsg.innerText.trim().length > 0) { errorText = errorMsg.innerText.trim(); break; }
+                const errorMsg = document.querySelector('.message-error, .error-text, [role="alert"]');
+                const errorMessageText = errorMsg
+                    ? String(errorMsg.innerText || errorMsg.textContent || '').trim()
+                    : '';
+                if (errorMessageText.length > 0) { errorText = errorMessageText; break; }
                 if (Date.now() - waitStart >= WAIT_TIMEOUT_MS) break;
             }
 
