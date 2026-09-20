@@ -63,26 +63,44 @@ async function resetExtensionState(backgroundWorker) {
     await backgroundWorker.evaluate(async () => {
         if (!self.indexedDB || typeof self.indexedDB.open !== 'function') return;
 
-        const clearDb = (dbName, storeNames) => new Promise(resolve => {
-            const req = self.indexedDB.open(dbName);
-            req.onerror = () => resolve();
-            req.onsuccess = () => {
-                const db = req.result;
-                const existing = storeNames.filter(name => db.objectStoreNames.contains(name));
-                if (existing.length === 0) {
-                    db.close();
-                    resolve();
-                    return;
+        if (typeof self.indexedDB.databases === 'function') {
+            try {
+                const databases = await self.indexedDB.databases();
+                if (databases.some(db => db.name === 'manga_translator_gtc')) {
+                    await new Promise(resolve => {
+                        const req = self.indexedDB.open('manga_translator_gtc');
+                        req.onerror = () => resolve();
+                        req.onsuccess = () => {
+                            const db = req.result;
+                            if (!db.objectStoreNames.contains('translations')) {
+                                db.close();
+                                resolve();
+                                return;
+                            }
+                            const tx = db.transaction('translations', 'readwrite');
+                            tx.objectStore('translations').clear();
+                            tx.oncomplete = () => { db.close(); resolve(); };
+                            tx.onerror = () => { db.close(); resolve(); };
+                        };
+                    });
                 }
-                const tx = db.transaction(existing, 'readwrite');
-                existing.forEach(name => tx.objectStore(name).clear());
-                tx.oncomplete = () => { db.close(); resolve(); };
-                tx.onerror = () => { db.close(); resolve(); };
-            };
-        });
+            } catch (_e) {}
+        }
 
-        await clearDb('manga_translator_gtc', ['translations']);
-        await clearDb('manga_translator_data', ['chapters', 'chapterPages', 'restoreEntries', 'assets']);
+        if (self.MangaTranslatorStorageManager && typeof self.MangaTranslatorStorageManager.openStorageDb === 'function') {
+            try {
+                const db = await self.MangaTranslatorStorageManager.openStorageDb();
+                const storeNames = ['chapters', 'chapterPages', 'restoreEntries', 'assets'].filter(name => db.objectStoreNames.contains(name));
+                if (storeNames.length > 0) {
+                    await new Promise(resolve => {
+                        const tx = db.transaction(storeNames, 'readwrite');
+                        storeNames.forEach(name => tx.objectStore(name).clear());
+                        tx.oncomplete = () => resolve();
+                        tx.onerror = () => resolve();
+                    });
+                }
+            } catch (_e) {}
+        }
     });
 }
 
