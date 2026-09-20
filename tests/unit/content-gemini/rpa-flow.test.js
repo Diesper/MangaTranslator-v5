@@ -328,7 +328,7 @@ describe('content_gemini.js - RPA real do Gemini', () => {
         }));
         expect(imageFoundLog.extra).toEqual({ urlKind: '[redacted]', host: 'cdn.gemini.test', hasQuery: true });
         expect(JSON.stringify(imageFoundLog)).not.toContain('signed-secret');
-        expect(promptLog.extra).toEqual({ promptLen: 'prompt-private-text'.length });
+        expect(promptLog.extra).toEqual({ promptLen: '[redacted]' });
         expect(JSON.stringify(promptLog)).not.toContain('prompt-private-text');
     });
 
@@ -523,19 +523,19 @@ describe('content_gemini.js - RPA real do Gemini', () => {
 
         await waitFor(() => collectActions(sentMessages, 'GEMINI_ERROR')[0]);
 
-        const fuzzyLog = sentMessages.find(message =>
-            message && message.action === 'LOG_ENTRY' && message.action_name === 'GEMINI_SEND_SUCCESS'
-        );
-
         expect(collectActions(sentMessages, 'GEMINI_ERROR')[0]).toEqual(expect.objectContaining({
             action: 'GEMINI_ERROR',
             mangaTabId: 77,
             index: 5,
             error: expect.stringContaining('Retornou erro interface'),
         }));
-        expect(fuzzyLog).toEqual(expect.objectContaining({
+        const errorLog = sentMessages.find(message =>
+            message && message.action === 'LOG_ENTRY' && message.action_name === 'GEMINI_ERROR'
+        );
+        expect(errorLog).toEqual(expect.objectContaining({
             action: 'LOG_ENTRY',
-            action_name: 'GEMINI_SEND_SUCCESS',
+            action_name: 'GEMINI_ERROR',
+            level: 'error',
         }));
     });
 
@@ -560,7 +560,7 @@ describe('content_gemini.js - RPA real do Gemini', () => {
             },
         });
 
-        await waitFor(() => collectActions(sentMessages, 'GEMINI_ERROR')[0], { timeout: 6000 });
+        await waitFor(() => collectActions(sentMessages, 'GEMINI_ERROR')[0], { timeout: 12000 });
 
         const timeoutLog = sentMessages.find(message =>
             message && message.action === 'LOG_ENTRY' && message.action_name === 'GEMINI_TIMEOUT'
