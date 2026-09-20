@@ -60,6 +60,7 @@ if (typeof importScripts === 'function') {
         importScripts('background/actions/download-chapter.js');
         importScripts('background/actions/export-all.js');
         importScripts('background/actions/deliver-result-url.js');
+        importScripts('background/actions/deliver-result-from-tab.js');
     } catch (e) {}
     try {
         // gtc-fingerprint.js expõe self.MangaTranslatorGtcFingerprint:
@@ -99,6 +100,7 @@ if (typeof importScripts === 'function') {
         require('./background/actions/download-chapter.js');
         require('./background/actions/export-all.js');
         require('./background/actions/deliver-result-url.js');
+        require('./background/actions/deliver-result-from-tab.js');
     } catch (e) {}
     try {
         gtcIndexedDbApi = require('./gtc-indexeddb.js');
@@ -331,6 +333,7 @@ async function _flushLog() {
 // A fachada evita criar uma segunda fonte de verdade antes da extração completa.
 const legacyActionState = {
     get activeMangaTabId() { return activeMangaTabId; },
+    get currentBatchId() { return currentBatchId; },
     get extractionTabs() { return extractionTabs; },
 };
 let registeredActionRouter = null;
@@ -354,6 +357,8 @@ function routeRegisteredAction(request, sender, sendResponse) {
                 syncState,
                 assertJobOwnership,
                 ensureInitialized,
+                deliverResultToManga,
+                finalizeJob,
             }),
         });
     }
