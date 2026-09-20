@@ -101,6 +101,8 @@ describe('RD-20/RD-21/RD-22: reader.js - Contador de Página e Progresso Real', 
 
         const counterEl = document.getElementById('page-counter');
         const pageWraps = document.querySelectorAll('.reader-page-wrap');
+        const counterObserverCallback = observerCallbacks[0];
+        expect(typeof counterObserverCallback).toBe('function');
 
         counterObserverCallback([
             { target: pageWraps[0], intersectionRatio: 0.5 },
