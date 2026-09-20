@@ -251,7 +251,26 @@ test.describe('E2E-19/E2E-20/E2E-21/E2E-22: E2E - reader offline real', () => {
 
         await expect(readerPage.locator('#page-counter')).toHaveText('4 / 15', { timeout: 5000 });
 
-        await readerPage.locator('.reader-page-wrap').nth(9).evaluate(el => el.scrollIntoView({ block: 'center' }));
+        const targetPage = readerPage.locator('.reader-page-wrap').nth(9);
+        await targetPage.evaluate(el => el.scrollIntoView({ block: 'center' }));
+
+        // A virtualização carrega a imagem apenas quando a página entra na
+        // janela de preload. Espere a altura real estabilizar antes de
+        // centralizar novamente; caso contrário o placeholder de 400px pode
+        // crescer após o scroll e deslocar o viewport para a página anterior.
+        await expect.poll(async () => targetPage.locator('img').evaluate(img => (
+            img.complete
+            && img.naturalHeight > 0
+            && !img.dataset.pendingSrc
+        )), { timeout: 10000 }).toBe(true);
+
+        await targetPage.evaluate(el => new Promise(resolve => {
+            requestAnimationFrame(() => requestAnimationFrame(() => {
+                el.scrollIntoView({ block: 'center' });
+                resolve();
+            }));
+        }));
+
         await expect(readerPage.locator('#page-counter')).toHaveText('10 / 15', { timeout: 5000 });
         await expect.poll(async () => {
             return readerPage.locator('#read-progress-fill').evaluate(node => node.style.width);
