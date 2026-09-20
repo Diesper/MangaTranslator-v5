@@ -1,0 +1,100 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <title>Teste de Manga Capitulo 1</title>
+  <style>
+    body {
+      margin: 0;
+      min-height: 100vh;
+      background: linear-gradient(180deg, #101010, #171717);
+      color: #f2f2f2;
+      font-family: Arial, sans-serif;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 18px 0 28px;
+      box-sizing: border-box;
+      overflow: hidden;
+    }
+
+    .manga-stack {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .page-card {
+      width: 180px;
+      background: rgba(255, 255, 255, 0.05);
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      border-radius: 14px;
+      padding: 10px;
+      box-shadow: 0 14px 40px rgba(0, 0, 0, 0.32);
+      backdrop-filter: blur(3px);
+    }
+
+    .page-label {
+      margin: 0 0 8px;
+      font-size: 12px;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      font-weight: 700;
+      color: #f0f0f0;
+    }
+
+    .page-img {
+      display: block;
+      width: 100%;
+      height: auto;
+      border-radius: 10px;
+    }
+
+    .extras {
+      width: 180px;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      margin-top: 4px;
+      opacity: 0.9;
+    }
+
+    .extras img {
+      display: block;
+      height: auto;
+      border-radius: 8px;
+    }
+
+    .extras .avatar-thumb {
+      width: 48px;
+    }
+
+    .extras .banner-thumb {
+      width: 100%;
+    }
+  </style>
+</head>
+<body>
+  <section class="manga-stack">
+    <article class="page-card">
+      <p class="page-label">Original 1 - Vermelha</p>
+      <img class="page-img" src="/manga-images/page_001.png" alt="Pagina 1"
+           data-testid="manga-image-0" width="800" height="1200">
+    </article>
+
+    <article class="page-card">
+      <p class="page-label">Original 2 - Azul</p>
+      <img class="page-img" src="/manga-images/page_002.png" alt="Pagina 2"
+           data-testid="manga-image-1" width="800" height="1200">
+    </article>
+
+    <div class="extras">
+      <!-- Imagem pequena que NAO deve ser detectada (menor que 300x400) -->
+      <img class="avatar-thumb" src="/manga-images/avatar.png" alt="Avatar" data-testid="small-image" width="48" height="48">
+      <!-- Banner que NAO deve ser detectado -->
+      <img class="banner-thumb" src="/manga-images/banner.png" alt="Publicidade" data-testid="banner-image" width="960" height="120">
+    </div>
+  </section>
+</body>
+</html>

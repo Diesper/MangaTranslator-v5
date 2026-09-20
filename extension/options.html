@@ -1,0 +1,69 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <title>Opções - Manga Translator v4.0</title>
+</head>
+<body style="background:#1a1a1a; color:#fff; font-family:sans-serif; max-width:740px; margin:auto; padding:24px;">
+    <h2>Manga Translator v4.0</h2>
+    <div style="background:#242424; padding:18px; border-radius:10px; margin-bottom:16px;">
+        <h3>Prompt do Gemini</h3>
+        <textarea id="prompt" style="width:100%; height:150px; background:#1a1a1a; color:#fff;"></textarea>
+        <button id="btn-save" style="padding:10px; background:#FF4444; color:#fff; border:none; cursor:pointer;">Salvar</button>
+        <button id="btn-restore" style="padding:10px; background:#3a3a3a; color:#fff; border:none; cursor:pointer;">Restaurar Padrão</button>
+        <div id="status" style="margin-top:10px; color:#4CAF50;"></div>
+    </div>
+    <div style="background:#242424; padding:18px; border-radius:10px; margin-bottom:16px;">
+        <h3>Substituição automática</h3>
+        <label style="display:flex; gap:10px; align-items:flex-start; cursor:pointer; line-height:1.45;">
+            <input type="checkbox" id="auto-restore-enabled" style="margin-top:3px; accent-color:#FF4444;">
+            <span>
+                Restaurar/substituir imagens automaticamente ao reabrir capítulos
+                <small style="display:block; color:#aaa; margin-top:4px;">
+                    Quando desligado, a extensão nunca troca imagens sozinha. Traduções iniciadas manualmente continuam funcionando.
+                </small>
+            </span>
+        </label>
+    </div>
+    <div style="background:#242424; padding:18px; border-radius:10px; margin-bottom:16px;">
+        <h3>Modo de Execução do Gemini</h3>
+        <p style="color:#aaa; font-size:13px; line-height:1.45; margin-top:0; margin-bottom:14px;">
+            Escolha como o Gemini será aberto e gerenciado durante as traduções.
+        </p>
+        <div style="display:flex; flex-direction:column; gap:12px;">
+            <label style="display:flex; gap:10px; align-items:flex-start; cursor:pointer; line-height:1.45;">
+                <input type="radio" name="gemini-execution-mode" id="gemini-mode-temp" value="temp_chat" style="margin-top:3px; accent-color:#FF4444;">
+                <span>
+                    <strong>Conversa Temporária / Modo Segundo Plano (Padrão)</strong>
+                    <small style="display:block; color:#aaa; margin-top:4px;">
+                        Abre o Gemini em uma aba em segundo plano e ativa nativamente a Conversa Momentânea/Temporária do Gemini. Não polui o histórico da sua conta Google, fecha a aba rapidamente ao concluir e não abre janelas minimizadas.
+                    </small>
+                </span>
+            </label>
+            <label style="display:flex; gap:10px; align-items:flex-start; cursor:pointer; line-height:1.45;">
+                <input type="radio" name="gemini-execution-mode" id="gemini-mode-minimized" value="minimized_window" style="margin-top:3px; accent-color:#FF4444;">
+                <span>
+                    <strong>Janela Minimizada</strong>
+                    <small style="display:block; color:#aaa; margin-top:4px;">
+                        Abre o Gemini em uma janela do Chrome separada e minimizada. Alternativa recomendada se seu navegador suspender abas em segundo plano de forma agressiva.
+                    </small>
+                </span>
+            </label>
+        </div>
+        <div id="gemini-mode-status" style="margin-top:10px; font-size:13px; color:#4CAF50; min-height:18px;"></div>
+    </div>
+    <div style="background:#242424; padding:18px; border-radius:10px; margin-bottom:16px;">
+        <h3>Sites Permitidos</h3>
+        <p style="color:#aaa; font-size:13px; line-height:1.45; margin-top:0;">
+            Cada site mostra somente as imagens salvas dele. Use “Auto” para permitir/bloquear restauração automática no site,
+            “Bloquear” para uma imagem específica e “Refazer” para apagar uma tradução errada.
+        </p>
+        <div style="display:flex; gap:8px; margin-bottom:10px;">
+            <button id="btn-refresh-auto-images" style="padding:8px 10px; background:#3a3a3a; color:#fff; border:none; cursor:pointer;">Atualizar lista</button>
+            <button id="btn-clear-auto-blocks" style="padding:8px 10px; background:#5a2020; color:#fff; border:none; cursor:pointer;">Limpar bloqueios</button>
+        </div>
+        <div id="sites-list" style="max-height:520px; overflow-y:auto; overflow-x:hidden; padding-right:4px;"></div>
+    </div>
+    <script src="options.js"></script>
+</body>
+</html>

@@ -1,0 +1,15 @@
+{
+  "name": "mangatranslator-v5",
+  "version": "5.1.0",
+  "description": "MangaTranslator v5.1 - Extensao de traducao automatica de mangas e quadrinhos",
+  "private": true,
+  "scripts": {
+    "test": "node tests/run-all-tests.js",
+    "test:all": "node tests/run-all-tests.js",
+    "test:fast": "node tests/run-all-tests.js",
+    "test:e2e": "node tests/run-all-tests.js --e2e",
+    "test:visual": "node tests/run-all-tests.js --visual",
+    "test:unit": "node tests/run-all-tests.js --unit",
+    "test:smoke": "node tests/smoke/run-smoke.js"
+  }
+}

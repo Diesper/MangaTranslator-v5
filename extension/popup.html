@@ -1,0 +1,434 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <title>Manga Translator</title>
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        html, body {
+            width: 500px;
+            height: 600px;
+            overflow: hidden;
+            background: #111;
+            color: #fff;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+        }
+        #root { width: 100%; height: 100%; display: flex; flex-direction: column; overflow: hidden; background: #111; position: relative; }
+        #header { display: flex; align-items: center; justify-content: space-between; padding: 13px 16px 10px; flex: 0 0 auto; border-bottom: 1px solid #222; }
+        #header-left { display: flex; align-items: center; gap: 10px; }
+        #header h2 { font-size: 17px; font-weight: 700; letter-spacing: -0.3px; }
+        /* UI #7: Dot pulsante no header quando tradução está ativa */
+        #translating-dot {
+            display: none; width: 8px; height: 8px; border-radius: 50%;
+            background: #FF4444; flex-shrink: 0;
+            animation: pulse-dot 1.2s ease-in-out infinite;
+        }
+        #translating-dot.visible { display: inline-block; }
+        #translating-label { display: none; font-size: 11px; color: #FF4444; font-weight: 700; }
+        #translating-label.visible { display: inline-block; }
+        @keyframes pulse-dot { 0%, 100% { opacity: 1; transform: scale(1); } 50% { opacity: 0.4; transform: scale(0.7); } }
+        #badge-settings {
+            display: none; font-size: 11px; font-weight: 700;
+            background: #FF4444; color: #fff; padding: 3px 9px;
+            border-radius: 20px; letter-spacing: 0.2px;
+        }
+        #badge-settings.visible { display: inline-block; }
+        #btn-options {
+            background: none; border: none; color: #555; font-size: 18px;
+            cursor: pointer; padding: 4px 6px; border-radius: 6px;
+            line-height: 1; transition: color 0.15s, background 0.15s;
+        }
+        #btn-options:hover { color: #fff; background: #222; }
+        #btn-options.active { color: #FF4444; }
+
+        .page { display: none; flex-direction: column; flex: 1 1 0; min-height: 0; overflow: hidden; }
+        .page.active { display: flex; }
+
+        #enable-section { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 24px; text-align: center; gap: 6px; }
+        #enable-section .enable-icon { font-size: 36px; margin-bottom: 8px; }
+        #enable-section p { font-size: 14px; line-height: 1.5; color: #aaa; }
+        #enable-section p strong { color: #fff; font-weight: 600; }
+        #enable-section .enable-sub { font-size: 12px; color: #555; margin-bottom: 18px; }
+        #btn-enable {
+            margin-top: 10px; display: flex; align-items: center; justify-content: center; gap: 7px; width: 100%; max-width: 280px;
+            padding: 12px 20px; background: #FF4444; color: white; border: none; border-radius: 8px; font-weight: 700; font-size: 14px;
+            cursor: pointer; transition: background 0.15s;
+        }
+        #btn-enable:hover { background: #ff6060; }
+
+        #loading-page { flex: 1; display: none; align-items: center; justify-content: center; color: #555; font-size: 14px; gap: 10px; }
+        #loading-page.active { display: flex; }
+        .spinner { width: 18px; height: 18px; border: 2px solid #333; border-top-color: #FF4444; border-radius: 50%; animation: spin 0.7s linear infinite; }
+        @keyframes spin { to { transform: rotate(360deg); } }
+
+        #app-content { flex: 1 1 0; min-height: 0; display: none; flex-direction: column; overflow: hidden; padding: 0 14px 12px; }
+
+        .tabs { display: flex; flex: 0 0 auto; border-bottom: 1px solid #222; margin-bottom: 12px; }
+        .tab-btn { flex: 1; background: none; border: none; color: #555; padding: 10px 4px; cursor: pointer; font-weight: 600; font-size: 13px; transition: color 0.15s; border-bottom: 2px solid transparent; }
+        .tab-btn:hover { color: #ccc; }
+        .tab-btn.active { color: #FF4444; border-bottom-color: #FF4444; }
+
+        .tab-content { display: none; flex: 1 1 0; min-height: 0; flex-direction: column; overflow: hidden; }
+        .tab-content.active { display: flex; }
+
+        .top-actions { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; flex: 0 0 auto; }
+        .sel-count { margin-bottom: 8px; font-size: 13px; color: #666; flex: 0 0 auto; }
+
+        .image-scroll-box { flex: 1 1 0; min-height: 0; overflow-y: auto; overflow-x: hidden; border: 1px solid #222; border-radius: 8px; padding: 6px; background: #0a0a0a; }
+        .image-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 6px; align-content: start; }
+        .actions-bar { flex: 0 0 auto; margin-top: 8px; }
+
+        .btn { display: block; width: 100%; padding: 10px; background: #FF4444; color: white; border: none; border-radius: 7px; font-weight: 700; cursor: pointer; text-align: center; font-size: 13px; transition: background 0.15s; }
+        .btn:hover { background: #ff6060; }
+        .btn:disabled { background: #2a2a2a; color: #444; cursor: not-allowed; }
+        .btn-ghost { background: transparent; border: 1.5px solid #333; color: #888; }
+        .btn-ghost:hover { border-color: #FF4444; color: #FF4444; background: transparent; }
+
+        .grid-nav { display: flex; gap: 4px; }
+        .grid-nav button { background: #1e1e1e; border: 1px solid #2e2e2e; color: #777; width: 26px; height: 26px; border-radius: 5px; cursor: pointer; font-size: 11px; display: flex; align-items: center; justify-content: center; padding: 0; transition: all 0.15s; }
+        .grid-nav button:hover { background: #FF4444; border-color: #FF4444; color: #fff; }
+
+        .text-btn { background: none; border: none; cursor: pointer; font-size: 12px; font-weight: 600; padding: 0; }
+        .text-btn-green { color: #4CAF50; }
+        .text-btn-red { color: #FF4444; }
+
+        /* UI #1 CORRIGIDO: Thumbnails com aspect-ratio 2:3 (proporção mangá).
+           Antes: height:160px fixo + object-fit:cover cortava o topo e rodapé das páginas.
+           Depois: card respeita proporção natural, imagem inteira visível com letterbox. */
+        .image-card { position: relative; border: 2px solid #252525; border-radius: 7px; overflow: hidden; cursor: pointer; background: #111; transition: border-color 0.12s; aspect-ratio: 2/3; }
+        .image-card:hover { border-color: #3a3a3a; }
+        .image-card.selected { border-color: #FF4444; }
+        .image-card img { width: 100%; height: 100%; display: block; object-fit: contain; background: #0a0a0a; }
+        .image-card .check { position: absolute; top: 6px; right: 6px; background: #FF4444; color: white; width: 22px; height: 22px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 700; opacity: 0; transition: opacity 0.15s; }
+        .image-card.selected .check { opacity: 1; }
+        .image-info { position: absolute; bottom: 0; left: 0; right: 0; padding: 3px 6px; font-size: 10px; text-align: center; color: #ddd; background: rgba(0,0,0,0.75); }
+
+        .auto-dl-row { display: flex; align-items: center; gap: 8px; padding: 8px 10px; background: #1a1a1a; border: 1px solid #222; border-radius: 7px; margin-bottom: 8px; flex: 0 0 auto; }
+        .auto-dl-row input { width: 15px; height: 15px; cursor: pointer; accent-color: #FF4444; }
+        .auto-dl-row label { cursor: pointer; font-size: 13px; color: #999; user-select: none; }
+
+        .translated-toolbar { display: flex; gap: 6px; margin-bottom: 10px; flex: 0 0 auto; }
+        .translated-toolbar .t-btn { flex: 1; padding: 8px; border: none; border-radius: 7px; color: white; font-weight: 700; font-size: 12px; cursor: pointer; transition: opacity 0.15s; }
+        .translated-toolbar .t-btn:hover { opacity: 0.85; }
+        #chapter-list { flex: 1 1 0; min-height: 0; overflow-y: auto; padding-right: 4px; display: flex; flex-direction: column; gap: 8px; }
+
+        .site-folder { background: #181818; border-radius: 8px; overflow: hidden; border: 1px solid #2a2a2a; }
+        .site-folder-header { display: flex; align-items: center; gap: 8px; padding: 9px 12px; cursor: pointer; user-select: none; transition: background 0.15s; }
+        .site-folder-header:hover { background: #202020; }
+        .site-folder-favicon { width: 16px; height: 16px; border-radius: 3px; flex-shrink: 0; }
+        .site-folder-name { flex: 1; font-size: 13px; font-weight: 700; color: #fff; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        .site-folder-count { font-size: 10px; font-weight: 700; color: #FF9800; background: rgba(255,152,0,0.12); border: 1px solid rgba(255,152,0,0.3); padding: 1px 6px; border-radius: 10px; flex-shrink: 0; }
+        
+        .folder-actions { display: flex; align-items: center; gap: 6px; margin-left: auto; margin-right: 8px; }
+        .folder-actions button { background: none; border: none; cursor: pointer; padding: 0; transition: opacity 0.15s; }
+        .folder-actions button:hover { opacity: 0.8; }
+        .folder-nav-btn { background: #1e1e1e; border: 1px solid #2e2e2e; color: #777; width: 22px; height: 22px; border-radius: 4px; display: flex; align-items: center; justify-content: center; font-size: 10px; }
+        .folder-nav-btn:hover { background: #FF4444 !important; border-color: #FF4444 !important; color: #fff !important; }
+
+        .site-folder-arrow { color: #4fc3f7; font-size: 11px; flex-shrink: 0; transition: transform 0.2s; }
+        .site-folder.open .site-folder-arrow { transform: rotate(90deg); color: #FF4444; }
+        .site-folder-body { display: none; padding: 5px 8px 8px; flex-direction: column; gap: 6px; }
+        .site-folder.open .site-folder-body { display: flex; }
+        .chapter-item { background: #1e1e1e; border: 1px solid #2a2a2a; padding: 9px 10px; border-radius: 7px; display: flex; flex-direction: column; gap: 6px; }
+        .chapter-item-btns { display: flex; gap: 4px; }
+        .chapter-item-btns button { border: none; color: white; padding: 5px 8px; border-radius: 5px; cursor: pointer; font-size: 11px; font-weight: 700; transition: opacity 0.15s; }
+        .chapter-item-btns button:hover { opacity: 0.8; }
+        .btn-read-chap { flex: 1; background: #2d7a38; }
+        .btn-open-chap-folder { background: #b35c00; }
+        .btn-export-chap { background: #1a5fa8; }
+        .btn-delete-chap { background: #8a1c1c; }
+        .chap-title-input { background: transparent; border: none; border-bottom: 1px solid transparent; color: #e0e0e0; font-weight: 600; width: 100%; padding: 2px 4px; outline: none; font-size: 12px; border-radius: 2px; transition: border-color 0.15s; }
+        .chap-title-input:focus { border-bottom-color: #4CAF50; color: #fff; }
+        .empty-msg { text-align: center; color: #444; padding: 20px 0; grid-column: 1/-1; font-size: 13px; }
+
+        /* UI #3: Painel de progresso inline que substitui o popup fechar imediatamente */
+        #progress-panel { display: none; flex-direction: column; align-items: center; justify-content: center; gap: 14px; flex: 1; padding: 24px; text-align: center; }
+        #progress-panel.active { display: flex; }
+        #progress-bar-wrap { width: 100%; height: 8px; background: #222; border-radius: 4px; overflow: hidden; }
+        #progress-bar-fill { height: 100%; background: linear-gradient(90deg, #FF4444, #ff9800); border-radius: 4px; transition: width 0.4s ease; width: 0%; }
+        #progress-text { font-size: 14px; font-weight: 700; color: #eee; }
+        #progress-sub { font-size: 12px; color: #666; }
+
+        #settings-page { flex: 1 1 0; min-height: 0; display: none; flex-direction: column; padding: 0 16px 14px; overflow-y: auto; }
+        .settings-divider { height: 1px; background: #1e1e1e; margin: 0 0 18px; flex: 0 0 auto; }
+        .settings-section { margin-bottom: 22px; }
+        .settings-section-title { font-size: 14px; font-weight: 700; color: #eee; margin-bottom: 4px; }
+        .settings-section-desc { font-size: 12px; color: #555; margin-bottom: 12px; line-height: 1.5; }
+        #settings-prompt { width: 100%; height: 170px; background: #161616; color: #ddd; border: 1.5px solid #2a2a2a; border-radius: 8px; padding: 12px; font-size: 13px; line-height: 1.55; resize: vertical; outline: none; transition: border-color 0.15s; font-family: inherit; }
+        #settings-prompt:focus { border-color: #FF4444; }
+        #settings-prompt::placeholder { color: #333; }
+        #char-count { text-align: right; font-size: 11px; color: #444; margin-top: 5px; margin-bottom: 10px; }
+        .settings-btn-row { display: flex; gap: 8px; }
+        .s-btn { padding: 9px 16px; border-radius: 7px; font-size: 13px; font-weight: 700; cursor: pointer; transition: all 0.15s; border: none; }
+        #s-btn-save { background: #FF4444; color: #fff; flex: 0 0 auto; }
+        #s-btn-save:hover { background: #ff6060; }
+        #s-btn-restore { background: transparent; color: #FF4444; border: 1.5px solid #FF4444; flex: 0 0 auto; }
+        #s-btn-restore:hover { background: #FF444420; }
+        #settings-status { font-size: 12px; margin-top: 8px; min-height: 18px; color: #4CAF50; }
+        #settings-sites-list { display: flex; flex-direction: column; gap: 8px; max-height: min(330px, 52vh); overflow-y: auto; overflow-x: hidden; padding-right: 2px; overscroll-behavior: contain; }
+        .settings-site-item { background: #161616; border: 1px solid #222; border-radius: 7px; overflow: hidden; }
+        .settings-site-main { display: flex; align-items: center; gap: 10px; padding: 9px 12px; cursor: pointer; user-select: none; }
+        .settings-site-arrow { color: #777; font-size: 12px; flex: 0 0 auto; transition: transform 0.15s ease, color 0.15s ease; }
+        .settings-site-item.open .settings-site-arrow { transform: rotate(90deg); color: #FF4444; }
+        .settings-site-favicon { width: 18px; height: 18px; border-radius: 3px; flex-shrink: 0; object-fit: contain; }
+        .settings-site-host { flex: 1; font-size: 13px; color: #bbb; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        .settings-site-image-summary { color: #666; font-size: 11px; white-space: nowrap; flex-shrink: 0; }
+        .settings-site-auto { display: flex; align-items: center; gap: 5px; color: #999; font-size: 12px; cursor: pointer; flex-shrink: 0; user-select: none; }
+        .settings-site-auto input { accent-color: #FF4444; }
+        .settings-site-remove { background: none; border: none; color: #FF4444; font-size: 16px; cursor: pointer; width: 24px; height: 24px; display: flex; align-items: center; justify-content: center; border-radius: 4px; flex-shrink: 0; transition: background 0.15s; line-height: 1; }
+        .settings-site-remove:hover { background: #FF444422; }
+        .settings-site-images { border-top: 1px solid #222; padding: 8px 10px 10px; display: none; flex-direction: column; gap: 6px; background: #101010; max-height: 190px; overflow-y: auto; overflow-x: hidden; overscroll-behavior: contain; }
+        .settings-site-item.open .settings-site-images { display: flex; }
+        .settings-site-images-title { color: #777; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.2px; }
+        .settings-site-no-images { color: #4a4a4a; font-size: 12px; padding: 4px 0; }
+        .settings-empty { font-size: 13px; color: #444; text-align: center; padding: 16px 0; }
+        .settings-toggle-row { display: flex; align-items: flex-start; gap: 10px; cursor: pointer; user-select: none; padding: 10px 12px; background: #161616; border: 1px solid #2a2a2a; border-radius: 8px; transition: border-color 0.15s; }
+        .settings-toggle-row:hover { border-color: #FF4444; }
+        .settings-toggle-row input { margin-top: 2px; width: 16px; height: 16px; accent-color: #FF4444; flex-shrink: 0; }
+        .settings-toggle-title { display: block; font-size: 13px; color: #ddd; font-weight: 700; }
+        .settings-toggle-help { display: block; font-size: 11px; color: #666; line-height: 1.45; margin-top: 3px; }
+        .settings-small-actions { display: flex; gap: 6px; margin-bottom: 8px; }
+        .settings-small-actions button { background: #1e1e1e; border: 1px solid #333; color: #ccc; padding: 6px 8px; border-radius: 5px; font-size: 11px; font-weight: 700; cursor: pointer; }
+        .settings-small-actions button:hover { border-color: #FF4444; color: #fff; }
+        .settings-auto-image-item { display: grid; grid-template-columns: 48px minmax(0, 1fr) auto auto; gap: 8px; align-items: center; background: #161616; border: 1px solid #242424; border-radius: 7px; padding: 8px; }
+        .settings-auto-image-preview { width: 48px; height: 64px; object-fit: contain; background: #080808; border-radius: 4px; }
+        .settings-auto-image-info { min-width: 0; }
+        .settings-auto-image-title { color: #ddd; font-size: 12px; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        .settings-auto-image-url { color: #666; font-size: 10px; margin-top: 3px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        .settings-auto-image-state { font-size: 11px; margin-top: 3px; }
+        .settings-auto-image-btn { border: none; border-radius: 5px; color: white; padding: 6px 8px; font-size: 11px; font-weight: 700; cursor: pointer; flex-shrink: 0; }
+        .settings-auto-image-redo-btn { background: #1a5fa8; }
+        .settings-auto-image-btn:hover { opacity: 0.85; }
+
+        .debug-toggle-row { display: flex; align-items: center; gap: 12px; cursor: pointer; user-select: none; padding: 10px 12px; background: #161616; border: 1px solid #2a2a2a; border-radius: 8px; transition: border-color 0.15s; }
+        .debug-toggle-row:hover { border-color: #FF9800; }
+        .debug-toggle-track { width: 42px; height: 24px; border-radius: 12px; background: #2a2a2a; position: relative; flex-shrink: 0; transition: background 0.2s; border: 1.5px solid #3a3a3a; }
+        .debug-toggle-track.on { background: #FF9800; border-color: #FF9800; }
+        .debug-toggle-thumb { width: 18px; height: 18px; border-radius: 50%; background: #666; position: absolute; top: 2px; left: 2px; transition: transform 0.2s, background 0.2s; }
+        .debug-toggle-track.on .debug-toggle-thumb { transform: translateX(18px); background: #fff; }
+        #debug-toggle-text { font-size: 13px; color: #999; transition: color 0.2s; }
+        #debug-toggle-text.on { color: #FF9800; font-weight: 700; }
+
+        ::-webkit-scrollbar { width: 6px; }
+        ::-webkit-scrollbar-track { background: transparent; }
+        ::-webkit-scrollbar-thumb { background: #2e2e2e; border-radius: 3px; }
+        ::-webkit-scrollbar-thumb:hover { background: #444; }
+    </style>
+</head>
+<body>
+<div id="root">
+    <div id="header">
+        <div id="header-left">
+            <h2>Manga Translator</h2>
+            <span id="badge-settings">Configurações</span>
+            <span id="translating-dot"></span>
+            <span id="translating-label">Traduzindo...</span>
+        </div>
+        <button id="btn-options" title="Configurações">⚙</button>
+    </div>
+
+    <div id="enable-page" class="page active" style="display:flex;">
+        <div id="enable-section">
+            <div class="enable-icon">🔒</div>
+            <p>A extensão está <strong>desativada</strong> neste site.</p>
+            <p class="enable-sub">Ative para detectar e traduzir páginas de mangá.</p>
+            <button id="btn-enable">✅&nbsp; Ativar neste site</button>
+        </div>
+    </div>
+
+    <div id="loading-page">
+        <div class="spinner"></div>
+        <span>Carregando imagens...</span>
+    </div>
+
+    <div id="app-content">
+        <!-- UI #3: Painel de progresso — visível após clicar Traduzir, antes de fechar -->
+        <div id="progress-panel">
+            <div style="font-size:32px;">🔄</div>
+            <div id="progress-text">Iniciando tradução...</div>
+            <div id="progress-bar-wrap"><div id="progress-bar-fill"></div></div>
+            <div id="progress-sub">0 / 0 páginas</div>
+            <button id="btn-progress-stop" class="btn btn-ghost" style="width:auto;padding:6px 20px;margin-top:4px;">⏹ Parar</button>
+        </div>
+        <div class="tabs">
+            <button class="tab-btn active" data-target="main-tab">Principal</button>
+            <button class="tab-btn" data-target="banned-tab">Banidas</button>
+            <button class="tab-btn" data-target="translated-tab">Traduzidas</button>
+        </div>
+
+        <div id="main-tab" class="tab-content active">
+            <div class="top-actions">
+                <button id="btn-ban-selected" class="btn btn-ghost"
+                    style="width:auto;padding:5px 10px;font-size:12px;" disabled>
+                    🚫 Banir Selecionadas
+                </button>
+                <div style="display:flex;align-items:center;gap:8px;">
+                    <div class="grid-nav">
+                        <button id="btn-scroll-top" title="Ir ao topo">▲</button>
+                        <button id="btn-scroll-bottom" title="Ir ao final">▼</button>
+                    </div>
+                    <button id="btn-select-all" class="text-btn text-btn-green">Todas</button>
+                    <button id="btn-select-none" class="text-btn text-btn-red">Nenhuma</button>
+                </div>
+            </div>
+            <div class="sel-count"><span id="selection-count">0 imagens selecionadas</span></div>
+            <div class="image-scroll-box">
+                <div class="image-grid" id="image-grid"></div>
+            </div>
+            <div class="actions-bar">
+                <button id="btn-translate" class="btn" disabled>Traduzir Selecionadas</button>
+            </div>
+        </div>
+
+        <div id="banned-tab" class="tab-content">
+            <div class="top-actions">
+                <button id="btn-unban-selected" class="btn btn-ghost"
+                    style="width:auto;padding:5px 10px;font-size:12px;" disabled>
+                    ✅ Desbanir Selecionadas
+                </button>
+                <div style="display:flex;align-items:center;gap:8px;">
+                    <div class="grid-nav">
+                        <button id="btn-banned-scroll-top" title="Ir ao topo">▲</button>
+                        <button id="btn-banned-scroll-bottom" title="Ir ao final">▼</button>
+                    </div>
+                    <button id="btn-banned-select-all" class="text-btn text-btn-green">Todas</button>
+                    <button id="btn-banned-select-none" class="text-btn text-btn-red">Nenhuma</button>
+                </div>
+            </div>
+            <div class="sel-count"><span id="banned-selection-count">0 imagens selecionadas</span></div>
+            <div id="banned-site-list" style="flex:1 1 0;min-height:0;overflow-y:auto;display:flex;flex-direction:column;gap:8px;padding-right:4px;"></div>
+        </div>
+
+        <div id="translated-tab" class="tab-content">
+            <div class="translated-toolbar">
+                <button class="t-btn" id="btn-export-all" style="background:#1a5fa8;">💾 Exportar Tudo</button>
+                <button class="t-btn" id="btn-open-folder" style="background:#2d7a38;">📂 MangaTranslator</button>
+            </div>
+            <div class="auto-dl-row">
+                <input type="checkbox" id="chk-auto-download">
+                <label for="chk-auto-download">💾 Baixar imagens automaticamente</label>
+            </div>
+            <div id="chapter-list"></div>
+        </div>
+    </div>
+
+    <div id="settings-page">
+        <div class="settings-tabs" style="display:flex; border-bottom: 1px solid #222; margin-bottom: 15px;">
+            <button class="settings-tab-btn active" data-target="settings-generic" style="flex:1; background:none; border:none; color:#FF4444; padding:8px; cursor:pointer; font-weight:700; border-bottom:2px solid #FF4444;">Ajustes</button>
+            <button class="settings-tab-btn" data-target="settings-logs" style="flex:1; background:none; border:none; color:#555; padding:8px; cursor:pointer; font-weight:700; border-bottom:2px solid transparent;">Logs do Sistema</button>
+        </div>
+
+        <div id="settings-generic" class="settings-tab-content active" style="display:flex; flex-direction:column;">
+            <div class="settings-section">
+                <div class="settings-section-title">Prompt personalizado para o Gemini</div>
+                <div class="settings-section-desc">
+                    Este texto é enviado junto com cada imagem. Use-o para ajustar o estilo de tradução,
+                    idioma de destino ou outras instruções específicas.
+                </div>
+                <textarea id="settings-prompt" placeholder="Deixe em branco para usar o prompt padrão..."></textarea>
+                <div id="char-count">0 caracteres</div>
+                <div class="settings-btn-row">
+                    <button class="s-btn" id="s-btn-save">💾 Salvar</button>
+                    <button class="s-btn" id="s-btn-restore">↩ Restaurar padrão</button>
+                </div>
+                <div id="settings-status"></div>
+            </div>
+            <div class="settings-divider"></div>
+            <div class="settings-section">
+                <div class="settings-section-title">Substituição automática</div>
+                <div class="settings-section-desc">
+                    Controle quando a extensão pode restaurar imagens sozinha depois de F5 ou ao reabrir um capítulo.
+                    Traduções iniciadas manualmente continuam funcionando.
+                </div>
+                <label class="settings-toggle-row" id="settings-auto-restore-row">
+                    <input type="checkbox" id="settings-auto-restore-enabled">
+                    <span>
+                        <span class="settings-toggle-title">Permitir auto-substituição global</span>
+                        <span class="settings-toggle-help">Quando desligado, nenhuma imagem é trocada automaticamente em nenhum site.</span>
+                    </span>
+                </label>
+            </div>
+            <div class="settings-divider"></div>
+            <div class="settings-section">
+                <div class="settings-section-title">Modo de Execução do Gemini</div>
+                <div class="settings-section-desc">
+                    Escolha como o Gemini será aberto e gerenciado durante as traduções.
+                </div>
+                <div style="display:flex; flex-direction:column; gap:8px; margin-top:8px;">
+                    <label class="settings-toggle-row" style="cursor:pointer;">
+                        <input type="radio" name="popup-gemini-execution-mode" id="popup-gemini-mode-temp" value="temp_chat" style="accent-color:#FF4444; margin-top:2px;">
+                        <span>
+                            <span class="settings-toggle-title">Conversa Temporária (Segundo Plano) — Padrão</span>
+                            <span class="settings-toggle-help">Abre em aba oculta em segundo plano e ativa a conversa momentânea do Gemini. Não polui seu histórico e fecha rapidamente.</span>
+                        </span>
+                    </label>
+                    <label class="settings-toggle-row" style="cursor:pointer;">
+                        <input type="radio" name="popup-gemini-execution-mode" id="popup-gemini-mode-minimized" value="minimized_window" style="accent-color:#FF4444; margin-top:2px;">
+                        <span>
+                            <span class="settings-toggle-title">Janela Minimizada</span>
+                            <span class="settings-toggle-help">Abre em janela separada minimizada. Recomendado caso o navegador congele abas em segundo plano.</span>
+                        </span>
+                    </label>
+                </div>
+            </div>
+            <div class="settings-divider"></div>
+            <div class="settings-section">
+                <div class="settings-section-title">Sites habilitados</div>
+                <div class="settings-section-desc">
+                    Domínios onde a extensão está ativa. Abra cada site para ver as imagens salvas dele, bloquear auto-substituição ou refazer uma tradução específica.
+                </div>
+                <div class="settings-small-actions">
+                    <button id="settings-refresh-auto-images">Atualizar</button>
+                    <button id="settings-clear-auto-blocks">Limpar bloqueios</button>
+                </div>
+                <div id="settings-sites-list"></div>
+            </div>
+            <div class="settings-divider"></div>
+            <div class="settings-section">
+                <div class="settings-section-title">Traduções em Paralelo</div>
+                <div class="settings-section-desc">Quantas imagens processar no Gemini ao mesmo tempo. Maior = mais rápido, mas requer abas abertas simultâneas.</div>
+                <div style="display:flex; align-items:center; gap: 15px; margin-top: 10px;">
+                    <input type="range" id="settings-parallel" min="1" max="10" value="1" style="flex:1;">
+                    <span id="settings-parallel-val" style="font-weight:bold; font-size: 16px; min-width: 20px; text-align: center;">1</span>
+                </div>
+            </div>
+            <div class="settings-divider"></div>
+            <div class="settings-section">
+                <div class="settings-section-title">🛠️ Modo Debug</div>
+                <div class="settings-section-desc">
+                    Quando ativado, as abas do Gemini e de extração <strong style="color:#FF9800">não serão fechadas</strong> após cada tradução.
+                    Use para inspecionar o console e ver o que está quebrando.
+                </div>
+                <div class="debug-toggle-row" id="debug-toggle-label">
+                    <div class="debug-toggle-track" id="debug-toggle-track">
+                        <div class="debug-toggle-thumb" id="debug-toggle-thumb"></div>
+                    </div>
+                    <span id="debug-toggle-text">Debug desativado</span>
+                </div>
+            </div>
+        </div>
+
+        <div id="settings-logs" class="settings-tab-content" style="display:none; flex-direction:column; flex:1 1 0; min-height:0;">
+            <div style="display:flex; gap:8px; margin-bottom:10px;">
+                <select id="log-filter-level" style="background:#1a1a1a; color:#fff; border:1px solid #3a3a3a; padding:6px; border-radius:4px; font-size:12px;">
+                    <option value="all">Todos</option>
+                    <option value="error">Erros</option>
+                    <option value="warn">Avisos</option>
+                    <option value="success">Sucesso</option>
+                    <option value="info">Info</option>
+                </select>
+                <button id="btn-log-clear" style="background:#3a3a3a; border:none; color:#fff; padding:6px 10px; border-radius:4px; font-size:12px; cursor:pointer;">Limpar</button>
+                <button id="btn-log-export" style="background:#1a5fa8; border:none; color:#fff; padding:6px 10px; border-radius:4px; font-size:12px; cursor:pointer; margin-left:auto;">Exportar</button>
+            </div>
+            <div id="log-container" style="flex:1 1 0; overflow-y:auto; background:#0a0a0a; border:1px solid #2e2e2e; border-radius:6px; padding:8px; font-family:monospace; font-size:11px;"></div>
+            <div style="display:flex; justify-content:space-between; margin-top:8px; font-size:11px; color:#888;">
+                <label style="cursor:pointer;"><input type="checkbox" id="log-autoscroll" checked> Auto scroll</label>
+                <span id="log-count">0 registros</span>
+            </div>
+        </div>
+    </div>
+
+    <script src="popup.js"></script>
+</div>
+</body>
+</html>

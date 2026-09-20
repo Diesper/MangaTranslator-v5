@@ -1,0 +1,75 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <title>Leitor Offline - Manga Translator</title>
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body { background: #111; color: #fff; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; }
+
+        /* Barra de navegação fixa no topo */
+        #reader-bar {
+            position: fixed; top: 0; left: 0; right: 0; z-index: 1000;
+            background: rgba(17,17,17,0.92); backdrop-filter: blur(8px);
+            border-bottom: 1px solid #2a2a2a;
+            display: flex; align-items: center; gap: 10px; padding: 8px 16px;
+        }
+        #close-btn { color: #888; text-decoration: none; font-size: 13px; flex-shrink: 0; transition: color 0.15s; }
+        #close-btn:hover { color: #fff; }
+        #chapter-title { font-size: 14px; font-weight: 700; color: #fff; flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        #page-counter { font-size: 12px; color: #FF4444; font-weight: 700; flex-shrink: 0; background: rgba(255,68,68,0.12); border: 1px solid rgba(255,68,68,0.3); border-radius: 12px; padding: 2px 10px; min-width: 70px; text-align: center; }
+
+        /* Controle de largura */
+        #width-control { display: flex; align-items: center; gap: 6px; flex-shrink: 0; }
+        #width-control label { font-size: 11px; color: #555; }
+        #width-slider { width: 80px; accent-color: #FF4444; cursor: pointer; }
+        #width-val { font-size: 11px; color: #888; min-width: 36px; text-align: right; }
+
+        /* Hint de teclado */
+        #kbd-hint { font-size: 10px; color: #333; flex-shrink: 0; }
+
+        /* Container de páginas */
+        #reader-container {
+            display: flex; flex-direction: column; align-items: center;
+            padding-top: 52px; /* altura da barra */
+            padding-bottom: 40px;
+            gap: 0;
+        }
+        .reader-page-wrap {
+            display: flex; flex-direction: column; align-items: center;
+            width: 100%; position: relative;
+        }
+        .reader-page-wrap img { display: block; width: 100%; height: auto; }
+        .page-label {
+            position: absolute; bottom: 6px; right: 10px;
+            font-size: 10px; color: rgba(255,255,255,0.35);
+            background: rgba(0,0,0,0.4); padding: 1px 6px; border-radius: 8px;
+            pointer-events: none;
+        }
+
+        /* Barra de progresso de leitura */
+        #read-progress { position: fixed; top: 45px; left: 0; right: 0; height: 3px; background: #1a1a1a; z-index: 999; }
+        #read-progress-fill { height: 100%; background: #FF4444; width: 0%; transition: width 0.15s; }
+
+        /* Mensagem vazia */
+        #empty-msg { text-align: center; color: #444; padding: 60px 20px; font-size: 14px; }
+    </style>
+</head>
+<body>
+    <div id="reader-bar">
+        <a href="#" id="close-btn">← Fechar</a>
+        <div id="chapter-title">Carregando...</div>
+        <span id="page-counter">— / —</span>
+        <div id="width-control">
+            <label for="width-slider">Largura</label>
+            <input type="range" id="width-slider" min="400" max="1200" value="800" step="50">
+            <span id="width-val">800px</span>
+        </div>
+        <span id="kbd-hint">← → scroll · F tela cheia</span>
+    </div>
+    <div id="read-progress"><div id="read-progress-fill"></div></div>
+    <div id="reader-container"></div>
+
+    <script src="reader.js"></script>
+</body>
+</html>
