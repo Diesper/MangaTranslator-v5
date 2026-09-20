@@ -802,9 +802,6 @@ async function processGeminiJob() {
     openKeepAlive();
     console.log('[MangaTranslator Gemini] Job confirmado:', { jobId: job.jobId, index: job.index });
 
-    // Sinalizar inject.js para ativar anti-hibernação
-    window.dispatchEvent(new CustomEvent('MANGA_TRANSLATOR_ACTIVATE_ANTI_HIBERNATION'));
-
     const scrollInterval = setInterval(() => {
         window.scrollTo(0, document.body.scrollHeight);
         const images = document.querySelectorAll('img');

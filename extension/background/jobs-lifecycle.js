@@ -9,7 +9,6 @@
       state, log, syncState, sendProgress, armWatchdog, clearWatchdog,
       indexAddJob, indexRemoveJob, indexJobsOfBatch, delay, generateId,
       markFinalized, isFinalized, finalizedMarkerTtlMinutes,
-      releaseGeminiScriptsIfIdle,
     } = deps;
 
     const markerKey = tabId => `gemini_finalized_${tabId}`;
@@ -137,7 +136,6 @@
           log('success', 'bg', 'BATCH_DONE', 'Lote finalizado com sucesso!');
           state.isProcessing = false;
           state.activeMangaTabId = null;
-          releaseGeminiScriptsIfIdle();
         }
         await syncState();
         return;

@@ -309,7 +309,6 @@ function initializeJobsModules() {
         markFinalized: _markFinalized,
         isFinalized: tabId => _finalizedTabs.has(tabId),
         finalizedMarkerTtlMinutes: FINALIZATION_MARKER_TTL_MINUTES,
-        releaseGeminiScriptsIfIdle,
     });
 }
 
@@ -559,8 +558,6 @@ function sendProgress(mangaTabId, text) {
     chrome.tabs.sendMessage(mangaTabId, { action: 'PROGRESS', text }, () => { if (chrome.runtime.lastError) {} });
 }
 
-// Os scripts Gemini são declarados estaticamente no manifest; este gancho preserva o contrato do lifecycle.
-function releaseGeminiScriptsIfIdle() {}
 function waitForDownload(id, onComplete, onError) {
     let safetyTimer;
     function handler(delta) {
@@ -734,7 +731,6 @@ async function stopBatch(request) {
     });
 
     runtimeState.activeJobsCount = runtimeState.jobIndex.length;
-    releaseGeminiScriptsIfIdle();
     await syncState();
     if (!stopsCurrentBatch && runtimeState.isProcessing) processNextJob();
     return {};
