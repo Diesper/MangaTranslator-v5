@@ -1,7 +1,7 @@
 {
-  "name": "mangatranslator-v5",
-  "version": "5.1.0",
-  "description": "MangaTranslator v5.1 - Extensao de traducao automatica de mangas e quadrinhos",
+  "name": "mangatranslator-v6",
+  "version": "6.0.0",
+  "description": "MangaTranslator v6.0 - Extensao de traducao automatica de mangas e quadrinhos",
   "private": true,
   "scripts": {
     "test": "node tests/run-all-tests.js",
