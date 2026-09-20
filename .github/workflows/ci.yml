@@ -24,7 +24,7 @@ jobs:
       - name: Verificar sintaxe de todos os arquivos JS da extensão
         run: |
           echo "Verificando sintaxe dos arquivos da extensão..."
-          for f in extension/*.js; do
+          find extension -name "*.js" -type f | sort | while read f; do
             node --check "$f" && echo "✅ $f" || (echo "❌ $f" && exit 1)
           done
 
@@ -96,8 +96,7 @@ jobs:
         run: npm run test:visual-v3
 
       - name: Rodar Testes Jest Unitários e de Integração
-        run: npm run test:ci || true
-        continue-on-error: true
+        run: npm run test:ci
 
   # ── Job 4: Cobertura de Código ───────────────────────────────────────────────
   coverage:
