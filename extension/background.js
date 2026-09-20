@@ -71,7 +71,10 @@ if (typeof importScripts === 'function') {
         importScripts('background/actions/deliver-result.js');
         importScripts('background/actions/start-batch.js');
         importScripts('background/actions/stop-batch.js');
-    } catch (e) {}
+    } catch (e) {
+        console.error('[MangaTranslator background] Falha ao carregar módulos obrigatórios do background.', e);
+        throw e;
+    }
     try {
         // gtc-fingerprint.js expõe self.MangaTranslatorGtcFingerprint:
         //   - SHA-256 (visual-v1/v2)
@@ -91,7 +94,10 @@ if (typeof importScripts === 'function') {
         if (typeof self !== 'undefined' && self.MangaTranslatorStorageManager) {
             storageManagerApi = self.MangaTranslatorStorageManager;
         }
-    } catch (e) {}
+    } catch (e) {
+        console.error('[MangaTranslator background] Falha ao carregar cache/storage obrigatórios.', e);
+        throw e;
+    }
 } else if (typeof require === 'function') {
     try {
         require('./background/router.js');
