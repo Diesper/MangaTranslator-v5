@@ -56,6 +56,7 @@ if (typeof importScripts === 'function') {
         importScripts('background/actions/request-image-data.js');
         importScripts('background/actions/open-manga-root.js');
         importScripts('background/actions/download-image.js');
+        importScripts('background/actions/open-existing-folder.js');
     } catch (e) {}
     try {
         // gtc-fingerprint.js expõe self.MangaTranslatorGtcFingerprint:
@@ -91,6 +92,7 @@ if (typeof importScripts === 'function') {
         require('./background/actions/request-image-data.js');
         require('./background/actions/open-manga-root.js');
         require('./background/actions/download-image.js');
+        require('./background/actions/open-existing-folder.js');
     } catch (e) {}
     try {
         gtcIndexedDbApi = require('./gtc-indexeddb.js');
