@@ -131,4 +131,31 @@ describe('background/router.js', () => {
 
         expect(response).toEqual({ keepAlive: true, response: { ok: true, tabId: 73 } });
     });
+
+    test('aceita dependências explícitas sem substituir o sender do contexto', async () => {
+        const router = loadRouter();
+        router.registerAction({
+            name: 'get-tab-id',
+            meta: { allowedSources: ['content'], async: false },
+            execute(_request, context) {
+                return {
+                    tabId: context.sender.tab.id,
+                    activeMangaTabId: context.state.activeMangaTabId,
+                };
+            },
+        });
+
+        const response = await dispatch(
+            router.createMessageRouter({
+                contextFactory: () => ({ state: { activeMangaTabId: 91 } }),
+            }),
+            { action: 'GET_TAB_ID' },
+            { tab: { id: 44, url: 'https://reader.example/chapter' } }
+        );
+
+        expect(response).toEqual({
+            keepAlive: false,
+            response: { ok: true, tabId: 44, activeMangaTabId: 91 },
+        });
+    });
 });
