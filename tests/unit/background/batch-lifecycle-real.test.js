@@ -167,6 +167,8 @@ describe('background.js - lifecycle real do batch', () => {
             mangaTabId: 88,
             index: 1,
             url: 'https://cdn.reader.test/result.png',
+            jobId: geminiJob.value.jobId,
+            batchId: geminiJob.value.batchId,
         }, { tab: { id: geminiTabId } });
 
         expect(extraction.response).toEqual({ ok: true });
@@ -187,6 +189,8 @@ describe('background.js - lifecycle real do batch', () => {
             mangaTabId: 88,
             index: 1,
             geminiTabId,
+            jobId: geminiJob.value.jobId,
+            batchId: geminiJob.value.batchId,
         });
     });
 
@@ -230,6 +234,8 @@ describe('background.js - lifecycle real do batch', () => {
             mangaTabId: 91,
             index: 1,
             url: 'https://cdn.reader.test/result.png',
+            jobId: geminiJob.value.jobId,
+            batchId: geminiJob.value.batchId,
         }, { tab: { id: geminiTabId } });
 
         await waitFor(() => {
