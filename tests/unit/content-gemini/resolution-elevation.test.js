@@ -189,7 +189,7 @@ describe('v5.1 Elevação de Resolução CDN (=s0) — content_gemini.js', () =>
             onSubmit: () => {
                 setTimeout(() => {
                     appendGeneratedImage(cdnUrlLowRes);
-                }, 25);
+                }, 1300);
             },
         });
 
