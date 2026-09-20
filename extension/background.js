@@ -1118,25 +1118,6 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
         return true;
     }
 
-    if (request.action === 'GEMINI_IMAGE_EXTRACTED') {
-        const { mangaTabId, index, src, jobId, batchId } = request;
-        const geminiTabId = sender.tab ? sender.tab.id : -1;
-        // Validate: reject results from cancelled/unknown batches
-        if (batchId && currentBatchId && batchId !== currentBatchId) {
-            log('warn', 'bg', 'STALE_RESULT', `Resultado ignorado de batch antigo`, { batchId: (batchId||'').slice(0,8), current: (currentBatchId||'').slice(0,8) });
-            finalizeJob(geminiTabId, mangaTabId, true);
-            sendResponse({ ok: false, reason: 'stale_batch' }); return false;
-        }
-        assertJobOwnership(sender, jobId, (owns) => {
-            if (!owns) {
-                log('warn', 'bg', 'SENDER_MISMATCH', `Resultado descartado: aba remetente não é dona do job`, { geminiTabId, jobId: (jobId || '').slice(0, 8) });
-                return;
-            }
-            deliverResultToManga({ mangaTabId, index, src, jobId, batchId, geminiTabId });
-        });
-        sendResponse({ ok: true }); return false;
-    }
-
     if (request.action === 'CHECK_IF_EXTRACTION_TAB') {
         const tabId = sender.tab ? sender.tab.id : -1;
         if (extractionTabs[tabId]) sendResponse({ isExtractionTab: true, ...extractionTabs[tabId] });
