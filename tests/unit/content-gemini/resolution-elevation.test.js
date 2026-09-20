@@ -199,6 +199,8 @@ describe('v5.1 Elevação de Resolução CDN (=s0) — content_gemini.js', () =>
 
         await storageMock.set({
             [`gemini_job_${tabId}`]: {
+                jobId: 'job-resolution',
+                batchId: 'batch-test',
                 mangaTabId: 10,
                 index: 0,
                 prompt: 'Traduza o texto mantendo balões.',
