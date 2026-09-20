@@ -1,14 +1,14 @@
 /**
  * temp-chat-activator.test.js
  * ─────────────────────────────────────────────────────────────────────────────
- * Testa o TemporaryChatActivator real de content_gemini.js (v5.1).
+ * Testa o TemporaryChatActivator real de content_gemini.js na arquitetura atual.
  * Verifica detecção de botões, checagem de estado ativo, despacho de eventos
  * e fallback gracioso sem quebrar o pipeline RPA.
  */
 
 const { loadContentGeminiModule } = require('../../helpers/load-content-gemini-module.js');
 
-describe('v5.1 TemporaryChatActivator — content_gemini.js', () => {
+describe('v6.0 TemporaryChatActivator — content_gemini.js', () => {
     let geminiMod;
     let activator;
 
