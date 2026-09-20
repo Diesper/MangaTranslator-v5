@@ -13,6 +13,16 @@ function stripExternalScripts(html) {
     return html.replace(/<script\b[^>]*src=["'][^"']+["'][^>]*>\s*<\/script>/gi, '');
 }
 
+function getScriptDependencies(html, htmlPath, scriptPath) {
+    const targetPath = path.resolve(ROOT, scriptPath);
+    const pageDirectory = path.dirname(path.resolve(ROOT, htmlPath));
+    const scripts = [...html.matchAll(/<script\b[^>]*src=["']([^"']+)["'][^>]*>\s*<\/script>/gi)]
+        .map(([, src]) => path.resolve(pageDirectory, src));
+    const targetIndex = scripts.indexOf(targetPath);
+
+    return targetIndex === -1 ? [] : scripts.slice(0, targetIndex);
+}
+
 function delay(ms = 0) {
     return new Promise(resolve => setTimeout(resolve, ms));
 }
@@ -30,6 +40,7 @@ async function loadExtensionPage({
     fireDOMContentLoaded = false,
 } = {}) {
     const html = fs.readFileSync(path.join(ROOT, htmlPath), 'utf8');
+    const dependencies = getScriptDependencies(html, htmlPath, scriptPath);
     const nextUrl = new URL(url, 'https://extension.test');
 
     window.history.replaceState({}, '', `${nextUrl.pathname}${nextUrl.search}${nextUrl.hash}`);
@@ -51,6 +62,7 @@ async function loadExtensionPage({
 
         try {
             jest.isolateModules(() => {
+                dependencies.forEach(dependency => require(dependency));
                 require(path.join(ROOT, scriptPath));
             });
         } finally {
@@ -62,6 +74,7 @@ async function loadExtensionPage({
         }
     } else {
         jest.isolateModules(() => {
+            dependencies.forEach(dependency => require(dependency));
             require(path.join(ROOT, scriptPath));
         });
     }
