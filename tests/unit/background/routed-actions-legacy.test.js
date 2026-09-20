@@ -79,6 +79,7 @@ describe('background.js - acoes legadas encaminhadas pelo roteador', () => {
         expect(routerApi.getAction('force-send-activation')).toBeDefined();
         expect(routerApi.getAction('request-image-data')).toBeDefined();
         expect(routerApi.getAction('open-manga-root')).toBeDefined();
+        expect(routerApi.getAction('download-image')).toBeDefined();
     });
 
     test('LOG_ENTRY passa pelo roteador e mantém a confirmação legada', async () => {
