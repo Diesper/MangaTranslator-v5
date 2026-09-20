@@ -57,6 +57,10 @@ function _markFinalized(geminiTabId) {
 if (typeof importScripts === 'function') {
     try {
         importScripts('background/router.js');
+        importScripts('background/state.js');
+        importScripts('background/jobs-watchdog.js');
+        importScripts('background/jobs-reconciliation.js');
+        importScripts('background/jobs-dom-ack.js');
         importScripts('background/actions/log-entry.js');
         importScripts('background/actions/get-tab-id.js');
         importScripts('background/actions/relay-progress.js');
@@ -101,6 +105,10 @@ if (typeof importScripts === 'function') {
 } else if (typeof require === 'function') {
     try {
         require('./background/router.js');
+        require('./background/state.js');
+        require('./background/jobs-watchdog.js');
+        require('./background/jobs-reconciliation.js');
+        require('./background/jobs-dom-ack.js');
         require('./background/actions/log-entry.js');
         require('./background/actions/get-tab-id.js');
         require('./background/actions/relay-progress.js');
@@ -218,26 +226,48 @@ function handleGtcRuntimeMessage(request, sender, sendResponse) {
     return gtcRuntimeHandler(request, sender, sendResponse);
 }
 
+function getBackgroundStateApi() {
+    const scope = typeof self !== 'undefined' ? self : globalThis;
+    return scope && scope.MangaTranslatorState;
+}
+
+function getStateSnapshot() {
+    return { jobQueue, isProcessing, stopRequested, activeMangaTabId, currentBatchId, extractionTabs, totalJobs, completedJobs, activeJobsCount, jobIndex };
+}
+
+function applyStateSnapshot(snapshot = {}) {
+    jobQueue = Array.isArray(snapshot.jobQueue) ? snapshot.jobQueue : [];
+    isProcessing = !!snapshot.isProcessing;
+    stopRequested = !!snapshot.stopRequested;
+    activeMangaTabId = snapshot.activeMangaTabId || null;
+    currentBatchId = snapshot.currentBatchId || null;
+    extractionTabs = snapshot.extractionTabs && typeof snapshot.extractionTabs === 'object' ? snapshot.extractionTabs : {};
+    totalJobs = Number(snapshot.totalJobs) || 0;
+    completedJobs = Number(snapshot.completedJobs) || 0;
+    activeJobsCount = Number(snapshot.activeJobsCount) || 0;
+    jobIndex = Array.isArray(snapshot.jobIndex) ? snapshot.jobIndex : [];
+}
+
 async function restoreState() {
-    const d = await chrome.storage.local.get(['mt_state']);
-    if (d.mt_state) {
-        jobQueue          = d.mt_state.jobQueue || [];
-        isProcessing      = d.mt_state.isProcessing || false;
-        stopRequested     = d.mt_state.stopRequested || false;
-        activeMangaTabId  = d.mt_state.activeMangaTabId || null;
-        currentBatchId = d.mt_state.currentBatchId || null;
-        extractionTabs    = d.mt_state.extractionTabs || {};  
-        totalJobs         = d.mt_state.totalJobs || 0;
-        completedJobs     = d.mt_state.completedJobs || 0;
-        activeJobsCount   = d.mt_state.activeJobsCount || 0;
-        jobIndex          = Array.isArray(d.mt_state.jobIndex) ? d.mt_state.jobIndex : [];
+    const stateApi = getBackgroundStateApi();
+    if (stateApi && typeof stateApi.restoreState === 'function') {
+        const restored = await stateApi.restoreState();
+        if (restored) applyStateSnapshot(restored);
+        return;
     }
+    const d = await chrome.storage.local.get(['mt_state']);
+    applyStateSnapshot(d.mt_state);
 }
 
 async function syncState() {
-    await chrome.storage.local.set({
-        mt_state: { jobQueue, isProcessing, stopRequested, activeMangaTabId, currentBatchId, extractionTabs, totalJobs, completedJobs, activeJobsCount, jobIndex }
-    });
+    const snapshot = getStateSnapshot();
+    const stateApi = getBackgroundStateApi();
+    if (stateApi && typeof stateApi.patch === 'function' && typeof stateApi.syncState === 'function') {
+        stateApi.patch(snapshot);
+        await stateApi.syncState();
+        return;
+    }
+    await chrome.storage.local.set({ mt_state: snapshot });
 }
 
 // ── Manutenção do índice de jobs ─────────────────────────────────────────────
@@ -267,6 +297,43 @@ function tabExists(tabId) {
     });
 }
 
+const jobsState = {
+    get jobIndex() { return jobIndex; },
+    set jobIndex(value) { jobIndex = value; },
+    get activeJobsCount() { return activeJobsCount; },
+    set activeJobsCount(value) { activeJobsCount = value; },
+    get activeMangaTabId() { return activeMangaTabId; },
+    set activeMangaTabId(value) { activeMangaTabId = value; },
+};
+let jobsWatchdog = null;
+let jobsReconciler = null;
+let jobsDomAck = null;
+
+function initializeJobsModules() {
+    if (jobsWatchdog && jobsReconciler && jobsDomAck) return;
+    const scope = typeof self !== 'undefined' ? self : globalThis;
+    jobsWatchdog = scope.MangaTranslatorJobsWatchdog.createWatchdog({
+        getJobIndex: () => jobIndex,
+        getExtractionTabs: () => extractionTabs,
+        finalizeJob: (...args) => finalizeJob(...args),
+        log,
+        timeoutMinutes: JOB_TIMEOUT_MINUTES,
+    });
+    jobsReconciler = scope.MangaTranslatorJobsReconciliation.createReconciler({
+        state: jobsState,
+        tabExists,
+        log,
+        syncState,
+        processNextJob: () => processNextJob(),
+    });
+    jobsDomAck = scope.MangaTranslatorJobsDomAck.createDomAckDelivery({
+        updateJobState,
+        finalizeJob: (...args) => finalizeJob(...args),
+        log,
+        timeoutMs: DOM_ACK_TIMEOUT_MS,
+    });
+}
+
 // ── reconcileJobs ────────────────────────────────────────────────────────────
 // Um Service Worker MV3 pode ser descartado e recriado sem reiniciar o Chrome.
 // Nesse caso as variáveis voltam vazias enquanto abas do Gemini continuam vivas.
@@ -276,46 +343,18 @@ function tabExists(tabId) {
 //   - aba viva   → job continua ativo (conta no activeJobsCount)
 //   - aba morta  → job é descartado (chave + watchdog removidos, slot liberado)
 async function reconcileJobs() {
-    if (!Array.isArray(jobIndex) || jobIndex.length === 0) {
-        activeJobsCount = Math.min(activeJobsCount, 0);
-        return { alive: 0, dropped: 0 };
-    }
-
-    const alive = [];
-    const dropped = [];
-    for (const entry of jobIndex) {
-        if (!entry) continue;
-        const exists = await tabExists(entry.geminiTabId);
-        if (exists) alive.push(entry);
-        else dropped.push(entry);
-    }
-
-    if (dropped.length > 0) {
-        const keys = [];
-        dropped.forEach(entry => {
-            keys.push(`gemini_job_${entry.geminiTabId}`);
-            keys.push(`wd_data_${entry.geminiTabId}`);
-            const alarmName = entry.jobId ? `watchdog_${entry.jobId}` : `watchdog_${entry.geminiTabId}`;
-            chrome.alarms.clear(alarmName, () => {});
-        });
-        try { await chrome.storage.local.remove(keys); } catch (_e) {}
-        log('warn', 'bg', 'JOB_RECONCILE_DROP', `${dropped.length} job(s) órfão(s) descartado(s) após reinício do worker`, {
-            dropped: dropped.map(j => j.geminiTabId),
-        });
-    }
-
-    jobIndex = alive;
-    activeJobsCount = alive.length;
-    if (alive.length > 0 && !activeMangaTabId) {
-        activeMangaTabId = alive[0].mangaTabId || null;
-    }
-    return { alive: alive.length, dropped: dropped.length };
+    initializeJobsModules();
+    return jobsReconciler.reconcile();
 }
 
 let _initialized = false;
 async function ensureInitialized() {
     if (_initialized) return;
-    await restoreState();
+    // Um alarme pode disparar enquanto este worker já detém um lote vivo. Não
+    // sobrescreva essa fila/extractionTabs com um snapshot antigo ou vazio.
+    const hasResidentWork = jobQueue.length > 0 || activeJobsCount > 0 ||
+        jobIndex.length > 0 || Object.keys(extractionTabs).length > 0;
+    if (!hasResidentWork) await restoreState();
     _initialized = true;
     try {
         const result = await reconcileJobs();
@@ -415,18 +454,12 @@ function routeRegisteredAction(request, sender, sendResponse) {
 }
 
 function armWatchdog(mangaTabId, index, geminiTabId, jobId) {
-    const alarmName = jobId ? `watchdog_${jobId}` : `watchdog_${geminiTabId}`;
-    chrome.alarms.clear(alarmName, () => {
-        chrome.storage.local.set({ [`wd_data_${geminiTabId}`]: { mangaTabId, index, geminiTabId, jobId } }, () => {
-            chrome.alarms.create(alarmName, { delayInMinutes: JOB_TIMEOUT_MINUTES });
-        });
-    });
+    initializeJobsModules();
+    return jobsWatchdog.arm(mangaTabId, index, geminiTabId, jobId);
 }
 function clearWatchdog(geminiTabId, jobId) {
-    const alarmName = jobId ? `watchdog_${jobId}` : `watchdog_${geminiTabId}`;
-    chrome.alarms.clear(alarmName, () => {
-        chrome.storage.local.remove(`wd_data_${geminiTabId}`);
-    });
+    initializeJobsModules();
+    return jobsWatchdog.clear(geminiTabId, jobId);
 }
 
 // ── Máquina de estados do job ────────────────────────────────────────────────
@@ -476,50 +509,8 @@ function assertJobOwnership(sender, jobId, callback) {
 const DOM_ACK_TIMEOUT_MS = 30_000;
 
 function deliverResultToManga({ mangaTabId, index, src, jobId, batchId, geminiTabId }) {
-    updateJobState(geminiTabId, { state: 'result_received' });
-
-    let settled = false;
-    let guard = null;
-
-    const settle = (ok, reason) => {
-        if (settled) return;
-        settled = true;
-        if (guard) clearTimeout(guard);
-        if (ok) {
-            updateJobState(geminiTabId, { state: 'dom_applied' });
-        } else {
-            log('warn', 'bg', 'DOM_APPLY_FAIL', `Resultado não confirmado pela aba do mangá: ${reason}`, { index, reason });
-        }
-        finalizeJob(geminiTabId, mangaTabId, !ok);
-    };
-
-    guard = setTimeout(() => settle(false, 'ack_timeout'), DOM_ACK_TIMEOUT_MS);
-    if (guard && typeof guard.unref === 'function') guard.unref();
-
-    try {
-        chrome.tabs.sendMessage(
-            mangaTabId,
-            { action: 'UPDATE_IMAGE', index, newSrc: src, jobId, batchId, expectAck: true },
-            (resp) => {
-                const err = chrome.runtime.lastError;
-                if (err) {
-                    // "message channel closed" = a mensagem chegou, mas o content
-                    // script é de uma versão antiga que não devolve ACK.
-                    // Nesse caso a imagem foi aplicada; contamos como sucesso.
-                    const legacyNoAck = /message channel closed/i.test(err.message || '');
-                    settle(legacyNoAck, legacyNoAck ? 'legacy_no_ack' : (err.message || 'send_failed'));
-                    return;
-                }
-                if (resp && resp.ok === false) {
-                    settle(false, resp.reason || 'rejected_by_page');
-                    return;
-                }
-                settle(true);
-            }
-        );
-    } catch (e) {
-        settle(false, e && e.message ? e.message : 'send_exception');
-    }
+    initializeJobsModules();
+    return jobsDomAck.deliver({ mangaTabId, index, src, jobId, batchId, geminiTabId });
 }
 
 chrome.runtime.onInstalled.addListener(() => {
@@ -549,7 +540,7 @@ chrome.runtime.onStartup.addListener(async () => {
             alive: reconciled.alive,
             dropped: reconciled.dropped,
         });
-        isProcessing = jobQueue.length > 0 || reconciled.alive > 0;
+        isProcessing = jobQueue.length > 0;
         await syncState();
         processNextJob();
     } else {
@@ -572,6 +563,9 @@ chrome.alarms.onAlarm.addListener(async (alarm) => {
         processNextJob();
         return;
     }
+
+    initializeJobsModules();
+    if (jobsWatchdog.handleAlarm(alarm)) return;
 
     if (alarm.name.startsWith('watchdog_')) {
         // O nome do alarme agora pode ser watchdog_${jobId} (UUID) ou watchdog_${tabId} (legado)
@@ -1092,335 +1086,4 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
         return true;
     }
 
-    if (request.action === 'LOG_ENTRY') {
-        log(request.level, request.source, request.action_name, request.detail, request.extra);
-        sendResponse({ ok: true }); return false;
-    }
-
-    if (request.action === 'FORCE_SEND_ACTIVATION') {
-        const { geminiTabId, mangaTabId, windowId, executionMode } = request;
-        chrome.storage.local.get(['geminiExecutionMode'], (st) => {
-            const mode = executionMode || st.geminiExecutionMode || 'temp_chat';
-            if (mode === 'minimized_window' && windowId) {
-                chrome.windows.update(windowId, { focused: true }, () => {
-                    chrome.tabs.sendMessage(geminiTabId, { action: 'DO_SEND_NOW' }, () => { if (chrome.runtime.lastError) {} });
-                    setTimeout(() => {
-                        chrome.windows.update(windowId, { state: 'minimized', focused: false }, () => { if (chrome.runtime.lastError) {} });
-                        if (mangaTabId) {
-                            chrome.tabs.get(mangaTabId, (mt) => {
-                                if (mt && mt.windowId) chrome.windows.update(mt.windowId, { focused: true }, () => { if (chrome.runtime.lastError) {} });
-                            });
-                        }
-                    }, 250);
-                });
-            } else if (geminiTabId) {
-                chrome.tabs.update(geminiTabId, { active: true }, () => {
-                    chrome.tabs.sendMessage(geminiTabId, { action: 'DO_SEND_NOW' }, () => { if (chrome.runtime.lastError) {} });
-                    setTimeout(() => {
-                        if (mangaTabId) chrome.tabs.update(mangaTabId, { active: true }, () => { if (chrome.runtime.lastError) {} });
-                    }, 250);
-                });
-            }
-        });
-        sendResponse({ ok: true }); return false;
-    }
-
-    if (request.action === 'GET_TAB_ID') {
-        sendResponse({ tabId: sender.tab ? sender.tab.id : null }); return false;
-    }
-
-    if (request.action === 'GEMINI_PROGRESS') {
-        const targetTabId = request.mangaTabId || activeMangaTabId;
-        if (targetTabId) sendProgress(targetTabId, request.text);
-        if (sender && sender.tab) updateJobState(sender.tab.id, { state: 'running' });
-        sendResponse({ ok: true }); return false;
-    }
-
-    if (request.action === 'REQUEST_IMAGE_DATA') {
-        chrome.tabs.sendMessage(request.mangaTabId, { action: 'REQUEST_IMAGE_DATA', index: request.index }, (response) => {
-            if (chrome.runtime.lastError) sendResponse({ error: chrome.runtime.lastError.message });
-            else sendResponse(response);
-        });
-        return true;
-    }
-
-    if (request.action === 'CHECK_IF_EXTRACTION_TAB') {
-        const tabId = sender.tab ? sender.tab.id : -1;
-        if (extractionTabs[tabId]) sendResponse({ isExtractionTab: true, ...extractionTabs[tabId] });
-        else sendResponse({ isExtractionTab: false });
-        return false;
-    }
-
-    if (request.action === 'FETCH_IMAGE_AS_BASE64') {
-        try {
-            const parsedUrl = new URL(request.url);
-            if (!['http:', 'https:'].includes(parsedUrl.protocol)) {
-                sendResponse({ error: 'Protocolo inválido' });
-                return false;
-            }
-        } catch (_e) {
-            sendResponse({ error: 'URL inválida' });
-            return false;
-        }
-        const controller = new AbortController();
-        const timeout = setTimeout(() => controller.abort(), 30000); // 30s timeout
-        fetch(request.url, { signal: controller.signal })
-            .then(r => {
-                if (!r.ok) throw new Error(`HTTP ${r.status}`);
-                const ct = r.headers.get('content-type') || '';
-                if (!ct.startsWith('image/')) throw new Error(`Content-Type inválido: ${ct}`);
-                return r.blob();
-            })
-            .then(blob => {
-                clearTimeout(timeout);
-                if (blob.size > 50 * 1024 * 1024) throw new Error('Imagem muito grande (>50MB)');
-                const reader = new FileReader();
-                reader.onloadend = () => sendResponse({ dataUrl: reader.result });
-                reader.readAsDataURL(blob);
-            })
-            .catch(e => {
-                clearTimeout(timeout);
-                sendResponse({ error: e.message });
-            });
-        return true;
-    }
-
-    // ── CALCULATE_VISUAL_FINGERPRINT (visual-v3) ─────────────────────────────
-    //
-    // Calcula todos os hashes visuais para imagens CORS-blocked no content script.
-    // O SW consegue fazer fetch cross-origin (host_permissions: <all_urls>).
-    //
-    // Hashes calculados via OffscreenCanvas no Service Worker:
-    //   pixelSample  (8×8)   → SHA-256 visual (visual-v1/v2, backward-compat)
-    //   dHash        (9×8)   → dHash 16-hex 64-bit (visual-v2)
-    //   wHash        (32×32) → Haar Wavelet 64-hex 256-bit (visual-v3, NOVO)
-    //   pHash        (32×32) → DCT Perceptual 64-hex 256-bit (visual-v3, NOVO)
-    //   wHashCrop/pHashCrop (center-crop 32×32) → fallback visual-v4
-    //   regionalHashes (48×48) → wHash dos 4 cantos 16-hex 64-bit (visual-v3)
-    //
-    // Por que o SW calcula os hashes em vez do content script:
-    //   - SW tem <all_urls> → fetch() não tem bloqueio CORS
-    //   - OffscreenCanvas está disponível em Workers (Chrome 69+)
-    //   - createImageBitmap disponível no SW (Chrome 59+)
-    //   - content script não pode drawImage em imagens cross-origin → tainted canvas
-    //
-    // Custo computacional no SW (não bloqueia o content script):
-    //   - wHash: Haar DWT 2D 32×32 + sort 256 elementos → ~1ms
-    //   - pHash: DCT-II separável 32×32 (tabela pré-computada) → ~0.5ms
-    //   - regionalHashes: 4× Haar DWT 2D 16×16 → ~0.4ms
-    //   - Total: ~2ms por imagem
-    // ─────────────────────────────────────────────────────────────────────────
-    if (request.action === 'CALCULATE_VISUAL_FINGERPRINT') {
-        (async () => {
-            try {
-                const { url } = request;
-                if (!url || url.startsWith('data:') || url.startsWith('blob:')) {
-                    sendResponse({ ok: false, error: 'URL inválida para fingerprint visual' });
-                    return;
-                }
-
-                // Fetch via SW (bypassa CORS — extensão tem <all_urls>)
-                const resp = await fetch(url, { credentials: 'omit', cache: 'no-store' });
-                if (!resp.ok) throw new Error(`HTTP ${resp.status} ao buscar imagem`);
-                const blob = await resp.blob();
-
-                // createImageBitmap disponível no SW (Chrome 59+)
-                const bitmap = await createImageBitmap(blob);
-
-                const fpApi = (typeof self !== 'undefined' && self.MangaTranslatorGtcFingerprint)
-                           || null;
-
-                // ── Canvas 8×8 → pixel sample para SHA-256 ───────────────────
-                const oc8  = new OffscreenCanvas(8, 8);
-                const ctx8 = oc8.getContext('2d');
-                ctx8.drawImage(bitmap, 0, 0, 8, 8);
-                const id8  = ctx8.getImageData(0, 0, 8, 8);
-                const pixelSample = Array.from(id8.data)
-                    .map(b => b.toString(16).padStart(2, '0'))
-                    .join('');
-
-                // ── Canvas 9×8 → dHash (visual-v2) ───────────────────────────
-                let dHash = null;
-                if (fpApi && typeof fpApi.calculateDHash === 'function') {
-                    const oc9  = new OffscreenCanvas(9, 8);
-                    const ctx9 = oc9.getContext('2d');
-                    ctx9.drawImage(bitmap, 0, 0, 9, 8);
-                    const id9 = ctx9.getImageData(0, 0, 9, 8);
-                    dHash = fpApi.calculateDHash(id9.data);
-                }
-
-                // ── Canvas 32×32 → wHash + pHash (visual-v3, NOVO) ───────────
-                // Um único canvas 32×32 alimenta tanto wHash quanto pHash.
-                // Isso economiza um drawImage vs usar dois canvas separados.
-                let wHash = null;
-                let pHash = null;
-                let wHashCrop = null;
-                let pHashCrop = null;
-                if (fpApi && (typeof fpApi.calculateWHash === 'function' || typeof fpApi.calculatePHash === 'function')) {
-                    const oc32  = new OffscreenCanvas(32, 32);
-                    const ctx32 = oc32.getContext('2d');
-                    ctx32.drawImage(bitmap, 0, 0, 32, 32);
-                    const id32 = ctx32.getImageData(0, 0, 32, 32);
-
-                    if (typeof fpApi.calculateWHash === 'function') {
-                        wHash = fpApi.calculateWHash(id32.data);
-                    }
-                    if (typeof fpApi.calculatePHash === 'function') {
-                        pHash = fpApi.calculatePHash(id32.data);
-                    }
-
-                    const W = bitmap.width || 0;
-                    const H = bitmap.height || 0;
-                    const side = Math.min(W, H);
-                    if (side > 0 && W !== H) {
-                        const cropX = Math.floor((W - side) / 2);
-                        const cropY = Math.floor((H - side) / 2);
-                        const ocCrop = new OffscreenCanvas(32, 32);
-                        const ctxCrop = ocCrop.getContext('2d');
-                        ctxCrop.drawImage(bitmap, cropX, cropY, side, side, 0, 0, 32, 32);
-                        const idCrop = ctxCrop.getImageData(0, 0, 32, 32);
-                        if (typeof fpApi.calculateWHash === 'function') {
-                            wHashCrop = fpApi.calculateWHash(idCrop.data);
-                        }
-                        if (typeof fpApi.calculatePHash === 'function') {
-                            pHashCrop = fpApi.calculatePHash(idCrop.data);
-                        }
-                    }
-                }
-
-                // ── Canvas 48×48 → regionalHashes dos 4 cantos (visual-v3, NOVO) ──
-                // Divide em grid 3×3 de regiões 16×16; usa apenas os 4 cantos.
-                // Aproximação do RANSAC em JS puro: texto raramente aparece nos cantos.
-                let regionalHashes = null;
-                if (fpApi && typeof fpApi.calculateRegionalHashes === 'function') {
-                    const oc48  = new OffscreenCanvas(48, 48);
-                    const ctx48 = oc48.getContext('2d');
-                    ctx48.drawImage(bitmap, 0, 0, 48, 48);
-                    const id48 = ctx48.getImageData(0, 0, 48, 48);
-                    regionalHashes = fpApi.calculateRegionalHashes(id48.data);
-                }
-
-                bitmap.close();
-
-                log('info', 'bg', 'VISUAL_FP_OK', `Fingerprint visual-v3 calculado via SW`, {
-                    url:              url.slice(0, 80),
-                    hasDHash:         dHash         !== null,
-                    hasWHash:         wHash         !== null,
-                    hasPHash:         pHash         !== null,
-                    hasCrop:          wHashCrop !== null || pHashCrop !== null,
-                    hasRegional:      regionalHashes !== null,
-                });
-
-                sendResponse({
-                    ok: true,
-                    pixelSample,
-                    dHash,
-                    wHash,
-                    pHash,
-                    wHashCrop,
-                    pHashCrop,
-                    regionalHashes,
-                });
-            } catch (e) {
-                log('warn', 'bg', 'VISUAL_FP_FAIL', `Falha no fingerprint visual-v3 via SW: ${e.message}`, {
-                    url: (request.url || '').slice(0, 80),
-                });
-                sendResponse({ ok: false, error: e.message });
-            }
-        })();
-        return true;
-    }
-
-    if (request.action === 'DOWNLOAD_IMAGE') {
-        const filename = request.filename.startsWith('MangaTranslator/') ? request.filename : `MangaTranslator/${request.filename}`;
-        chrome.downloads.download({ url: request.url, filename, saveAs: false }, (id) => {
-            if (chrome.runtime.lastError || id === undefined) { sendResponse({ error: chrome.runtime.lastError?.message || 'Falha no download' }); return; }
-            waitForDownload(id, 
-                (doneId) => {
-                    chrome.downloads.search({ id: doneId }, (results) => {
-                        if (results?.[0]) sendResponse({ filePath: results[0].filename, downloadId: doneId });
-                        else sendResponse({ error: 'Arquivo não encontrado' });
-                    });
-                },
-                (err) => sendResponse({ error: err.message })
-            );
-        });
-        return true;
-    }
-
-    if (request.action === 'SHOW_EXISTING_FOLDER') {
-        const { folderPath, safeTitle, anchorId } = request;
-        if (anchorId) {
-            chrome.downloads.search({ id: anchorId }, (res) => {
-                if (res && res.length > 0 && res[0].exists) {
-                    chrome.downloads.show(anchorId);
-                    sendResponse({ ok: true });
-                } else fallbackSearch(folderPath, safeTitle, sendResponse);
-            });
-        } else fallbackSearch(folderPath, safeTitle, sendResponse);
-
-        function fallbackSearch(fPath, sTitle, sendResp) {
-            const escapedPath = fPath.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-            chrome.downloads.search({ filenameRegex: escapedPath }, (results) => {
-                if (results && results.length > 0) {
-                    chrome.downloads.show(results[0].id);
-                    sendResp({ ok: true });
-                } else handleMarkerAndShow(sTitle, sendResp);
-            });
-        }
-        return true;
-    }
-
-    if (request.action === 'OPEN_CHAPTER_FOLDER' || request.action === 'DOWNLOAD_CHAPTER_AND_SHOW') {
-        if (request.anchorId) {
-            chrome.downloads.search({ id: request.anchorId }, (res) => {
-                if (res && res.length > 0 && res[0].exists) { chrome.downloads.show(request.anchorId); sendResponse({ ok: true }); }
-                else fallbackDownload();
-            });
-        } else fallbackDownload();
-
-        function fallbackDownload() {
-            if (Object.keys(request.images).length === 0) { handleMarkerAndShow(request.safeTitle, sendResponse); return; }
-            downloadImagesAndShow(request.images, request.safeTitle, request.chapId).then(() => { sendResponse({ ok: true }); });
-        }
-        return true;
-    }
-
-    if (request.action === 'OPEN_MANGA_ROOT') {
-        handleMarkerAndShow(null, sendResponse);
-        return true;
-    }
-
-    if (request.action === 'EXPORT_ALL_AND_SHOW') {
-        if (!request.allDownloads || request.allDownloads.length === 0) {
-            sendResponse({ ok: true }); return true;
-        }
-        let lastCompletedId = null; let completed = 0;
-        request.allDownloads.forEach(({ url, filename }) => {
-            const fname = filename.startsWith('MangaTranslator/') ? filename : `MangaTranslator/${filename}`;
-            chrome.downloads.download({ url, filename: fname, saveAs: false }, (id) => {
-                if (chrome.runtime.lastError || id === undefined) { completed++; checkFinalize(); return; }
-                waitForDownload(id, (doneId) => { lastCompletedId = doneId; completed++; checkFinalize(); }, () => { completed++; checkFinalize(); });
-            });
-        });
-        function checkFinalize() {
-            if (completed === request.allDownloads.length) {
-                if (lastCompletedId) chrome.downloads.show(lastCompletedId);
-                sendResponse({ ok: true });
-            }
-        }
-        return true;
-    }
-
-    if (request.action === 'SET_DEBUG_MODE') {
-        chrome.storage.local.set({ debugMode: !!request.debugOn }, () => {
-            chrome.tabs.query({}, (tabs) => {
-                tabs.forEach(tab => {
-                    chrome.tabs.sendMessage(tab.id, { action: 'DEBUG_MODE_CHANGED', debugOn: !!request.debugOn }, () => { if (chrome.runtime.lastError) {} });
-                });
-            });
-            sendResponse({ ok: true });
-        });
-        return true;
-    }
 });
