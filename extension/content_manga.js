@@ -1704,7 +1704,7 @@ if (!window.__manga_translator_content_injected) {
         }
 
         chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
-            if (request.action === 'UPDATE_IMAGE' || request.action === 'APPLY_RESULT') {
+            if (request.action === 'UPDATE_IMAGE') {
                 // O background agora aguarda um ACK em vez de esperar 1,5 s fixos.
                 // Só respondemos depois que a imagem foi aplicada E persistida.
                 const wantsAck = request.expectAck === true;
