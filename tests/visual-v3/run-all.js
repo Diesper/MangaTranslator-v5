@@ -3,7 +3,7 @@
 
 (async () => {
     console.log('\n' + '═'.repeat(60));
-    console.log('  MangaTranslator v4.0 — Cadeia Completa de Testes');
+    console.log('  MangaTranslator v6.0 — Cadeia Completa de Testes');
     console.log('  visual-v4 · wHash · pHash · Crop · Regional · Cross-Language');
     console.log('  Pipeline 6 fases · CALCULATE_VISUAL_FINGERPRINT · IDB v4');
     console.log('═'.repeat(60));
