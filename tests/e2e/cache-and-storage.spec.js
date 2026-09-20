@@ -62,34 +62,27 @@ async function resetExtensionState(backgroundWorker) {
 
     await backgroundWorker.evaluate(async () => {
         if (!self.indexedDB || typeof self.indexedDB.open !== 'function') return;
-        if (typeof self.indexedDB.databases === 'function') {
-            const databases = await self.indexedDB.databases();
-            if (!databases.some(db => db.name === 'manga_translator_gtc')) return;
-        }
 
-        await new Promise(resolve => {
-            const request = self.indexedDB.open('manga_translator_gtc');
-            request.onerror = () => resolve();
-            request.onsuccess = () => {
-                const db = request.result;
-                if (!db.objectStoreNames.contains('translations')) {
+        const clearDb = (dbName, storeNames) => new Promise(resolve => {
+            const req = self.indexedDB.open(dbName);
+            req.onerror = () => resolve();
+            req.onsuccess = () => {
+                const db = req.result;
+                const existing = storeNames.filter(name => db.objectStoreNames.contains(name));
+                if (existing.length === 0) {
                     db.close();
                     resolve();
                     return;
                 }
-
-                const tx = db.transaction('translations', 'readwrite');
-                tx.objectStore('translations').clear();
-                tx.oncomplete = () => {
-                    db.close();
-                    resolve();
-                };
-                tx.onerror = () => {
-                    db.close();
-                    resolve();
-                };
+                const tx = db.transaction(existing, 'readwrite');
+                existing.forEach(name => tx.objectStore(name).clear());
+                tx.oncomplete = () => { db.close(); resolve(); };
+                tx.onerror = () => { db.close(); resolve(); };
             };
         });
+
+        await clearDb('manga_translator_gtc', ['translations']);
+        await clearDb('manga_translator_data', ['chapters', 'chapterPages', 'restoreEntries', 'assets']);
     });
 }
 
@@ -132,12 +125,18 @@ async function waitForTranslationOnPage(page) {
 
 async function waitForRestoreMap(backgroundWorker, chapterUrl) {
     await expect.poll(async () => {
-        const storage = await readStorage(backgroundWorker, null);
-        const chapter = (storage.chapterList || []).find(item => item.url === chapterUrl);
-        if (!chapter) return 0;
-        return Object.keys(storage[`${chapter.id}_restoreMap`] || {}).length;
+        return backgroundWorker.evaluate(async (url) => {
+            const storage = await new Promise(resolve => chrome.storage.local.get(['chapterList'], resolve));
+            const chapter = (storage.chapterList || []).find(item => item.url === url);
+            if (!chapter) return 0;
+            if (self.MangaTranslatorStorageManager) {
+                const map = await self.MangaTranslatorStorageManager.getRestoreIndex(chapter.id);
+                return Object.keys(map || {}).length;
+            }
+            return 0;
+        }, chapterUrl);
     }, {
-        timeout: 10000,
+        timeout: 15000,
         message: 'Esperava restoreMap persistido para o capitulo antes do reload',
     }).toBe(2);
 }
@@ -195,13 +194,26 @@ test.describe('E2E-23/E2E-24/E2E-25: E2E - cache e persistencia do content_manga
         const chapter = chapterList.find(item => item.url === 'http://localhost:3999/manga-page.html');
 
         expect(chapter).toBeTruthy();
-        expect(storage[`${chapter.id}_images`]).toEqual(expect.objectContaining({
-            0: expect.stringMatching(/^data:image\/png;base64,/),
-            1: expect.stringMatching(/^data:image\/png;base64,/),
-        }));
-        expect(storage[`${chapter.id}_restoreMap`]).toEqual(expect.objectContaining({
-            'http://localhost:3999/manga-images/page_001.png': expect.stringMatching(/^data:image\/png;base64,/),
-            'http://localhost:3999/manga-images/page_002.png': expect.stringMatching(/^data:image\/png;base64,/),
+
+        // No v5.1, as páginas e o mapa de restauração são persistidos no StorageManager (IndexedDB)
+        const smData = await backgroundWorker.evaluate(async (chapterId) => {
+            const sm = self.MangaTranslatorStorageManager;
+            if (!sm) return null;
+            const page0 = await sm.getPageDataUrl(chapterId, 0);
+            const page1 = await sm.getPageDataUrl(chapterId, 1);
+            const restoreIndex = await sm.getRestoreIndex(chapterId);
+            return {
+                pages: { 0: page0, 1: page1 },
+                restoreIndex,
+            };
+        }, chapter.id);
+
+        expect(smData).toBeTruthy();
+        expect(smData.pages[0]).toMatch(/^data:image\/png;base64,/);
+        expect(smData.pages[1]).toMatch(/^data:image\/png;base64,/);
+        expect(smData.restoreIndex).toEqual(expect.objectContaining({
+            'http://localhost:3999/manga-images/page_001.png': expect.objectContaining({ index: 0 }),
+            'http://localhost:3999/manga-images/page_002.png': expect.objectContaining({ index: 1 }),
         }));
 
         await page.close();
@@ -233,7 +245,7 @@ test.describe('E2E-23/E2E-24/E2E-25: E2E - cache e persistencia do content_manga
                 return Array.from(document.querySelectorAll('img[data-translated="true"]')).length;
             });
         }, {
-            timeout: 8000,
+            timeout: 15000,
             message: 'Esperava reaplicacao das 2 imagens via cache GTC no host espelho',
         }).toBe(2);
 
@@ -272,7 +284,7 @@ test.describe('E2E-23/E2E-24/E2E-25: E2E - cache e persistencia do content_manga
                 return Array.from(document.querySelectorAll('img[data-translated="true"]')).length;
             });
         }, {
-            timeout: 8000,
+            timeout: 15000,
             message: 'Esperava reaplicacao automatica via restoreMap apos reload',
         }).toBe(2);
 

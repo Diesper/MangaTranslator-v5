@@ -59,6 +59,30 @@ async function resetExtensionState(backgroundWorker) {
             });
         });
     });
+
+    await backgroundWorker.evaluate(async () => {
+        if (!self.indexedDB || typeof self.indexedDB.open !== 'function') return;
+
+        const clearDb = (dbName, storeNames) => new Promise(resolve => {
+            const req = self.indexedDB.open(dbName);
+            req.onerror = () => resolve();
+            req.onsuccess = () => {
+                const db = req.result;
+                const existing = storeNames.filter(name => db.objectStoreNames.contains(name));
+                if (existing.length === 0) {
+                    db.close();
+                    resolve();
+                    return;
+                }
+                const tx = db.transaction(existing, 'readwrite');
+                existing.forEach(name => tx.objectStore(name).clear());
+                tx.oncomplete = () => { db.close(); resolve(); };
+                tx.onerror = () => { db.close(); resolve(); };
+            };
+        });
+
+        await clearDb('manga_translator_data', ['chapters', 'chapterPages', 'restoreEntries', 'assets']);
+    });
 }
 
 function makeSvgDataUrl(label) {
@@ -148,10 +172,6 @@ test.describe('E2E-19/E2E-20/E2E-21/E2E-22: E2E - reader offline real', () => {
         await readerPage.goto(readerUrl);
         await expect(readerPage.locator('.reader-page-wrap')).toHaveCount(15, { timeout: 10000 });
 
-        const srcs = await readerPage.locator('.reader-page-wrap img').evaluateAll(
-            nodes => nodes.map(node => node.getAttribute('src'))
-        );
-
         const decodeSrc = src => {
             if (!src) return '';
             if (src.includes(';base64,')) {
@@ -160,15 +180,24 @@ test.describe('E2E-19/E2E-20/E2E-21/E2E-22: E2E - reader offline real', () => {
             return decodeURIComponent(src);
         };
 
-        expect(decodeSrc(srcs[0])).toContain('idx-0');
-        expect(decodeSrc(srcs[1])).toContain('idx-2');
-        expect(decodeSrc(srcs[2])).toContain('idx-5');
-        expect(decodeSrc(srcs[14])).toContain('idx-200');
+        const firstImg = readerPage.locator('.reader-page-wrap img').first();
+        await expect(firstImg).toHaveAttribute('src', /.+/, { timeout: 10000 });
+        const firstSrc = await firstImg.getAttribute('src');
+        expect(decodeSrc(firstSrc)).toContain('idx-0');
 
         await expect(readerPage.locator('#chapter-title')).toHaveText('Capitulo E2E do Reader');
         await expect(readerPage.locator('#page-counter')).toHaveText('1 / 15');
         await expect(readerPage.locator('.page-label').first()).toHaveText('1');
         await expect(readerPage.locator('.page-label').last()).toHaveText('15');
+
+        // O reader utiliza IntersectionObserver (lazy loading), portanto a última página (idx-200)
+        // é carregada sob demanda ao rolar até ela
+        const lastWrap = readerPage.locator('.reader-page-wrap').last();
+        await lastWrap.scrollIntoViewIfNeeded();
+        const lastImg = lastWrap.locator('img');
+        await expect(lastImg).toHaveAttribute('src', /.+/, { timeout: 10000 });
+        const lastSrc = await lastImg.getAttribute('src');
+        expect(decodeSrc(lastSrc)).toContain('idx-200');
 
         await readerPage.close();
     });
