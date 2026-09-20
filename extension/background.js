@@ -61,6 +61,7 @@ if (typeof importScripts === 'function') {
         importScripts('background/actions/export-all.js');
         importScripts('background/actions/deliver-result-url.js');
         importScripts('background/actions/deliver-result-from-tab.js');
+        importScripts('background/actions/report-error.js');
     } catch (e) {}
     try {
         // gtc-fingerprint.js expõe self.MangaTranslatorGtcFingerprint:
@@ -101,6 +102,7 @@ if (typeof importScripts === 'function') {
         require('./background/actions/export-all.js');
         require('./background/actions/deliver-result-url.js');
         require('./background/actions/deliver-result-from-tab.js');
+        require('./background/actions/report-error.js');
     } catch (e) {}
     try {
         gtcIndexedDbApi = require('./gtc-indexeddb.js');
