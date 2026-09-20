@@ -6,7 +6,7 @@
     name: 'set-debug-mode',
 
     meta: {
-      // O handler legado aceitava a alteração de qualquer contexto da extensão.
+      // Contrato atual mantém a alteração disponível a qualquer contexto da extensão.
       allowedSources: ['any'],
       async: true,
     },
