@@ -33,7 +33,8 @@
     name: 'log-entry',
     meta: {
       async: false,
-      allowedSources: ['content', 'gemini'],
+      // Mantém compatibilidade com todos os emissores aceitos pelo handler legado.
+      allowedSources: ['any'],
     },
     validate,
     execute(request, context) {
