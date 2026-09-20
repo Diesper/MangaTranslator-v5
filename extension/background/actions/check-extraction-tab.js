@@ -8,11 +8,9 @@
 
   scope.MangaTranslatorRouter.registerAction({
     name: 'check-extraction-tab',
-    meta: {
-      allowedSources: ['any'],
-      async: false,
-    },
-    execute(_request, context) {
+    meta: { allowedSources: ['any'] },
+    async execute(_request, context) {
+      await context.ensureInitialized();
       const tabId = context.sender && context.sender.tab ? context.sender.tab.id : -1;
       const extractionTabs = context.state.extractionTabs || {};
       const mapping = extractionTabs[tabId];
