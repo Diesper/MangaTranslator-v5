@@ -205,8 +205,21 @@ function buildGeminiMockHtml() {
         running = true;
         status.textContent = 'Processando mock...';
         sendButton.disabled = true;
+        if (editor) {
+          editor.textContent = '';
+          editor.innerText = '';
+        }
+
+        const stopBtn = document.createElement('button');
+        stopBtn.setAttribute('data-test-id', 'stop-generating-button');
+        stopBtn.setAttribute('aria-label', 'Stop generating');
+        stopBtn.textContent = 'Stop';
+        sendButton.parentNode.appendChild(stopBtn);
 
         await new Promise(resolve => setTimeout(resolve, 1200));
+
+        stopBtn.remove();
+        sendButton.disabled = false;
 
         const img = document.createElement('img');
         img.alt = 'Imagem traduzida do mock';

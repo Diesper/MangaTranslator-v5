@@ -356,7 +356,7 @@ function isLikelyGeneratedImage(img, ignoreImages = new Set()) {
     }
 
     // Assinaturas inequívocas de imagem gerada pelo Gemini
-    if (src.includes('googleusercontent.com/gg-dl/') || src.startsWith('blob:https://gemini.google.com/') || src.startsWith('blob:http://127.0.0.1/')) {
+    if (src.includes('gemini-result-image') || src.includes('googleusercontent.com/gg-dl/') || src.startsWith('blob:https://gemini.google.com/') || src.startsWith('blob:http://127.0.0.1/')) {
         return true;
     }
 

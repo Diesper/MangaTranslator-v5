@@ -152,10 +152,18 @@ test.describe('E2E-19/E2E-20/E2E-21/E2E-22: E2E - reader offline real', () => {
             nodes => nodes.map(node => node.getAttribute('src'))
         );
 
-        expect(srcs[0]).toContain('idx-0');
-        expect(srcs[1]).toContain('idx-2');
-        expect(srcs[2]).toContain('idx-5');
-        expect(srcs[14]).toContain('idx-200');
+        const decodeSrc = src => {
+            if (!src) return '';
+            if (src.includes(';base64,')) {
+                return Buffer.from(src.split(';base64,')[1], 'base64').toString('utf8');
+            }
+            return decodeURIComponent(src);
+        };
+
+        expect(decodeSrc(srcs[0])).toContain('idx-0');
+        expect(decodeSrc(srcs[1])).toContain('idx-2');
+        expect(decodeSrc(srcs[2])).toContain('idx-5');
+        expect(decodeSrc(srcs[14])).toContain('idx-200');
 
         await expect(readerPage.locator('#chapter-title')).toHaveText('Capitulo E2E do Reader');
         await expect(readerPage.locator('#page-counter')).toHaveText('1 / 15');
@@ -221,7 +229,7 @@ test.describe('E2E-19/E2E-20/E2E-21/E2E-22: E2E - reader offline real', () => {
 
         await expect(readerPage.locator('#page-counter')).toHaveText('4 / 15', { timeout: 5000 });
 
-        await readerPage.locator('.reader-page-wrap').nth(9).scrollIntoViewIfNeeded();
+        await readerPage.locator('.reader-page-wrap').nth(9).evaluate(el => el.scrollIntoView({ block: 'center' }));
         await expect(readerPage.locator('#page-counter')).toHaveText('10 / 15', { timeout: 5000 });
         await expect.poll(async () => {
             return readerPage.locator('#read-progress-fill').evaluate(node => node.style.width);

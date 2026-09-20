@@ -187,7 +187,7 @@ jobs:
         run: npx wait-on http://localhost:3999/health --timeout 15000
 
       - name: Rodar testes E2E
-        run: npm run test:e2e
+        run: xvfb-run --auto-servernum -- npm run test:e2e
         env:
           CI: true
 
