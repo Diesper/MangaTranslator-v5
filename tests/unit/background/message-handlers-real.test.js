@@ -157,10 +157,14 @@ describe('background.js - handlers onMessage reais', () => {
         const extractionTab = await tabsMock.create({ url: 'https://cdn.reader.test/result.png', active: false });
         backgroundModule.__setState({
             extractionTabs: {
-                [extractionTab.id]: { mangaTabId: mangaTab.id, index: 8, geminiTabId: 4444 },
+                [extractionTab.id]: { mangaTabId: mangaTab.id, index: 8, geminiTabId: 4444, jobId: 'job-extraction' },
             },
             activeJobsCount: 1,
             completedJobs: 0,
+        });
+        storageMock._setStore({
+            ...storageMock._getStore(),
+            gemini_job_4444: { geminiTabId: 4444, jobId: 'job-extraction' },
         });
 
         const readyFromTabPromise = dispatchToBackground(runtimeMock, {
@@ -169,6 +173,7 @@ describe('background.js - handlers onMessage reais', () => {
             index: 8,
             src: 'data:image/png;base64,FROM_EXTRACTION_TAB',
             geminiTabId: 4444,
+            jobId: 'job-extraction',
         }, { tab: { id: extractionTab.id } });
         await jest.advanceTimersByTimeAsync(1);
         const readyFromTab = await readyFromTabPromise;
@@ -191,23 +196,28 @@ describe('background.js - handlers onMessage reais', () => {
             debugMode: true,
         });
         backgroundModule.__setState({ activeJobsCount: 1, completedJobs: 0 });
+        storageMock._setStore({
+            ...storageMock._getStore(),
+            gemini_job_5555: { geminiTabId: 5555, jobId: 'job-error' },
+        });
         const geminiErrorPromise = dispatchToBackground(runtimeMock, {
             action: 'GEMINI_ERROR',
             mangaTabId: mangaTab.id,
             index: 9,
             error: 'Falhou bonito',
+            jobId: 'job-error',
         }, { tab: { id: 5555 } });
 
         await flushFakeTimerRounds(6);
         const geminiError = await geminiErrorPromise;
         expect(geminiError.response).toEqual({ ok: true });
 
-        expect(forwardedMessages).toContainEqual({
+        expect(forwardedMessages).toContainEqual(expect.objectContaining({
             action: 'SHOW_ERROR_INTEGRATED',
             errorMsg: 'Falhou bonito',
             imgIndex: 9,
             isDebug: true,
-        });
+        }));
         expect(backgroundModule.__getState().activeJobsCount).toBe(0);
     });
 
@@ -249,7 +259,8 @@ describe('background.js - handlers onMessage reais', () => {
 
         try {
             runtimeMock._messageListeners = [];
-            global.self = { MangaTranslatorGtcFingerprint: fpApi };
+            global.self = global;
+            global.MangaTranslatorGtcFingerprint = fpApi;
             global.fetch = jest.fn(async () => ({
                 ok: true,
                 blob: async () => new Blob(['image-bytes'], { type: 'image/png' }),
@@ -293,6 +304,7 @@ describe('background.js - handlers onMessage reais', () => {
         } finally {
             global.fetch = originalFetch;
             global.self = originalSelf;
+            delete global.MangaTranslatorGtcFingerprint;
             global.createImageBitmap = originalCreateImageBitmap;
             global.OffscreenCanvas = originalOffscreenCanvas;
         }
