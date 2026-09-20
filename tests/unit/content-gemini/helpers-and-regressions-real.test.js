@@ -254,7 +254,7 @@ describe('content_gemini.js - helpers, delecao e regressao real', () => {
             sendMode: 'exact',
             promptPasteBehavior: 'insert',
             onSubmit: () => {
-                setTimeout(() => appendGeneratedImage('https://cdn.gemini.test/result-reg-03.png'), 25);
+                setTimeout(() => appendGeneratedImage('https://cdn.gemini.test/result-reg-03.png'), 1300);
             },
         });
 
@@ -291,7 +291,7 @@ describe('content_gemini.js - helpers, delecao e regressao real', () => {
             sendMode: 'exact',
             promptPasteBehavior: 'ignore',
             onSubmit: () => {
-                setTimeout(() => appendGeneratedImage('https://cdn.gemini.test/result-exec-command.png'), 25);
+                setTimeout(() => appendGeneratedImage('https://cdn.gemini.test/result-exec-command.png'), 1300);
             },
         });
 
@@ -334,7 +334,7 @@ describe('content_gemini.js - helpers, delecao e regressao real', () => {
             sendMode: 'exact',
             promptPasteBehavior: 'ignore',
             onSubmit: () => {
-                setTimeout(() => appendGeneratedImage('https://cdn.gemini.test/result-dom-direct.png'), 25);
+                setTimeout(() => appendGeneratedImage('https://cdn.gemini.test/result-dom-direct.png'), 1300);
             },
         });
 
