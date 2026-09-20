@@ -41,7 +41,8 @@ Como a extensão está em formato de código aberto, você pode carregá-la dire
 ```text
 ├── extension/                 # Código-fonte da extensão (Manifest V3)
 │   ├── manifest.json          # Manifesto da extensão
-│   ├── background.js          # Service worker central (fila, IPC, lifecycle)
+│   ├── background.js          # Bootstrap do Service Worker + wiring dos módulos
+│   ├── background/            # Router, estado, lifecycle, watchdog, reconciliação e actions
 │   ├── content_manga.js       # Content script injetado nas páginas de mangá
 │   ├── content_gemini.js      # Content script para automação na interface Gemini
 │   ├── gtc-fingerprint.js     # Hashing perceptual e extração de assinaturas
@@ -65,7 +66,9 @@ Como a extensão está em formato de código aberto, você pode carregá-la dire
 
 ## 🧪 Executando os Testes
 
-O projeto conta com suíte abrangente de testes unitários, de integração, visuais e de fumaça:
+O projeto conta com suíte abrangente de testes unitários, de integração, visuais, smoke e E2E.
+
+> **Baseline validado em 20/09/2026:** **81/81 suítes Jest (574/574 testes)** e **8/8 testes E2E Playwright**, sem flaky na execução final de referência. A pipeline também valida sintaxe recursiva dos scripts, Manifest V3, smoke/visual e cobertura.
 
 ### Testes de Fumaça (Smoke Tests)
 Validação ultrarrápida do ciclo de vida, transações IndexedDB e isolamento de lote:
@@ -90,6 +93,20 @@ Fluxos reais de ponta a ponta no Chromium com a extensão carregada (tradução 
 cd tests
 npm run test:e2e
 ```
+
+### CI e regressões de Service Worker
+
+A pipeline em `.github/workflows/ci.yml` trata Jest e E2E como gates funcionais reais: falhas não são mascaradas por `|| true` ou `continue-on-error`. O job E2E em `main` roda mesmo quando o job anterior falha, para expor simultaneamente regressões do navegador.
+
+Também existe um teste específico de carregamento em modo estrito (`tests/unit/background/background-strict-load.test.js`) para detectar exceções fatais durante o boot do Service Worker antes do registro dos listeners.
+
+---
+
+## 📚 Documentação Técnica
+
+A arquitetura, contratos IPC/storage, lifecycle MV3, histórico de refatoração, correções de Gemini/Reader e rastreabilidade dos commits estão consolidados em:
+
+- [`docs/DOCUMENTACAO_v5.1.1_ATUALIZACAO.md`](docs/DOCUMENTACAO_v5.1.1_ATUALIZACAO.md)
 
 ---
 
