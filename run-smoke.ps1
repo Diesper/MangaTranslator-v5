@@ -1,6 +1,6 @@
 <#
 .SYNOPSIS
-    Executa os testes de fumaça (smoke tests) do MangaTranslator v5.1.
+    Executa os testes de fumaça (smoke tests) do MangaTranslator v6.0.
 #>
 param(
     [Parameter(ValueFromRemainingArguments = $true)]
