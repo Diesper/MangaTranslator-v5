@@ -1222,7 +1222,10 @@ document.addEventListener('DOMContentLoaded', async () => {
         redoBtn.textContent = 'Refazer';
         redoBtn.title = 'Apagar a tradução salva desta imagem para gerar outra tradução depois';
         redoBtn.addEventListener('click', () => {
-            deleteSavedTranslationForEntry(entry);
+            deleteSavedTranslationForEntry(entry, {
+                refresh: renderSettingsSites,
+                showStatus: showSettingsStatus,
+            });
         });
 
         item.appendChild(preview);
