@@ -57,6 +57,7 @@ if (typeof importScripts === 'function') {
         importScripts('background/actions/open-manga-root.js');
         importScripts('background/actions/download-image.js');
         importScripts('background/actions/open-existing-folder.js');
+        importScripts('background/actions/download-chapter.js');
     } catch (e) {}
     try {
         // gtc-fingerprint.js expõe self.MangaTranslatorGtcFingerprint:
@@ -93,6 +94,7 @@ if (typeof importScripts === 'function') {
         require('./background/actions/open-manga-root.js');
         require('./background/actions/download-image.js');
         require('./background/actions/open-existing-folder.js');
+        require('./background/actions/download-chapter.js');
     } catch (e) {}
     try {
         gtcIndexedDbApi = require('./gtc-indexeddb.js');
@@ -339,7 +341,13 @@ function routeRegisteredAction(request, sender, sendResponse) {
 
     if (!registeredActionRouter) {
         registeredActionRouter = routerApi.createMessageRouter({
-            contextFactory: () => ({ state: legacyActionState, log, handleMarkerAndShow, waitForDownload }),
+            contextFactory: () => ({
+                state: legacyActionState,
+                log,
+                handleMarkerAndShow,
+                waitForDownload,
+                downloadImagesAndShow,
+            }),
         });
     }
 
