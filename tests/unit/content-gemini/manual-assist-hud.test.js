@@ -2,12 +2,12 @@
  * manual-assist-hud.test.js
  * ─────────────────────────────────────────────────────────────────────────────
  * Testa o painel flutuante de assistência manual (#mt-gemini-assist)
- * implementado em content_gemini.js (v5.0/v5.1).
+ * implementado em content_gemini.js na arquitetura atual.
  */
 
 const { loadContentGeminiModule } = require('../../helpers/load-content-gemini-module.js');
 
-describe('v5.1 Manual Assist HUD (#mt-gemini-assist) — content_gemini.js', () => {
+describe('v6.0 Manual Assist HUD (#mt-gemini-assist) — content_gemini.js', () => {
     let geminiMod;
 
     beforeEach(() => {
