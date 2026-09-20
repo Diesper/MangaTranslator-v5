@@ -165,7 +165,7 @@
                 return result;
             },
 
-            // ── queryPerceptual (v5.1.1) — consultas CORRELACIONADAS ────────
+            // ── queryPerceptual — consultas CORRELACIONADAS ─────────────────
             // A API antiga recebia duas listas independentes (wHashes, pHashes)
             // e fazia produto cruzado: o wHash da página A podia ser combinado
             // com o pHash da página B, devolvendo a tradução errada.
@@ -722,7 +722,7 @@
                 });
             },
 
-            // ── queryPerceptual (v5.1.1) — consultas CORRELACIONADAS ────────
+            // ── queryPerceptual — consultas CORRELACIONADAS ─────────────────
             //
             // Corrige três defeitos da API por listas:
             //   1. produto cruzado entre wHash de uma página e pHash de outra;
@@ -1065,7 +1065,7 @@
                 return true;
             }
 
-            // ── Consulta perceptual correlacionada (v5.1.1) ────────────────
+            // ── Consulta perceptual correlacionada ─────────────────────────
             // Substitui GTC_QUERY_BY_PERCEPTUAL/_CROP/_RELAXED por um contrato
             // único: cada consulta traz seu próprio par de hashes e dimensões,
             // e a resposta vem indexada por queryId.
