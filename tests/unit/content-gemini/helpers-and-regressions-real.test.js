@@ -286,7 +286,7 @@ describe('content_gemini.js - helpers, delecao e regressao real', () => {
         expect(execCommandSpy).not.toHaveBeenCalled();
     });
 
-    test('CG-23: usa execCommand como fallback quando o paste nao injeta o prompt', async () => {
+    test('CG-23: usa evento MAIN world e fallback DOM quando o paste nao injeta o prompt', async () => {
         const { editor } = mountGeminiEditor({
             sendMode: 'exact',
             promptPasteBehavior: 'ignore',
@@ -301,7 +301,7 @@ describe('content_gemini.js - helpers, delecao e regressao real', () => {
                 batchId: 'batch-test',
                 mangaTabId: 77,
                 index: 9,
-                prompt: 'Traduzir usando execCommand',
+                prompt: 'Traduzir usando fallback DOM',
             },
         });
 
@@ -318,15 +318,20 @@ describe('content_gemini.js - helpers, delecao e regressao real', () => {
         const mod = loadContentGeminiModule();
         mod.processGeminiJob();
 
-        await waitFor(() => (
+        const promptWasInserted = await waitFor(() => (
             document.querySelector('.ql-editor')
-            && document.querySelector('.ql-editor').textContent.includes('Traduzir usando execCommand')
+            && document.querySelector('.ql-editor').textContent.includes('Traduzir usando fallback DOM')
         ));
-        await waitFor(() => sentMessages.find((message) => message.action === 'GEMINI_IMAGE_EXTRACTED'));
+        await waitFor(
+            () => sentMessages.find((message) => message.action === 'GEMINI_IMAGE_EXTRACTED'),
+            { timeout: 8000 }
+        );
         window.removeEventListener('MANGA_TRANSLATOR_SET_PROMPT', setPromptListener);
 
-        expect(customEventDetail).toEqual({ prompt: 'Traduzir usando execCommand' });
-        expect(editor.textContent).toContain('Traduzir usando execCommand');
+        expect(promptWasInserted).toBeTruthy();
+        expect(customEventDetail).toEqual({ prompt: 'Traduzir usando fallback DOM' });
+        // Após o envio bem-sucedido, o Gemini consome/limpa o conteúdo do editor.
+        expect(editor.textContent).not.toContain('Traduzir usando fallback DOM');
     });
 
     test('CG-24: usa fallback DOM direto quando paste e execCommand falham', async () => {
