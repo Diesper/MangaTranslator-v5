@@ -5,7 +5,7 @@
   scope.MangaTranslatorRouter.registerAction({
     name: 'get-tab-id',
     meta: {
-      // O handler legado respondia para qualquer contexto da extensão.
+      // Contrato atual de compatibilidade: responde para qualquer contexto da extensão.
       allowedSources: ['any'],
       async: false,
     },
