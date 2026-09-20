@@ -701,14 +701,13 @@ async function stopBatch(request) {
     }
     log('warn', 'bg', 'BATCH_STOP', `Batch parado (batch: ${(targetBatchId || '').slice(0, 8)})`);
 
+    // O jobIndex é a fonte de verdade: o único ponto que cria um registro
+    // `gemini_job_*` (jobs-lifecycle.js) sempre chama indexAddJob() em seguida,
+    // e reconcileJobs() já reconstrói a contabilidade após reinício do worker
+    // usando exclusivamente o jobIndex persistido (sem varredura). Por isso o
+    // fallback de storage.get(null) foi removido — ver P3 do plano de
+    // refatoração (índice comprovadamente confiável).
     let entries = indexJobsOfBatch(targetBatchId);
-    if (entries.length === 0) {
-        const allStorage = await chrome.storage.local.get(null);
-        entries = Object.keys(allStorage)
-            .filter(key => key.startsWith('gemini_job_'))
-            .map(key => allStorage[key])
-            .filter(job => job && (!targetBatchId || job.batchId === targetBatchId));
-    }
 
     const keysToRemove = [];
     entries.forEach(entry => {
