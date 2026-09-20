@@ -41,4 +41,22 @@ describe('background/actions/report-error.js', () => {
         expect(finalizeJob).not.toHaveBeenCalled();
         expect(result).toEqual({ keepAlive: true, response: { ok: false, reason: 'sender_mismatch' } });
     });
+
+    test.each([
+        [{ action: 'GEMINI_ERROR', mangaTabId: 31, index: 4, error: 'Falhou' }, 'jobId é obrigatório'],
+        [{ action: 'GEMINI_ERROR', mangaTabId: 31, index: 4, error: '   ', jobId: 'job-4' }, 'erro inválido'],
+        [{ action: 'GEMINI_ERROR', mangaTabId: 31, index: 4, error: 'x'.repeat(4097), jobId: 'job-4' }, 'erro inválido'],
+    ])('rejeita payload inválido antes de reidratar ou finalizar', async (request, message) => {
+        const router = loadRouter();
+        const ensureInitialized = jest.fn();
+        const finalizeJob = jest.fn();
+        const result = await dispatch(router.createMessageRouter({ contextFactory: () => ({
+            state: {}, ensureInitialized, finalizeJob, assertJobOwnership: jest.fn(), storage: { get: jest.fn() },
+        }) }), request, { tab: { id: 17, url: 'https://gemini.google.com/app' } });
+
+        expect(ensureInitialized).not.toHaveBeenCalled();
+        expect(chrome.tabs.sendMessage).not.toHaveBeenCalled();
+        expect(finalizeJob).not.toHaveBeenCalled();
+        expect(result.response).toEqual({ ok: false, error: { code: 'INVALID_PAYLOAD', message } });
+    });
 });
