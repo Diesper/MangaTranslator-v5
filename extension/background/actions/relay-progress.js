@@ -6,7 +6,7 @@ scope.MangaTranslatorRouter.registerAction({
   name: 'relay-progress',
 
   meta: {
-    // O fallback sem aba remetente existe no fluxo legado de recuperação.
+    // O fallback sem aba remetente permanece por compatibilidade com o fluxo de recuperação.
     allowedSources: ['any'],
   },
 
