@@ -42,7 +42,7 @@ describe('RD-01/RD-02/RD-03/RD-04/RD-05/RD-06/RD-07/RD-08/RD-09/RD-10/RD-11/RD-1
         expect(document.getElementById('read-progress-fill').style.width).toBe('50%');
         expect(document.querySelectorAll('.reader-page-wrap')).toHaveLength(2);
         expect(document.querySelectorAll('.reader-page-wrap img')).toHaveLength(2);
-        expect(document.querySelector('.page-label').textContent).toBe('1');
+        expect(document.querySelector('.page-label').textContent).toBe('Página 1');
     });
 
     test('usa largura salva no localStorage e persiste nova largura ao mover o slider', async () => {
