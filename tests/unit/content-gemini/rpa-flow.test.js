@@ -280,7 +280,7 @@ describe('content_gemini.js - RPA real do Gemini', () => {
             onSubmit: () => {
                 setTimeout(() => {
                     appendGeneratedImage('https://cdn.gemini.test/result-001.png?token=signed-secret');
-                }, 25);
+                }, 1300);
             },
         });
 
@@ -338,7 +338,7 @@ describe('content_gemini.js - RPA real do Gemini', () => {
             onSubmit: () => {
                 setTimeout(() => {
                     appendGeneratedImage('blob:generated-result');
-                }, 25);
+                }, 1300);
             },
         });
 
@@ -373,7 +373,7 @@ describe('content_gemini.js - RPA real do Gemini', () => {
             onSubmit: () => {
                 setTimeout(() => {
                     appendGeneratedImage('https://cdn.gemini.test/result-fallback-prompt.png');
-                }, 25);
+                }, 1300);
             },
         });
 
@@ -468,7 +468,7 @@ describe('content_gemini.js - RPA real do Gemini', () => {
             onSubmit: () => {
                 setTimeout(() => {
                     appendGeneratedImage('https://cdn.gemini.test/result-fallback.png');
-                }, 25);
+                }, 1300);
             },
         });
         editor.dispatchEvent = jest.fn(editor.dispatchEvent.bind(editor));
