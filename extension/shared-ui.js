@@ -124,7 +124,7 @@ function sendRuntimeMessageSafe(message, callback) {
     }
 }
 
-function deleteSavedTranslationForEntry(entry) {
+function deleteSavedTranslationForEntry(entry, ui = {}) {
     if (!entry || !entry.cleanUrl) return;
     if (!confirm(`Apagar a tradução salva desta imagem?\n\nDepois disso, selecione/traduza a imagem novamente para gerar a versão correta.`)) return;
 
@@ -180,8 +180,7 @@ function deleteSavedTranslationForEntry(entry) {
             action: 'GTC_DELETE_BY_CLEAN_URL',
             cleanUrl: entry.cleanUrl,
         }, (_response, error) => {
-            if (typeof renderSites === 'function') renderSites();
-            else if (typeof renderSettingsSites === 'function') renderSettingsSites();
+            if (typeof ui.refresh === 'function') ui.refresh();
             
             const smOk = smResult && smResult.ok;
             const msg = error
@@ -191,12 +190,12 @@ function deleteSavedTranslationForEntry(entry) {
                         : 'Tradução apagada do storage local. Armazenamento novo não respondeu.');
             const color = error || !smOk ? '#FF9800' : '#4CAF50';
             
-            if (typeof showStatus === 'function') showStatus(msg, color);
-            else if (typeof showSettingsStatus === 'function') showSettingsStatus(msg, color);
+            if (typeof ui.showStatus === 'function') ui.showStatus(msg, color);
         });
     })().catch(() => {
-        if (typeof showStatus === 'function') showStatus('Falha ao apagar a tradução salva.', '#FF9800');
-        else if (typeof showSettingsStatus === 'function') showSettingsStatus('Falha ao apagar a tradução salva.', '#FF9800');
+        if (typeof ui.showStatus === 'function') {
+            ui.showStatus('Falha ao apagar a tradução salva.', '#FF9800');
+        }
     });
 }
 
