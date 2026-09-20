@@ -1748,29 +1748,32 @@ if (!window.__manga_translator_content_injected) {
                         const width  = newImg.naturalWidth  || img.naturalWidth  || 0;
                         const height = newImg.naturalHeight || img.naturalHeight || 0;
 
+                        // O GTC é um cache global independente da persistência
+                        // da página/capítulo. Não o deixe atrás de SM_SAVE_PAGE:
+                        // uma falha transitória no storage de assets não deve
+                        // desperdiçar uma tradução que já foi entregue ao DOM.
+                        if (origHash) {
+                            saveGlobalTranslationCacheEntry(origHash, request.newSrc, {
+                                dHash:              origDHash,
+                                wHash:              origWHash,
+                                pHash:              origPHash,
+                                wHashCrop:          origWHashCrop,
+                                pHashCrop:          origPHashCrop,
+                                regionalHashes:     origRegional,
+                                cleanUrl:           origCleanUrl,
+                                width,
+                                height,
+                                mimeType:           (request.newSrc.match(/^data:([^;]+);/) || [])[1] || null,
+                                fingerprintVersion: origFpVersion,
+                            }).catch(() => {});
+                        }
+
                         persistPromise = persistTranslatedPage(request.index, request.newSrc, {
                             cleanUrl:  origCleanUrl,
                             sourceUrl: origSourceUrl,
                             width,
                             height,
                         }).then(({ chapterId, chapter }) => {
-                            // Salva no GTC com TODOS os hashes disponíveis (visual-v3/v4).
-                            // Canal separado (IndexedDB do background): não bloqueia o ACK.
-                            if (origHash) {
-                                saveGlobalTranslationCacheEntry(origHash, request.newSrc, {
-                                    dHash:              origDHash,
-                                    wHash:              origWHash,
-                                    pHash:              origPHash,
-                                    wHashCrop:          origWHashCrop,
-                                    pHashCrop:          origPHashCrop,
-                                    regionalHashes:     origRegional,
-                                    cleanUrl:           origCleanUrl,
-                                    width,
-                                    height,
-                                    mimeType:           (request.newSrc.match(/^data:([^;]+);/) || [])[1] || null,
-                                    fingerprintVersion: origFpVersion,
-                                }).catch(() => {});
-                            }
 
                             chrome.storage.local.get(['autoDownload'], (settings) => {
                                 if (settings.autoDownload !== true) return;
