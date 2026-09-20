@@ -13,6 +13,7 @@ const {
     matchPerceptualHashesRelaxed,
     matchRegionalHashes,
     createFingerprintFromDescriptor,
+    generateId,
     WHASH_MATCH_THRESHOLD_RELAXED,
     PHASH_MATCH_THRESHOLD_RELAXED,
     WHASH_REJECT_THRESHOLD_RELAXED,
@@ -120,16 +121,16 @@ describe('gtc-fingerprint.js', () => {
             await expect(hashStringSha256('', deps)).resolves.toBe(sha256Utf8(''));
         });
 
-        test('FP-15 falha com mensagem clara quando crypto nao esta disponivel', async () => {
+        test('FP-15 usa SHA-256 puro quando crypto nao esta disponivel', async () => {
             await expect(
                 hashStringSha256('test', { cryptoImpl: null, TextEncoderImpl: TextEncoder })
-            ).rejects.toThrow('SHA-256 dependencies are unavailable');
+            ).resolves.toBe(sha256Utf8('test'));
         });
 
-        test('FP-16 falha com mensagem clara quando TextEncoder nao esta disponivel', async () => {
+        test('FP-16 usa SHA-256 puro quando TextEncoder nao esta disponivel', async () => {
             await expect(
                 hashStringSha256('test', { cryptoImpl: crypto.webcrypto, TextEncoderImpl: null })
-            ).rejects.toThrow('SHA-256 dependencies are unavailable');
+            ).resolves.toBe(sha256Utf8('test'));
         });
 
         test('FP-17 aceita input null e aplica String(null) sem crash', async () => {
@@ -139,6 +140,28 @@ describe('gtc-fingerprint.js', () => {
         test('FP-18 preserva UTF-8 para caracteres Unicode', async () => {
             const input = 'áé漢字';
             await expect(hashStringSha256(input, deps)).resolves.toBe(sha256Utf8(input));
+        });
+    });
+
+    describe('generateId()', () => {
+        test('FP-19 usa UUID v4 gerado por getRandomValues sem randomUUID', () => {
+            const cryptoImpl = {
+                getRandomValues(bytes) {
+                    bytes.fill(0xAB);
+                    return bytes;
+                },
+            };
+
+            expect(generateId('chap_', { cryptoImpl })).toBe('chap_abababab-abab-4bab-abab-abababababab');
+        });
+
+        test('FP-20 permanece único e compatível sem nenhuma API crypto', () => {
+            const first = generateId('batch_', { cryptoImpl: null });
+            const second = generateId('batch_', { cryptoImpl: null });
+
+            expect(first).toMatch(/^batch_[a-z0-9]+-[a-z0-9]+-[a-z0-9]+$/);
+            expect(second).toMatch(/^batch_[a-z0-9]+-[a-z0-9]+-[a-z0-9]+$/);
+            expect(second).not.toBe(first);
         });
     });
 
