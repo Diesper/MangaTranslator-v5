@@ -13,6 +13,11 @@ if (!window.__manga_translator_content_injected) {
         chrome.runtime.sendMessage({ action: 'LOG_ENTRY', level, source: 'manga', action_name, detail, extra }, () => { if (chrome.runtime.lastError) {} });
     }
 
+    const domReplaceApi = window.MangaTranslatorDomReplace;
+    if (!domReplaceApi) {
+        throw new Error('cm-dom-replace.js deve ser carregado antes de content_manga.js');
+    }
+
     const gtcFingerprintApi =
         (typeof window !== 'undefined' && window.MangaTranslatorGtcFingerprint)
         || (typeof self !== 'undefined' && self.MangaTranslatorGtcFingerprint)
@@ -84,50 +89,9 @@ if (!window.__manga_translator_content_injected) {
     let _countedJobIndices = new Set();
     let _currentBatchId = null;
 
-    function getCleanUrl(rawUrl) {
-        if (!rawUrl || rawUrl.startsWith('data:') || rawUrl.startsWith('blob:')) return null;
-        try {
-            const base = (window.location && (window.location.origin || window.location.href))
-                || document.baseURI
-                || 'https://manga-translator.invalid/';
-            const url = new URL(rawUrl, base);
-
-            if (url.hostname === 'preview.redd.it' || url.hostname === 'external-preview.redd.it') {
-                const m = url.pathname.match(/[-]([a-z0-9]{8,})(\.[a-z]+)$/i);
-                if (m) return `https://i.redd.it/${m[1]}${m[2].toLowerCase()}`;
-                return `https://i.redd.it${url.pathname}`.toLowerCase();
-            }
-
-            if (url.hostname === 'i.redd.it') {
-                return `${url.protocol}//${url.hostname}${url.pathname}`.toLowerCase();
-            }
-
-            if (url.hostname.includes('imgur.com')) {
-                const cleanedPath = url.pathname.replace(/([a-zA-Z0-9]{5,})[bmlhts](\.[a-z]+)$/i, '$1$2');
-                return `${url.protocol}//${url.hostname}${cleanedPath}`.toLowerCase();
-            }
-
-            const resizeParams = [
-                'width', 'w', 'h', 'height', 'size',
-                'quality', 'q', 'format', 'auto', 'crop',
-                'fit', 'resize', 'scale', 'dpr',
-                'webp', 'avif', 'thumb', 'thumbnail',
-                'tr', 'im',
-            ];
-            let changed = false;
-            resizeParams.forEach(param => {
-                if (url.searchParams.has(param)) {
-                    url.searchParams.delete(param);
-                    changed = true;
-                }
-            });
-
-            const query = changed && url.search ? url.search : '';
-            return `${url.protocol}//${url.host}${url.pathname}${query}`.toLowerCase();
-        } catch(e) {
-            return String(rawUrl).split('?')[0].split('#')[0].toLowerCase();
-        }
-    }
+    // Mantém os pontos de chamada do pipeline enquanto a implementação DOM
+    // permanece isolada em cm-dom-replace.js.
+    const getCleanUrl = domReplaceApi.getCleanUrl;
 
     // ── generateImageFingerprint (visual-v3) ─────────────────────────────────
     //
@@ -525,6 +489,23 @@ if (!window.__manga_translator_content_injected) {
         return result.match;
     }
 
+    // The GTC implementation is injected immediately before this script. Keep
+    // these local bindings so the rest of this legacy content script preserves
+    // its existing call sites while the cache boundary lives in one module.
+    const cmGtcClient = window.MangaTranslatorGtcClient;
+    if (!cmGtcClient) {
+        throw new Error('MangaTranslatorGtcClient was not loaded before content_manga.js');
+    }
+    generateImageFingerprint = cmGtcClient.generateImageFingerprint;
+    queryGlobalTranslationCache = cmGtcClient.queryGlobalTranslationCache;
+    queryGlobalTranslationCacheByDHash = cmGtcClient.queryGlobalTranslationCacheByDHash;
+    queryGlobalTranslationCacheByPerceptual = cmGtcClient.queryGlobalTranslationCacheByPerceptual;
+    queryPerceptualCorrelated = cmGtcClient.queryPerceptualCorrelated;
+    queryGlobalTranslationCacheByPerceptualCrop = cmGtcClient.queryGlobalTranslationCacheByPerceptualCrop;
+    queryGlobalTranslationCacheByPerceptualRelaxed = cmGtcClient.queryGlobalTranslationCacheByPerceptualRelaxed;
+    saveGlobalTranslationCacheEntry = cmGtcClient.saveGlobalTranslationCacheEntry;
+    confirmWithRegionalHashes = cmGtcClient.confirmWithRegionalHashes;
+
     if (window.location.hostname.includes('googleusercontent.com') || window.location.hostname.includes('google.com')) {
         chrome.runtime.sendMessage({ action: 'CHECK_IF_EXTRACTION_TAB' }, (response) => {
             if (response && response.isExtractionTab) {
@@ -581,6 +562,7 @@ if (!window.__manga_translator_content_injected) {
             disabledSites: [],
             blockedImages: {},
         };
+        let autoRestorer = null;
 
         function normalizeBlockedImagesStore(value) {
             if (Array.isArray(value)) {
@@ -903,198 +885,11 @@ if (!window.__manga_translator_content_injected) {
             }
         }
 
-        function isBackdropOrBlurredImage(img) {
-            if (!img) return false;
-            try {
-                // 1. Atributo aria-hidden no próprio elemento ou em ancestrais
-                if (img.getAttribute('aria-hidden') === 'true' || (img.closest && img.closest('[aria-hidden="true"]'))) {
-                    return true;
-                }
-
-                // 2. Classes indicadoras no elemento ou em ancestrais imediatos
-                const backdropClassRegex = /(^|\s|__|-)(blur|backdrop|ambient|shreddit-aspect-ratio__blur|media-lightbox-img-background|preview-blur)($|\s|__|-)/i;
-                let current = img;
-                let depth = 0;
-                while (current && depth < 5 && current !== document.body) {
-                    const className = typeof current.className === 'string' ? current.className : '';
-                    if (backdropClassRegex.test(className)) {
-                        return true;
-                    }
-                    if (current.hasAttribute && (current.hasAttribute('ambient') || current.hasAttribute('backdrop'))) {
-                        return true;
-                    }
-                    current = current.parentElement;
-                    depth++;
-                }
-
-                // 3. Estilos computados ou inline de desfoque e pointer-events
-                const compStyle = window.getComputedStyle ? window.getComputedStyle(img) : null;
-                if (compStyle) {
-                    const filter = compStyle.filter || '';
-                    const backdropFilter = compStyle.backdropFilter || '';
-                    if (filter.includes('blur') || backdropFilter.includes('blur')) {
-                        return true;
-                    }
-                    if (compStyle.pointerEvents === 'none' && (filter !== 'none' || (img.style && img.style.filter && img.style.filter.includes('blur')))) {
-                        return true;
-                    }
-                }
-            } catch (_e) {}
-            return false;
-        }
-
-        function getScanEligibleImages(banned = []) {
-            const allImgs = Array.from(document.querySelectorAll('img'));
-            const candidates = [];
-
-            allImgs.forEach((img, index) => {
-                if (
-                    img.naturalWidth >= 300 &&
-                    img.naturalHeight >= 400 &&
-                    img.dataset.translated !== 'true' &&
-                    !banned.includes(img.src)
-                ) {
-                    const rawUrl = img.getAttribute('src') || img.dataset.src || img.dataset.lazySrc || img.getAttribute('data-original') || img.src || '';
-                    const cleanUrl = getCleanUrl(rawUrl);
-                    const isBackdrop = isBackdropOrBlurredImage(img);
-                    candidates.push({
-                        element: img,
-                        index,
-                        src: img.src,
-                        cleanUrl,
-                        width: img.naturalWidth,
-                        height: img.naturalHeight,
-                        isBackdrop
-                    });
-                }
-            });
-
-            // Agrupa por cleanUrl (ou src) para deduplicação inteligente
-            const urlGroups = new Map();
-            candidates.forEach(cand => {
-                const key = cand.cleanUrl || cand.src;
-                if (!urlGroups.has(key)) urlGroups.set(key, []);
-                urlGroups.get(key).push(cand);
-            });
-
-            const finalValid = [];
-            for (const [key, group] of urlGroups.entries()) {
-                if (group.length === 1) {
-                    const single = group[0];
-                    if (single.isBackdrop && single.element.getAttribute('aria-hidden') === 'true') {
-                        continue;
-                    }
-                    finalValid.push(single);
-                } else {
-                    // Múltiplas imagens com a mesma URL (Reddit: backdrop + imagem nítida principal)
-                    const nonBackdrops = group.filter(c => !c.isBackdrop);
-                    if (nonBackdrops.length > 0) {
-                        const primary = nonBackdrops.find(c => {
-                            try { return window.getComputedStyle(c.element).pointerEvents !== 'none'; } catch(e) { return true; }
-                        }) || nonBackdrops[0];
-                        finalValid.push(primary);
-                    } else {
-                        finalValid.push(group[group.length - 1]);
-                    }
-                }
-            }
-
-            finalValid.sort((a, b) => a.index - b.index);
-
-            return finalValid.map(c => ({
-                index: c.index,
-                src: c.src,
-                width: c.width,
-                height: c.height
-            }));
-        }
-
-        function applyImageReplacement(img, translatedBase64, fromCache = false) {
-            if (!img || !translatedBase64 || img.dataset.translated === 'true') return null;
-            if (!img.parentNode) {
-                sendLog('warn', 'REPLACE_DETACHED', 'Imagem desconectada do DOM, ignorando', {});
-                return null;
-            }
-
-            const rawOrigUrl = img.getAttribute('src') || img.dataset.src || img.dataset.lazySrc || img.getAttribute('data-original') || img.src || '';
-            const origCleanUrl = getCleanUrl(rawOrigUrl);
-
-            const pictureParent = img.closest('picture');
-            if (pictureParent) pictureParent.querySelectorAll('source').forEach(s => s.remove());
-            ['loading','data-src','data-lazy','data-original','srcset','sizes'].forEach(a => img.removeAttribute(a));
-            if (img.dataset.src) delete img.dataset.src;
-            if (img.dataset.lazySrc) delete img.dataset.lazySrc;
-
-            const newImg = img.cloneNode(true);
-            newImg.src = translatedBase64;
-            newImg.dataset.translated = 'true';
-
-            // Remove classes e atributos de blur da imagem traduzida
-            try {
-                const classesToRemove = [];
-                newImg.classList.forEach(cls => {
-                    if (/blur|backdrop/i.test(cls)) classesToRemove.push(cls);
-                });
-                classesToRemove.forEach(cls => newImg.classList.remove(cls));
-            } catch (_e) {}
-
-            // Solução v3.1: z-index relativo moderado para não quebrar stacking context nem sobrepor a tela
-            try {
-                const currPosition = window.getComputedStyle(img).position;
-                if (currPosition === 'static') {
-                    newImg.style.setProperty('position', 'relative', 'important');
-                }
-            } catch (_e) {}
-
-            newImg.style.setProperty('z-index', '2', 'important');
-            newImg.style.setProperty('filter', 'none', 'important');
-            newImg.style.setProperty('backdrop-filter', 'none', 'important');
-            newImg.style.setProperty('visibility', 'visible', 'important');
-            newImg.style.setProperty('opacity', '1', 'important');
-            newImg.style.setProperty('background', 'transparent', 'important');
-            img.parentNode.replaceChild(newImg, img);
-
-            // Sincronização do Backdrop Gêmeo (Twin Backdrop Sync - Reddit e similares)
-            if (origCleanUrl) {
-                try {
-                    const allDomImgs = document.querySelectorAll('img');
-                    for (const twin of allDomImgs) {
-                        if (twin !== newImg && twin !== img && twin.dataset.translated !== 'true') {
-                            const twinRaw = twin.getAttribute('src') || twin.dataset.src || twin.dataset.lazySrc || twin.getAttribute('data-original') || twin.src || '';
-                            if (getCleanUrl(twinRaw) === origCleanUrl && isBackdropOrBlurredImage(twin)) {
-                                twin.src = translatedBase64;
-                                twin.dataset.translated = 'true';
-                                twin.style.setProperty('z-index', '0', 'important');
-                                twin.style.setProperty('pointer-events', 'none', 'important');
-                            }
-                        }
-                    }
-                } catch (_e) {}
-            }
-
-            const flashColor = fromCache ? 'rgba(76,175,80,0.5)' : 'rgba(200,30,30,0.55)';
-            const flashDuration = fromCache ? 1200 : 2300;
-            (function runFlash(targetImg) {
-                const overlay = document.createElement('div');
-                document.body.appendChild(overlay);
-                function positionOverlay() {
-                    const r = targetImg.getBoundingClientRect();
-                    overlay.style.top = r.top + 'px'; overlay.style.left = r.left + 'px';
-                    overlay.style.width = r.width + 'px'; overlay.style.height = r.height + 'px';
-                }
-                overlay.style.cssText = `position:fixed;background:${flashColor};border-radius:3px;z-index:2147483646;pointer-events:none;opacity:0;transition:opacity 0.35s ease;`;
-                positionOverlay();
-                const onScroll = () => positionOverlay();
-                window.addEventListener('scroll', onScroll, { passive: true });
-                requestAnimationFrame(() => { requestAnimationFrame(() => { overlay.style.opacity = '1'; }); });
-                setTimeout(() => {
-                    overlay.style.transition = 'opacity 0.7s ease'; overlay.style.opacity = '0';
-                    setTimeout(() => { window.removeEventListener('scroll', onScroll); overlay.remove(); }, 720);
-                }, flashDuration);
-            })(newImg);
-
-            return newImg;
-        }
+        const isBackdropOrBlurredImage = domReplaceApi.isBackdropOrBlurredImage;
+        const getScanEligibleImages = domReplaceApi.getScanEligibleImages;
+        const applyImageReplacement = (img, translatedBase64, fromCache = false) => (
+            domReplaceApi.applyImageReplacement(img, translatedBase64, fromCache, { sendLog })
+        );
 
         // ── applyAutoRestore ─────────────────────────────────────────────────
         // O mapa agora guarda { assetId, index }. Primeiro descobrimos QUAIS
@@ -1217,6 +1012,10 @@ if (!window.__manga_translator_content_injected) {
             || null;
         if (storageChanged && typeof storageChanged.addListener === 'function') {
             storageChanged.addListener((changes, areaName) => {
+                if (autoRestorer) {
+                    autoRestorer.onStorageChanged(changes, areaName);
+                    return;
+                }
                 if (!isActiveContentInstance()) return;
                 if (areaName && areaName !== 'local') return;
                 const watched = ['autoRestoreEnabled', 'autoRestoreDisabledSites', 'autoRestoreBlockedImages'];
@@ -1803,105 +1602,44 @@ if (!window.__manga_translator_content_injected) {
             });
         }
 
-        // ── Escritor serializado (chaves legadas que seguem em storage.local) ─
-        //
-        // As páginas traduzidas migraram para o IndexedDB da extensão, gerenciado
-        // pelo background (storage-manager.js). Restaram em chrome.storage.local
-        // apenas chaves pequenas — `_paths`, `_dlId` — que ainda sofrem o padrão
-        // ler→alterar→gravar. Esta fila mantém esse caminho livre de corrida.
-        const _chapterWriteQueues = new Map();
+        const chapterApi = window.MangaTranslatorChapter;
+        if (!chapterApi) throw new Error('cm-chapter.js deve ser carregado antes de content_manga.js');
+        const chapterManager = chapterApi.createChapterManager({
+            hostname,
+            generateId: generateContentId,
+            sendRuntimeMessageAsync,
+            onRestoreEntry: (cleanUrl, entry) => {
+                _activeRestoreMap[cleanUrl] = entry;
+                if (autoRestorer) autoRestorer.setEntry(cleanUrl, entry);
+            },
+        });
+        const enqueueChapterWrite = chapterManager.enqueueChapterWrite;
+        const storageGetAsync = chapterManager.storageGetAsync;
+        const storageSetAsync = chapterManager.storageSetAsync;
+        const cacheAsset = chapterManager.cacheAsset;
+        const resolveRestoreAsset = chapterManager.resolveRestoreAsset;
+        const getOrCreateChapterId = chapterManager.getOrCreateChapterId;
+        const persistTranslatedPage = chapterManager.persistTranslatedPage;
 
-        function enqueueChapterWrite(chapterId, task) {
-            const previous = _chapterWriteQueues.get(chapterId) || Promise.resolve();
-            // A fila nunca deve travar por causa de uma falha anterior:
-            // seguimos para a próxima tarefa tanto no sucesso quanto no erro.
-            const next = previous.then(() => task(), () => task());
-            _chapterWriteQueues.set(chapterId, next.catch(() => {}));
-            return next;
-        }
-
-        function storageGetAsync(keys) {
-            return new Promise((resolve, reject) => {
-                chrome.storage.local.get(keys, (data) => {
-                    if (chrome.runtime.lastError) reject(new Error(chrome.runtime.lastError.message));
-                    else resolve(data || {});
-                });
-            });
-        }
-
-        function storageSetAsync(items) {
-            return new Promise((resolve, reject) => {
-                chrome.storage.local.set(items, () => {
-                    if (chrome.runtime.lastError) reject(new Error(chrome.runtime.lastError.message));
-                    else resolve();
-                });
-            });
-        }
-
-        // ── Cache LRU de assets resolvidos ───────────────────────────────────
-        // O mapa de auto-restore agora guarda apenas assetIds. O Base64 de uma
-        // página só entra na memória quando aquela imagem específica aparece no
-        // DOM — o consumo passa a depender da janela visível, não do capítulo.
-        const _assetCache = new Map();
-        const ASSET_CACHE_MAX = 12;
-
-        function cacheAsset(assetId, dataUrl) {
-            if (!assetId || !dataUrl) return dataUrl;
-            _assetCache.delete(assetId);
-            _assetCache.set(assetId, dataUrl);
-            while (_assetCache.size > ASSET_CACHE_MAX) {
-                _assetCache.delete(_assetCache.keys().next().value);
-            }
-            return dataUrl;
-        }
-
-        async function resolveRestoreAsset(entry) {
-            if (!entry) return null;
-            if (typeof entry === 'string') return entry; // formato legado em memória
-            if (!entry.assetId) return null;
-            if (_assetCache.has(entry.assetId)) return _assetCache.get(entry.assetId);
-            const resp = await sendRuntimeMessageAsync({ action: 'SM_GET_ASSET', assetId: entry.assetId });
-            if (!resp || !resp.ok || !resp.dataUrl) return null;
-            return cacheAsset(entry.assetId, resp.dataUrl);
-        }
-
-        // ── persistTranslatedPage ────────────────────────────────────────────
-        // O content script não grava mais direto no storage. Ele entrega o
-        // resultado ao background, que é o dono único da persistência e escreve
-        // asset + página + restore numa transação atômica do IndexedDB.
-        // A Promise só resolve quando o background confirma — é isso que
-        // autoriza o ACK de volta para o job.
-        function persistTranslatedPage(pageIndex, dataUrl, meta = {}) {
-            return getOrCreateChapterId().then(async (chapterId) => {
-                const resp = await sendRuntimeMessageAsync({
-                    action:      'SM_SAVE_PAGE',
-                    chapterId,
-                    pageIndex,
-                    dataUrl,
-                    originalUrl: meta.sourceUrl || '',
-                    cleanUrl:    meta.cleanUrl  || '',
-                    meta: {
-                        host:      hostname,
-                        width:     meta.width  || 0,
-                        height:    meta.height || 0,
-                        sourceUrl: meta.sourceUrl || '',
-                    },
-                });
-
-                if (!resp || !resp.ok) {
-                    throw new Error((resp && resp.error) || 'SM_SAVE_PAGE não confirmou a gravação');
-                }
-
-                if (meta.cleanUrl && resp.assetId) {
-                    _activeRestoreMap[meta.cleanUrl] = { assetId: resp.assetId, index: pageIndex };
-                    cacheAsset(resp.assetId, dataUrl);
-                }
-
-                const listData = await storageGetAsync(['chapterList']);
-                const chapter = (listData.chapterList || []).find(c => c.id === chapterId) || null;
-                return { chapterId, chapter, assetId: resp.assetId };
-            });
-        }
+        const autoRestoreApi = window.MangaTranslatorAutoRestore;
+        if (!autoRestoreApi) throw new Error('cm-auto-restore.js deve ser carregado antes de content_manga.js');
+        autoRestorer = autoRestoreApi.createAutoRestorer({
+            hostname,
+            isActive: isActiveContentInstance,
+            isTranslating: () => isTranslating,
+            getChapterId: getOrCreateChapterId,
+            resolveAsset: resolveRestoreAsset,
+            getCleanUrl,
+            isBackdropOrBlurredImage,
+            applyImageReplacement,
+            sendRuntimeMessageAsync,
+            sendLog,
+        });
+        loadAutoRestoreConfig = autoRestorer.loadConfig;
+        isAutoRestoreAllowedFor = autoRestorer.isAllowed;
+        disconnectAutoRestorer = autoRestorer.disconnect;
+        applyAutoRestore = autoRestorer.apply;
+        initializeAutoRestorer = autoRestorer.initialize;
 
         // ── _persistCacheHit ─────────────────────────────────────────────────
         // Cache hits também geram entrada de restore agora (antes só gravavam a
@@ -1917,54 +1655,6 @@ if (!window.__manga_translator_content_injected) {
                 width:     imgEl ? (imgEl.naturalWidth  || 0) : 0,
                 height:    imgEl ? (imgEl.naturalHeight || 0) : 0,
             }).catch(() => {});
-        }
-
-        function canonicalTitle(t) {
-            return (t || '')
-                .replace(/^\d+[\s.\-–—:|]+/, '')          
-                .replace(/[|–—•·\[\]()\u00AB\u00BB]/g, ' ') 
-                .replace(/\s*[-:]\s*$/, '')                 
-                .replace(/\s{2,}/g, ' ')                    
-                .trim()
-                .toLowerCase()
-                .slice(0, 80);                              
-        }
-
-        let _chapterIdPromise = null;
-        let _chapterIdUrl = null;
-        function getOrCreateChapterId() {
-            if (_chapterIdUrl !== window.location.href) {
-                _chapterIdPromise = null;
-                _chapterIdUrl = window.location.href;
-            }
-            if (!_chapterIdPromise) {
-                _chapterIdPromise = _getOrCreateChapterIdImpl().catch(e => { _chapterIdPromise = null; throw e; });
-            }
-            return _chapterIdPromise;
-        }
-
-        function _getOrCreateChapterIdImpl() {
-            return new Promise((resolve, reject) => {
-                chrome.storage.local.get(['chapterList'], (data) => {
-                    if (chrome.runtime.lastError) { reject(new Error(`storage.get falhou: ${chrome.runtime.lastError.message}`)); return; }
-                    let list = data.chapterList || [];
-                    let chapter = list.find(c => c.url === window.location.href);
-                    if (!chapter) {
-                        chapter = list.find(c => {
-                            if (!c.url) return false;
-                            try { return new URL(c.url).hostname === window.location.hostname && canonicalTitle(c.title || '').replace(/[^a-z0-9]/gi, '_') === canonicalTitle(document.title || 'Capítulo sem título').replace(/[^a-z0-9]/gi, '_'); } catch { return false; }
-                        });
-                        if (chapter) { chapter.url = window.location.href; chapter.title = canonicalTitle(document.title || 'Capítulo sem título'); chrome.storage.local.set({ chapterList: list }); }
-                    }
-                    if (chapter) { resolve(chapter.id); return; }
-                    let newId = generateContentId('chap_');
-                    list.push({ id: newId, url: window.location.href, title: canonicalTitle(document.title || 'Capítulo sem título'), timestamp: Date.now() });
-                    chrome.storage.local.set({ chapterList: list }, () => {
-                        if (chrome.runtime.lastError) { reject(new Error(`storage.set falhou: ${chrome.runtime.lastError.message}`)); return; }
-                        resolve(newId);
-                    });
-                });
-            });
         }
 
         function checkIfComplete(force = false, jobIndex = null) {

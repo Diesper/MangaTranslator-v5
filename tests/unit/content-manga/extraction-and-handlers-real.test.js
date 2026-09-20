@@ -17,6 +17,8 @@ Object.defineProperty(global, 'crypto', {
 global.TextEncoder = TextEncoder;
 
 const CONTENT_MANGA_PATH = path.join(ROOT, 'extension/content_manga.js');
+const CM_GTC_CLIENT_PATH = path.join(ROOT, 'extension/cm-gtc-client.js');
+const CM_DOM_REPLACE_PATH = path.join(ROOT, 'extension/cm-dom-replace.js');
 const { loadContentScript } = require(path.join(ROOT, 'tests/helpers/load-content-script.js'));
 const { getRuntimeMock, getStorageMock } = require(path.join(ROOT, 'tests/mocks/chrome-api.mock.js'));
 
@@ -149,6 +151,8 @@ describe('CM-21/CM-22/CM-23/CM-24/CM-25/CM-26/CM-27/CM-28/CM-99/CM-100/CM-102/CM
         });
 
         jest.isolateModules(() => {
+            require(CM_GTC_CLIENT_PATH);
+            require(CM_DOM_REPLACE_PATH);
             require(CONTENT_MANGA_PATH);
         });
 

@@ -24,6 +24,10 @@ const ROOT = _findRoot(__dirname);
 
 
 const GTC_FINGERPRINT_PATH = path.join(ROOT, 'extension/gtc-fingerprint.js');
+const CM_GTC_CLIENT_PATH = path.join(ROOT, 'extension/cm-gtc-client.js');
+const CM_DOM_REPLACE_PATH = path.join(ROOT, 'extension/cm-dom-replace.js');
+const CM_CHAPTER_PATH = path.join(ROOT, 'extension/cm-chapter.js');
+const CM_AUTO_RESTORE_PATH = path.join(ROOT, 'extension/cm-auto-restore.js');
 const CONTENT_MANGA_PATH = path.join(ROOT, 'extension/content_manga.js');
 
 /**
@@ -104,6 +108,10 @@ async function loadContentScript({
     // 8. Carrega os módulos injetados pela extensão na ordem real do manifest
     jest.isolateModules(() => {
         require(GTC_FINGERPRINT_PATH);
+        require(CM_GTC_CLIENT_PATH);
+        require(CM_DOM_REPLACE_PATH);
+        require(CM_CHAPTER_PATH);
+        require(CM_AUTO_RESTORE_PATH);
         require(CONTENT_MANGA_PATH);
     });
 

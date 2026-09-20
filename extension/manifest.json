@@ -32,6 +32,10 @@
       ],
       "js": [
         "gtc-fingerprint.js",
+        "cm-gtc-client.js",
+        "cm-dom-replace.js",
+        "cm-chapter.js",
+        "cm-auto-restore.js",
         "content_manga.js"
       ]
     },

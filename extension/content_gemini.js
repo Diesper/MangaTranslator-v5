@@ -18,8 +18,26 @@ function closeKeepAlive() {
 }
 openKeepAlive();
 
+function sanitizeLogExtra(value, key = '') {
+    const sensitiveKey = /(url|uri|src|prompt|preview|hash|base64|dataurl|image|token|cookie|authorization)/i;
+    if (sensitiveKey.test(key)) return '[redacted]';
+    if (typeof value === 'string') {
+        if (value.startsWith('data:') || value.startsWith('blob:') || /^https?:/i.test(value)) return '[redacted]';
+        return value.length > 160 ? `${value.slice(0, 160)}…` : value;
+    }
+    if (Array.isArray(value)) return value.map(item => sanitizeLogExtra(item));
+    if (value && typeof value === 'object') return Object.entries(value).reduce((safe, [entryKey, entryValue]) => {
+        safe[entryKey] = sanitizeLogExtra(entryValue, entryKey);
+        return safe;
+    }, {});
+    return value;
+}
+
 function sendLog(level, action_name, detail, extra = {}) {
-    chrome.runtime.sendMessage({ action: 'LOG_ENTRY', level, source: 'gemini', action_name, detail, extra }, () => { if (chrome.runtime.lastError) {} });
+    // Content scripts must never forward signed URLs, prompt text, image data or
+    // visual fingerprints to the background log store.
+    const safeDetail = sanitizeLogExtra(String(detail || ''));
+    chrome.runtime.sendMessage({ action: 'LOG_ENTRY', level, source: 'gemini', action_name, detail: safeDetail, extra: sanitizeLogExtra(extra) }, () => { if (chrome.runtime.lastError) {} });
 }
 
 function getUrlLogMetadata(value) {
@@ -658,13 +676,15 @@ function createGeminiManualPanel(job, getIgnoreImages) {
     ].join(';');
     panel.innerHTML = `
         <div style="font-weight:700;margin-bottom:4px;">Manga Translator</div>
-        <div style="color:#aaa;margin-bottom:8px;">Imagem ${Number(job.index) + 1}: marque o resultado correto se a detecção automática não pegar.</div>
+        <div id="mt-gemini-assist-description" style="color:#aaa;margin-bottom:8px;"></div>
         <div style="display:flex;gap:6px;margin-bottom:8px;">
             <button id="mt-gemini-use-last" style="flex:1;background:#FF4444;color:#fff;border:none;border-radius:5px;padding:7px;cursor:pointer;font-weight:700;">Usar última</button>
             <button id="mt-gemini-pick" style="flex:1;background:#2b5f9c;color:#fff;border:none;border-radius:5px;padding:7px;cursor:pointer;font-weight:700;">Selecionar</button>
         </div>
         <div id="mt-gemini-assist-status" style="color:#888;">Aguardando imagem gerada.</div>
     `;
+    const imageNumber = Number.isFinite(Number(job.index)) ? Number(job.index) + 1 : 1;
+    panel.querySelector('#mt-gemini-assist-description').textContent = `Imagem ${imageNumber}: marque o resultado correto se a detecção automática não pegar.`;
     panel.addEventListener('click', event => event.stopPropagation());
     document.documentElement.appendChild(panel);
 
