@@ -6,7 +6,7 @@
     name: 'force-send-activation',
 
     meta: {
-      // O handler legado aceitava a solicitação de qualquer origem.
+      // Contrato atual mantém a solicitação disponível a qualquer contexto autorizado da extensão.
       allowedSources: ['any'],
       async: false,
     },
