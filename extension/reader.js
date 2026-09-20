@@ -83,17 +83,6 @@ document.addEventListener('keydown', (e) => {
 // As páginas vivem no IndexedDB da extensão (storage-manager.js), gravadas pelo
 // background. O leitor pede só o ÍNDICE (metadados, sem Base64) e busca cada
 // página quando ela entra na janela de pré-carregamento.
-function smRequest(message) {
-    return new Promise(resolve => {
-        try {
-            chrome.runtime.sendMessage(message, (response) => {
-                if (chrome.runtime.lastError) resolve(null);
-                else resolve(response || null);
-            });
-        } catch (_e) { resolve(null); }
-    });
-}
-
 if (!chapterId) {
     titleEl.textContent = 'ID inválido';
     container.innerHTML = '<div id="empty-msg">Nenhum capítulo especificado na URL.</div>';
@@ -224,3 +213,4 @@ if (!chapterId) {
         });
     });
 }
+
