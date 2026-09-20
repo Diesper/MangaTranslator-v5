@@ -1,7 +1,7 @@
 {
   "name": "manga-translator-tests",
-  "version": "5.1.1",
-  "description": "Suite de testes automatizados para a extensão MangaTranslator v5.1",
+  "version": "6.0.0",
+  "description": "Suite de testes automatizados para a extensão MangaTranslator v6.0",
   "private": true,
   "scripts": {
     "test": "jest --config jest.config.js",
