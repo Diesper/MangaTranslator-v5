@@ -153,7 +153,10 @@ document.addEventListener('DOMContentLoaded', () => {
         redoBtn.className = 'options-image-redo-btn';
         redoBtn.textContent = 'Refazer';
         redoBtn.style.cssText = 'background:#1a5fa8; border:none; padding:8px 10px; color:#fff; cursor:pointer;';
-        redoBtn.addEventListener('click', () => deleteSavedTranslationForEntry(entry));
+        redoBtn.addEventListener('click', () => deleteSavedTranslationForEntry(entry, {
+            refresh: renderSites,
+            showStatus,
+        }));
 
         item.appendChild(preview);
         item.appendChild(info);
