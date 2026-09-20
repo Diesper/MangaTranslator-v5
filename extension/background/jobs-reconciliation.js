@@ -1,0 +1,51 @@
+'use strict';
+// background/jobs-reconciliation.js -- Rebuilds active job accounting after worker suspension.
+
+(function(scope) {
+  function createReconciler({ state, tabExists, log, syncState, processNextJob }) {
+    async function reconcile() {
+      if (!Array.isArray(state.jobIndex) || state.jobIndex.length === 0) {
+        state.activeJobsCount = 0;
+        return { alive: 0, dropped: 0 };
+      }
+
+      const alive = [];
+      const dropped = [];
+      for (const entry of state.jobIndex) {
+        if (!entry) continue;
+        if (await tabExists(entry.geminiTabId)) alive.push(entry);
+        else dropped.push(entry);
+      }
+
+      if (dropped.length) {
+        const keys = dropped.flatMap(entry => [
+          `gemini_job_${entry.geminiTabId}`,
+          `wd_data_${entry.geminiTabId}`,
+        ]);
+        dropped.forEach(entry => chrome.alarms.clear(`watchdog_${entry.jobId || entry.geminiTabId}`, () => {}));
+        try { await chrome.storage.local.remove(keys); } catch (_error) {}
+        log('warn', 'bg', 'JOB_RECONCILE_DROP', `${dropped.length} job(s) órfão(s) descartado(s) após reinício do worker`, {
+          dropped: dropped.map(entry => entry.geminiTabId),
+        });
+      }
+
+      state.jobIndex = alive;
+      state.activeJobsCount = alive.length;
+      if (alive.length && !state.activeMangaTabId) state.activeMangaTabId = alive[0].mangaTabId || null;
+      return { alive: alive.length, dropped: dropped.length };
+    }
+
+    async function reconcileAndContinue() {
+      const result = await reconcile();
+      if (result.dropped || result.alive) {
+        await syncState();
+        if (result.dropped) processNextJob();
+      }
+      return result;
+    }
+
+    return { reconcile, reconcileAndContinue };
+  }
+
+  scope.MangaTranslatorJobsReconciliation = { createReconciler };
+})(typeof self !== 'undefined' ? self : globalThis);
