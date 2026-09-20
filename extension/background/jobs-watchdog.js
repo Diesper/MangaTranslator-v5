@@ -1,0 +1,72 @@
+'use strict';
+// background/jobs-watchdog.js -- Persisted watchdog lifecycle and alarm routing.
+
+(function(scope) {
+  function createWatchdog({ getJobIndex, getExtractionTabs, finalizeJob, log, timeoutMinutes }) {
+    const alarmNameFor = (geminiTabId, jobId) => `watchdog_${jobId || geminiTabId}`;
+
+    function arm(mangaTabId, index, geminiTabId, jobId) {
+      const alarmName = alarmNameFor(geminiTabId, jobId);
+      chrome.alarms.clear(alarmName, () => {
+        chrome.storage.local.set({ [`wd_data_${geminiTabId}`]: { mangaTabId, index, geminiTabId, jobId } }, () => {
+          chrome.alarms.create(alarmName, { delayInMinutes: timeoutMinutes });
+        });
+      });
+    }
+
+    function clear(geminiTabId, jobId) {
+      chrome.alarms.clear(alarmNameFor(geminiTabId, jobId), () => {
+        chrome.storage.local.remove(`wd_data_${geminiTabId}`);
+      });
+    }
+
+    function handleAlarm(alarm) {
+      if (!alarm.name.startsWith('watchdog_')) return false;
+      const suffix = alarm.name.slice('watchdog_'.length);
+      const indexed = getJobIndex().find(job => job &&
+        (String(job.jobId) === suffix || String(job.geminiTabId) === suffix));
+      const keys = indexed ? [`wd_data_${indexed.geminiTabId}`] : [];
+      if (!keys.includes(`wd_data_${suffix}`)) keys.push(`wd_data_${suffix}`);
+
+      chrome.storage.local.get(keys, data => {
+        const key = keys.find(candidate => data && data[candidate]);
+        const watchdog = key ? data[key] : (indexed && {
+          geminiTabId: indexed.geminiTabId,
+          mangaTabId: indexed.mangaTabId,
+          index: indexed.index,
+          jobId: indexed.jobId,
+        });
+        if (!watchdog) return;
+        if (key) chrome.storage.local.remove(key);
+
+        const tabId = watchdog.geminiTabId || (indexed && indexed.geminiTabId);
+        if (tabId === undefined || tabId === null) return;
+        log('warn', 'bg', 'JOB_TIMEOUT', `Timeout de ${timeoutMinutes} min no index ${watchdog.index}`, { geminiTabId: tabId });
+        if (watchdog.mangaTabId) {
+          chrome.tabs.sendMessage(watchdog.mangaTabId, {
+            action: 'SHOW_ERROR_INTEGRATED',
+            errorMsg: `LIMITE DE TEMPO (${timeoutMinutes} min)`,
+            imgIndex: watchdog.index,
+            isDebug: false,
+          }, () => { if (chrome.runtime.lastError) {} });
+        }
+        finalizeJob(tabId, watchdog.mangaTabId, true);
+
+        const extractionTabs = getExtractionTabs();
+        Object.keys(extractionTabs)
+          .filter(tabIdKey => extractionTabs[tabIdKey] &&
+            String(extractionTabs[tabIdKey].geminiTabId) === String(tabId))
+          .forEach(tabIdKey => {
+            const extractionTabId = Number(tabIdKey);
+            chrome.tabs.remove(extractionTabId, () => { if (chrome.runtime.lastError) {} });
+            delete extractionTabs[extractionTabId];
+          });
+      });
+      return true;
+    }
+
+    return { arm, clear, handleAlarm };
+  }
+
+  scope.MangaTranslatorJobsWatchdog = { createWatchdog };
+})(typeof self !== 'undefined' ? self : globalThis);
