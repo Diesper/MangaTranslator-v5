@@ -338,7 +338,7 @@ describe('content_gemini.js - bordas RPA do plano v3.1', () => {
             label: 'send message',
             onSubmit: () => {
                 submitted = true;
-                setTimeout(() => appendImage('https://cdn.gemini.test/result-valid-button.png'), 25);
+                setTimeout(() => appendImage('https://cdn.gemini.test/result-valid-button.png'), 1300);
             },
         });
 
@@ -369,7 +369,7 @@ describe('content_gemini.js - bordas RPA do plano v3.1', () => {
                     appendImage('https://cdn.gemini.test/avatar-user.png');
                     appendImage('https://cdn.gemini.test/tiny-result.png', { width: 50, height: 50 });
                     appendImage('https://cdn.gemini.test/final-result.png', { width: 900, height: 1200 });
-                }, 25);
+                }, 1300);
             },
         });
 
@@ -398,7 +398,7 @@ describe('content_gemini.js - bordas RPA do plano v3.1', () => {
         mountEditor();
         appendSendButton({
             onSubmit: () => {
-                setTimeout(() => appendImage('https://cdn.gemini.test/tall-thin-result.png', { width: 60, height: 1024 }), 25);
+                setTimeout(() => appendImage('https://cdn.gemini.test/tall-thin-result.png', { width: 60, height: 1024 }), 1300);
             },
         });
 
@@ -434,7 +434,7 @@ describe('content_gemini.js - bordas RPA do plano v3.1', () => {
             onSubmit: () => {
                 setTimeout(() => {
                     manualImage = appendImage('https://cdn.gemini.test/manual-result.png', { width: 30, height: 1024 });
-                }, 25);
+                }, 1300);
             },
         });
 
@@ -468,7 +468,7 @@ describe('content_gemini.js - bordas RPA do plano v3.1', () => {
         mountEditor();
         appendSendButton({
             onSubmit: () => {
-                setTimeout(() => appendImage('https://cdn.gemini.test/result-delete-after-success.png'), 25);
+                setTimeout(() => appendImage('https://cdn.gemini.test/result-delete-after-success.png'), 1300);
             },
         });
         document.body.insertAdjacentHTML('beforeend', `
