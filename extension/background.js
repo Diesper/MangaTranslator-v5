@@ -452,10 +452,13 @@ function deliverResultToManga({ mangaTabId, index, src, jobId, batchId, geminiTa
     return jobsDomAck.deliver({ mangaTabId, index, src, jobId, batchId, geminiTabId });
 }
 
+// SEC-05: Constante nomeada para prompt padrão em vez de string longa inline
+const DEFAULT_TRANSLATION_PROMPT = "Objetivo primário: voce vai criar uma imagem , exata da imagem fornecida e traduzir ela pro português brasileiro . \nNão altere nenhum pixel fora das áreas de texto e Remova o texto original dos balões de fala, preenchendo o fundo com a cor correspondente. \nConverta os diálogos para PT-BR, mantendo a informalidade do contexto. Tipografia: Renderize o novo texto em caixa alta, fonte padrão de HQ (sans-serif), alinhamento centralizado.\nEfeitos Sonoros: Traduza e recrie as onomatopeias  mantendo as fontes estilizadas, cores, contornos e inclinação originais. lembre-se que todas as palavras devem sem traduzidas sem exceção";
+
 chrome.runtime.onInstalled.addListener(() => {
     chrome.storage.local.get(['defaultPrompt'], (data) => {
         if (!data.defaultPrompt) {
-            chrome.storage.local.set({ defaultPrompt: "Objetivo primário: voce vai criar uma imagem , exata da imagem fornecida e traduzir ela pro português brasileiro . \nNão altere nenhum pixel fora das áreas de texto e Remova o texto original dos balões de fala, preenchendo o fundo com a cor correspondente. \nConverta os diálogos para PT-BR, mantendo a informalidade do contexto. Tipografia: Renderize o novo texto em caixa alta, fonte padrão de HQ (sans-serif), alinhamento centralizado.\nEfeitos Sonoros: Traduza e recrie as onomatopeias  mantendo as fontes estilizadas, cores, contornos e inclinação originais. lembre-se que todas as palavras devem sem traduzidas sem exceção" });
+            chrome.storage.local.set({ defaultPrompt: DEFAULT_TRANSLATION_PROMPT });
         }
     });
 });
