@@ -14,6 +14,7 @@
     "test:unit:inject": "jest --config jest.config.js --testPathPattern=unit/inject",
     "test:integration": "jest --config jest.config.js --testPathPattern=integration",
     "test:visual-v3": "node visual-v3/run-all.js",
+    "test:smoke": "node smoke/run-smoke.js",
     "test:e2e": "node run-e2e.js",
     "test:all": "node run-all-tests.js",
     "test:coverage": "jest --config jest.config.js --coverage --testPathPattern=(unit|integration)",
