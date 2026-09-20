@@ -213,7 +213,7 @@ test.describe('E2E-23/E2E-24/E2E-25: E2E - cache e persistencia do content_manga
 
         expect(chapter).toBeTruthy();
 
-        // No v5.1, as páginas e o mapa de restauração são persistidos no StorageManager (IndexedDB)
+        // Na arquitetura atual, as páginas e o mapa de restauração são persistidos no StorageManager (IndexedDB)
         const smData = await backgroundWorker.evaluate(async (chapterId) => {
             const sm = self.MangaTranslatorStorageManager;
             if (!sm) return null;
