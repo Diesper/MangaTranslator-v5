@@ -165,7 +165,7 @@ async function runAll() {
 
   console.log(`\n\n`);
   console.log(`================================================================`);
-  console.log(`📊 RESUMO GERAL DOS TESTES — MangaTranslator v5.1`);
+  console.log(`📊 RESUMO GERAL DOS TESTES — MangaTranslator v6.0`);
   console.log(`================================================================`);
   
   summaries.forEach(s => {
