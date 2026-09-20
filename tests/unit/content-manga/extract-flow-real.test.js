@@ -66,6 +66,7 @@ describe('CM-14/CM-15/CM-16/CM-17/CM-18/CM-19/CM-20/CM-51/CM-52/CM-53/CM-54/CM-7
         onQueryPerceptual,
         onQueryPerceptualCrop,
         onQueryPerceptualRelaxed,
+        onQueryPerceptualV2,
         onCalculateVisualFingerprint,
         onStartBatch,
     } = {}) {
@@ -84,6 +85,14 @@ describe('CM-14/CM-15/CM-16/CM-17/CM-18/CM-19/CM-20/CM-51/CM-52/CM-53/CM-54/CM-7
                 const response = onQueryDHash
                     ? onQueryDHash(message)
                     : { ok: true, entriesByDHash: {} };
+                if (callback) setTimeout(() => callback(response), 0);
+                return;
+            }
+
+            if (message.action === 'GTC_QUERY_PERCEPTUAL_V2') {
+                const response = onQueryPerceptualV2
+                    ? onQueryPerceptualV2(message)
+                    : { ok: true, entriesByQueryId: {} };
                 if (callback) setTimeout(() => callback(response), 0);
                 return;
             }
@@ -263,12 +272,13 @@ describe('CM-14/CM-15/CM-16/CM-17/CM-18/CM-19/CM-20/CM-51/CM-52/CM-53/CM-54/CM-7
                     },
                 };
             },
-            onQueryPerceptualCrop(message) {
-                const key = `${message.wHashesCrop[0]}:${message.pHashesCrop[0]}`;
+            onQueryPerceptualV2(message) {
+                if (message.mode !== 'crop') return { ok: true, entriesByQueryId: {} };
+                const queryId = message.queries[0].queryId;
                 return {
                     ok: true,
-                    entriesByPerceptualCrop: {
-                        [key]: {
+                    entriesByQueryId: {
+                        [queryId]: {
                             translatedDataUrl: cropDataUrl,
                             confidence: 1,
                             reason: 'crop_test',
@@ -296,10 +306,15 @@ describe('CM-14/CM-15/CM-16/CM-17/CM-18/CM-19/CM-20/CM-51/CM-52/CM-53/CM-54/CM-7
             'CALCULATE_VISUAL_FINGERPRINT',
             'GTC_QUERY_MANY',
             'GTC_QUERY_BY_DHASH',
-            'GTC_QUERY_BY_PERCEPTUAL',
-            'GTC_QUERY_BY_PERCEPTUAL_CROP',
+            'GTC_QUERY_PERCEPTUAL_V2',
         ]));
-        expect(sentMessages.some(message => message.action === 'GTC_QUERY_BY_PERCEPTUAL_RELAXED')).toBe(false);
+        expect(sentMessages).toEqual(expect.arrayContaining([
+            expect.objectContaining({ action: 'GTC_QUERY_PERCEPTUAL_V2', mode: 'strict' }),
+            expect.objectContaining({ action: 'GTC_QUERY_PERCEPTUAL_V2', mode: 'crop' }),
+        ]));
+        expect(sentMessages.some(message =>
+            message.action === 'GTC_QUERY_PERCEPTUAL_V2' && message.mode === 'relaxed'
+        )).toBe(false);
         expect(sentMessages.some(message => message.action === 'START_BATCH')).toBe(false);
     });
 
@@ -325,12 +340,13 @@ describe('CM-14/CM-15/CM-16/CM-17/CM-18/CM-19/CM-20/CM-51/CM-52/CM-53/CM-54/CM-7
                     regionalHashes: regional,
                 };
             },
-            onQueryPerceptualRelaxed(message) {
-                const key = `${message.wHashes[0]}:${message.pHashes[0]}`;
+            onQueryPerceptualV2(message) {
+                if (message.mode !== 'relaxed') return { ok: true, entriesByQueryId: {} };
+                const queryId = message.queries[0].queryId;
                 return {
                     ok: true,
-                    entriesByPerceptualRelaxed: {
-                        [key]: {
+                    entriesByQueryId: {
+                        [queryId]: {
                             translatedDataUrl: relaxedDataUrl,
                             confidence: 0.75,
                             reason: 'relaxed_test',
@@ -355,9 +371,10 @@ describe('CM-14/CM-15/CM-16/CM-17/CM-18/CM-19/CM-20/CM-51/CM-52/CM-53/CM-54/CM-7
         await waitFor(() => document.querySelector('[data-testid="img-0"]').dataset.translated === 'true');
 
         expect(document.querySelector('[data-testid="img-0"]').getAttribute('src')).toBe(relaxedDataUrl);
-        expect(sentMessages.map(message => message.action)).toEqual(expect.arrayContaining([
-            'GTC_QUERY_BY_PERCEPTUAL_CROP',
-            'GTC_QUERY_BY_PERCEPTUAL_RELAXED',
+        expect(sentMessages).toEqual(expect.arrayContaining([
+            expect.objectContaining({ action: 'GTC_QUERY_PERCEPTUAL_V2', mode: 'strict' }),
+            expect.objectContaining({ action: 'GTC_QUERY_PERCEPTUAL_V2', mode: 'crop' }),
+            expect.objectContaining({ action: 'GTC_QUERY_PERCEPTUAL_V2', mode: 'relaxed' }),
         ]));
         expect(sentMessages.some(message => message.action === 'START_BATCH')).toBe(false);
         expect(sentMessages.some(message =>
