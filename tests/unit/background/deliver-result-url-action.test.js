@@ -52,4 +52,20 @@ describe('background/actions/deliver-result-url.js', () => {
         expect(chrome.tabs.create).not.toHaveBeenCalled();
         expect(result).toEqual({ keepAlive: true, response: { ok: false, reason: 'sender_mismatch' } });
     });
+
+    test.each([
+        [{ action: 'GEMINI_RESULT_URL', mangaTabId: 33, index: 4, url: 'https://cdn.example/result.png' }, 'jobId é obrigatório'],
+        [{ action: 'GEMINI_RESULT_URL', mangaTabId: 33, index: 4, url: 'javascript:alert(1)', jobId: 'job-4' }, 'url de resultado inválida'],
+    ])('rejeita payload inválido antes de abrir a aba', async (request, message) => {
+        const router = loadRouter();
+        const ensureInitialized = jest.fn();
+        const result = await dispatch(router.createMessageRouter({ contextFactory: () => ({
+            state: { extractionTabs: {} }, syncState: jest.fn(), ensureInitialized,
+            assertJobOwnership: jest.fn(),
+        }) }), request, { tab: { id: 17, url: 'https://gemini.google.com/app' } });
+
+        expect(ensureInitialized).not.toHaveBeenCalled();
+        expect(chrome.tabs.create).not.toHaveBeenCalled();
+        expect(result.response).toEqual({ ok: false, error: { code: 'INVALID_PAYLOAD', message } });
+    });
 });
