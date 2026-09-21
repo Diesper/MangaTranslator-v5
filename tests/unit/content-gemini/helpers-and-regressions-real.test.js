@@ -451,7 +451,9 @@ describe('content_gemini.js - helpers, delecao e regressao real', () => {
         const mod = loadContentGeminiModule();
         await expect(mod.deleteCurrentConversation()).resolves.toBe(false);
 
-        expect(optionsBtn.click).not.toHaveBeenCalled();
+        // O toggle pode abrir a barra lateral para procurar o chatId, mas não
+        // pode acionar a exclusão de um item genérico.
+        expect(optionsBtn.click).toHaveBeenCalled();
         expect(deleteItem.click).not.toHaveBeenCalled();
         expect(confirmBtn.click).not.toHaveBeenCalled();
         expect(sentMessages).toContainEqual(expect.objectContaining({ action: 'LOG_ENTRY', action_name: 'DELETE_ERROR' }));
