@@ -1,3 +1,10 @@
+> [!IMPORTANT]
+> **DOCUMENTO HISTÓRICO — NÃO É MAIS A ESPECIFICAÇÃO VIGENTE.**
+> A documentação técnica canônica do projeto é agora [`docs/v6.0.md`](v6.0.md), correspondente ao **MangaTranslator v6.0**.
+> Este arquivo permanece somente para rastreabilidade da evolução da série v5.x e de incidentes/refatorações já encerrados.
+
+---
+
 # MangaTranslator v5.1.1 — Atualização da Documentação Técnica
 
 > Este documento atualiza a `DOCUMENTACAO_v5_1.md`. Onde houver conflito, **vale
