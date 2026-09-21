@@ -1,0 +1,122 @@
+const { loadContentGeminiModule } = require('../../helpers/load-content-gemini-module.js');
+
+function installImageMetrics(image, { width = 32, height = 48, complete = true } = {}) {
+    Object.defineProperties(image, {
+        naturalWidth: { value: width, configurable: true },
+        naturalHeight: { value: height, configurable: true },
+        complete: { value: complete, configurable: true },
+    });
+    return image;
+}
+
+describe('content_gemini.js - modo background_delete', () => {
+    let originalCreateElement;
+    let originalCss;
+
+    beforeEach(() => {
+        jest.resetModules();
+        originalCreateElement = document.createElement.bind(document);
+        originalCss = global.CSS;
+        document.documentElement.innerHTML = '<head></head><body></body>';
+    });
+
+    afterEach(() => {
+        if (originalCss === undefined) delete global.CSS;
+        else global.CSS = originalCss;
+        jest.restoreAllMocks();
+        document.documentElement.innerHTML = '<head></head><body></body>';
+    });
+
+    test('BGD-01: escapa chatId sem depender de CSS.escape', () => {
+        delete global.CSS;
+        const mod = loadContentGeminiModule();
+
+        expect(mod.escapeCssAttributeValue('chat-1')).toBe('chat-1');
+        expect(mod.escapeCssAttributeValue('chat"1\\x')).toBe('chat\\"1\\\\x');
+    });
+
+    test('BGD-02: converte a imagem já renderizada para Data URL pelo canvas', async () => {
+        const canvasContext = { drawImage: jest.fn() };
+        jest.spyOn(document, 'createElement').mockImplementation((tagName) => {
+            if (String(tagName).toLowerCase() === 'canvas') {
+                return {
+                    width: 0,
+                    height: 0,
+                    getContext: () => canvasContext,
+                    toDataURL: () => 'data:image/png;base64,Q0FOVkFT',
+                };
+            }
+            return originalCreateElement(tagName);
+        });
+        const mod = loadContentGeminiModule();
+        const image = installImageMetrics(document.createElement('img'));
+
+        await expect(mod.imageElementToDataUrl(image)).resolves.toBe('data:image/png;base64,Q0FOVkFT');
+        expect(canvasContext.drawImage).toHaveBeenCalledWith(image, 0, 0);
+    });
+
+    test('BGD-03: imagem não pronta não tenta canvas', async () => {
+        const mod = loadContentGeminiModule();
+        const image = installImageMetrics(document.createElement('img'), { complete: false });
+
+        await expect(mod.imageElementToDataUrl(image)).rejects.toThrow('ainda não está pronta');
+    });
+
+    test('BGD-04: ponte MAIN resolve Data URL autenticada pelo requestId correto', async () => {
+        const mod = loadContentGeminiModule();
+        const listener = event => {
+            const { requestId } = event.detail;
+            window.dispatchEvent(new CustomEvent('MANGA_TRANSLATOR_FETCH_IMAGE_RESULT', {
+                detail: { requestId, dataUrl: 'data:image/png;base64,TUFJTg==' },
+            }));
+        };
+        window.addEventListener('MANGA_TRANSLATOR_FETCH_IMAGE', listener);
+
+        await expect(mod.fetchImageThroughGeminiPage('https://lh3.googleusercontent.com/image')).resolves
+            .toBe('data:image/png;base64,TUFJTg==');
+
+        window.removeEventListener('MANGA_TRANSLATOR_FETCH_IMAGE', listener);
+    });
+
+    test('BGD-05: ponte MAIN rejeita erro da página sem abrir aba auxiliar', async () => {
+        const mod = loadContentGeminiModule();
+        const listener = event => {
+            const { requestId } = event.detail;
+            window.dispatchEvent(new CustomEvent('MANGA_TRANSLATOR_FETCH_IMAGE_RESULT', {
+                detail: { requestId, error: 'HTTP 403' },
+            }));
+        };
+        window.addEventListener('MANGA_TRANSLATOR_FETCH_IMAGE', listener);
+
+        await expect(mod.fetchImageThroughGeminiPage('https://lh3.googleusercontent.com/image')).rejects
+            .toThrow('HTTP 403');
+
+        window.removeEventListener('MANGA_TRANSLATOR_FETCH_IMAGE', listener);
+    });
+
+    test('BGD-06: quando canvas falha, usa a ponte MAIN na própria aba', async () => {
+        const mod = loadContentGeminiModule();
+        const listener = event => {
+            const { requestId } = event.detail;
+            window.dispatchEvent(new CustomEvent('MANGA_TRANSLATOR_FETCH_IMAGE_RESULT', {
+                detail: { requestId, dataUrl: 'data:image/png;base64,RkFMTEJBQ0s=' },
+            }));
+        };
+        window.addEventListener('MANGA_TRANSLATOR_FETCH_IMAGE', listener);
+
+        await expect(mod.extractImageInGeminiTab(null, 'https://lh3.googleusercontent.com/image')).resolves
+            .toBe('data:image/png;base64,RkFMTEJBQ0s=');
+
+        window.removeEventListener('MANGA_TRANSLATOR_FETCH_IMAGE', listener);
+    });
+
+    test('BGD-07: estabilidade falha quando a linha é removida durante a espera', async () => {
+        const mod = loadContentGeminiModule();
+        const row = document.createElement('a');
+        row.getBoundingClientRect = () => ({ top: 10, left: 10, width: 100, height: 20 });
+        document.body.appendChild(row);
+        setTimeout(() => row.remove(), 2);
+
+        await expect(mod.waitForElementToSettle(row, 3, 5)).resolves.toBe(false);
+    });
+});
