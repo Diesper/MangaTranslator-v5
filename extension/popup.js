@@ -1285,12 +1285,15 @@ document.addEventListener('DOMContentLoaded', async () => {
     function initGeminiExecutionMode() {
         const popupGeminiTempRadio = document.getElementById('popup-gemini-mode-temp');
         const popupGeminiMinRadio  = document.getElementById('popup-gemini-mode-minimized');
-        if (!popupGeminiTempRadio && !popupGeminiMinRadio) return;
+        const popupGeminiDeleteRadio = document.getElementById('popup-gemini-mode-delete');
+        if (!popupGeminiTempRadio && !popupGeminiMinRadio && !popupGeminiDeleteRadio) return;
 
         chrome.storage.local.get(['geminiExecutionMode'], (d) => {
             const mode = d.geminiExecutionMode || 'temp_chat';
             if (mode === 'minimized_window') {
                 if (popupGeminiMinRadio) popupGeminiMinRadio.checked = true;
+            } else if (mode === 'background_delete') {
+                if (popupGeminiDeleteRadio) popupGeminiDeleteRadio.checked = true;
             } else {
                 if (popupGeminiTempRadio) popupGeminiTempRadio.checked = true;
             }
@@ -1303,7 +1306,12 @@ document.addEventListener('DOMContentLoaded', async () => {
                     if (radio.checked) {
                         const val = radio.value;
                         chrome.storage.local.set({ geminiExecutionMode: val }, () => {
-                            showSettingsStatus(val === 'minimized_window' ? 'Modo: Janela Minimizada' : 'Modo: Conversa Temporária', '#4CAF50');
+                            const label = val === 'minimized_window'
+                                ? 'Janela Minimizada'
+                                : val === 'background_delete'
+                                    ? 'Conversa Normal com Exclusão Segura'
+                                    : 'Conversa Temporária';
+                            showSettingsStatus(`Modo: ${label}`, '#4CAF50');
                         });
                     }
                 });
