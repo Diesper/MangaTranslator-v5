@@ -119,4 +119,31 @@ describe('content_gemini.js - modo background_delete', () => {
 
         await expect(mod.waitForElementToSettle(row, 3, 5)).resolves.toBe(false);
     });
+
+    test('BGD-08: ponte MAIN ignora resposta de outra requisição antes de aceitar a correta', async () => {
+        const mod = loadContentGeminiModule();
+        const listener = event => {
+            const { requestId } = event.detail;
+            window.dispatchEvent(new CustomEvent('MANGA_TRANSLATOR_FETCH_IMAGE_RESULT', {
+                detail: { requestId: 'outra-requisicao', dataUrl: 'data:image/png;base64,RVJSQURP' },
+            }));
+            setTimeout(() => window.dispatchEvent(new CustomEvent('MANGA_TRANSLATOR_FETCH_IMAGE_RESULT', {
+                detail: { requestId, dataUrl: 'data:image/png;base64,Q0VSVE8=' },
+            })), 2);
+        };
+        window.addEventListener('MANGA_TRANSLATOR_FETCH_IMAGE', listener);
+
+        await expect(mod.fetchImageThroughGeminiPage('https://lh3.googleusercontent.com/image')).resolves
+            .toBe('data:image/png;base64,Q0VSVE8=');
+
+        window.removeEventListener('MANGA_TRANSLATOR_FETCH_IMAGE', listener);
+    });
+
+    test('BGD-09: ponte MAIN expira e remove o listener quando não há resposta', async () => {
+        const mod = loadContentGeminiModule();
+
+        await expect(mod.fetchImageThroughGeminiPage('https://lh3.googleusercontent.com/image', 1)).rejects
+            .toThrow('Tempo limite ao extrair imagem na página Gemini');
+    });
 });
+
