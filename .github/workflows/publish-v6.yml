@@ -8,23 +8,15 @@ on:
 
 permissions:
   contents: write
-  packages: write
 
 jobs:
   publish:
-    name: Release + GitHub Package
+    name: GitHub Release
     runs-on: ubuntu-latest
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-
-      - name: Setup Node for GitHub Packages
-        uses: actions/setup-node@v4
-        with:
-          node-version: 20.x
-          registry-url: https://npm.pkg.github.com
-          scope: "@diesper"
 
       - name: Validate v6.0 metadata
         shell: bash
@@ -36,7 +28,6 @@ jobs:
           if (manifest.version !== '6.0') throw new Error('manifest version must be 6.0');
           if (manifest.name !== 'Manga Translator') throw new Error('manifest name must be Manga Translator');
           if (pkg.version !== '6.0.0') throw new Error('package version must be 6.0.0');
-          if (pkg.name !== '@diesper/manga-translator') throw new Error('package name must be @diesper/manga-translator');
           NODE
           test -f "docs/Documentação_V6.0.md"
 
@@ -101,22 +92,3 @@ jobs:
             gh release create "$TAG"               dist/Manga-Translator-v6.0.zip               "dist/Documentação_V6.0.md"               dist/SHA256SUMS.txt               --target "$GITHUB_SHA"               --title "Manga Translator v6.0"               --notes-file dist/RELEASE_NOTES.md               --latest
           fi
 
-      - name: Publish @diesper/manga-translator@6.0.0 to GitHub Packages
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        shell: bash
-        run: |
-          set -euo pipefail
-          set +e
-          OUTPUT="$(npm publish --registry=https://npm.pkg.github.com --access public 2>&1)"
-          STATUS=$?
-          set -e
-          printf '%s\n' "$OUTPUT"
-          if [ "$STATUS" -eq 0 ]; then
-            exit 0
-          fi
-          if printf '%s' "$OUTPUT" | grep -Eqi 'already exists|cannot publish over|EPUBLISHCONFLICT|409 Conflict'; then
-            echo "Package 6.0.0 already exists; keeping existing published version."
-            exit 0
-          fi
-          exit "$STATUS"
