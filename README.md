@@ -1,6 +1,6 @@
-# 📖 MangaTranslator v6.0
+# 📖 Manga Translator
 
-> Extensão para navegadores Chromium (Manifest V3) para tradução automática, contínua e em alta resolução de mangás e quadrinhos na web utilizando o Google Gemini.
+> **Versão atual: 6.0** — extensão para navegadores Chromium (Manifest V3) para tradução automática, contínua e em alta resolução de mangás e quadrinhos na web utilizando o Google Gemini.
 
 [![Manifest V3](https://img.shields.io/badge/Chrome_Extension-Manifest_V3-4285F4?logo=googlechrome&logoColor=white)](https://developer.chrome.com/docs/extensions/mv3/intro/)
 [![CI](https://github.com/Diesper/MangaTranslator-v5/actions/workflows/ci.yml/badge.svg)](https://github.com/Diesper/MangaTranslator-v5/actions/workflows/ci.yml)
@@ -106,7 +106,7 @@ Também existe um teste específico de carregamento em modo estrito (`tests/unit
 
 A arquitetura vigente, contratos IPC/storage, lifecycle MV3, cache perceptual, Gemini RPA, Reader, compatibilidade e critérios de manutenção da release 6.0 estão consolidados em:
 
-- [`docs/v6.0.md`](docs/v6.0.md)
+- [`docs/Documentação_V6.0.md`](docs/Documentação_V6.0.md)
 
 ---
 
