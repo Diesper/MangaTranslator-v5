@@ -1,0 +1,33 @@
+name: Delete GitHub Package
+
+on:
+  push:
+    branches: [ main ]
+    paths:
+      - ".github/workflows/delete-package.yml"
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  delete:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Delete Manga Translator npm package
+        env:
+          GH_TOKEN: ${{ github.token }}
+          OWNER: ${{ github.repository_owner }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          PACKAGES="$(gh api "/users/$OWNER/packages?package_type=npm&per_page=100")"
+          NAME="$(printf '%s' "$PACKAGES" | jq -r '.[] | select(.name == "manga-translator" or .name == "@diesper/manga-translator") | .name' | head -n 1)"
+          if [ -z "$NAME" ]; then
+            echo "Package not found; nothing to delete."
+            exit 0
+          fi
+          ENCODED="$(python3 -c 'import sys,urllib.parse; print(urllib.parse.quote(sys.argv[1], safe=""))' "$NAME")"
+          echo "Deleting npm package: $NAME"
+          gh api --method DELETE "/users/$OWNER/packages/npm/$ENCODED"
+          echo "Package deleted."
