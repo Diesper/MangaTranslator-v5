@@ -12,6 +12,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const geminiModeStatusEl = document.getElementById('gemini-mode-status');
     const tempRadioEl = document.getElementById('gemini-mode-temp');
     const minRadioEl = document.getElementById('gemini-mode-minimized');
+    const deleteRadioEl = document.getElementById('gemini-mode-delete');
 
     chrome.storage.local.get(['customPrompt', 'defaultPrompt', 'autoRestoreEnabled', 'geminiExecutionMode'], (result) => {
         promptEl.value = result.customPrompt || result.defaultPrompt || "";
@@ -19,6 +20,8 @@ document.addEventListener('DOMContentLoaded', () => {
         const mode = result.geminiExecutionMode || 'temp_chat';
         if (mode === 'minimized_window') {
             if (minRadioEl) minRadioEl.checked = true;
+        } else if (mode === 'background_delete') {
+            if (deleteRadioEl) deleteRadioEl.checked = true;
         } else {
             if (tempRadioEl) tempRadioEl.checked = true;
         }
@@ -88,7 +91,11 @@ document.addEventListener('DOMContentLoaded', () => {
             if (radio.checked) {
                 const val = radio.value;
                 chrome.storage.local.set({ geminiExecutionMode: val }, () => {
-                    const label = val === 'minimized_window' ? 'Janela Minimizada' : 'Conversa Temporária (Segundo Plano)';
+                    const label = val === 'minimized_window'
+                        ? 'Janela Minimizada'
+                        : val === 'background_delete'
+                            ? 'Conversa Normal com Exclusão Segura'
+                            : 'Conversa Temporária (Segundo Plano)';
                     showGeminiModeStatus(`✔ Modo alterado para: ${label}`);
                 });
             }

@@ -262,6 +262,33 @@
         }
     });
 
+    // A imagem do resultado já está acessível dentro da sessão autenticada do
+    // Gemini. Esta ponte permite que o content script a converta sem abrir uma
+    // aba auxiliar e sem usar o fetch anônimo do Service Worker.
+    window.addEventListener('MANGA_TRANSLATOR_FETCH_IMAGE', async (event) => {
+        const detail = event.detail || {};
+        if (!detail.requestId || !detail.url) return;
+        try {
+            const response = await fetch(detail.url, { credentials: 'include', cache: 'no-store' });
+            if (!response.ok) throw new Error(`HTTP ${response.status}`);
+            const blob = await response.blob();
+            if (!blob.type.startsWith('image/')) throw new Error(`Tipo inválido: ${blob.type || 'desconhecido'}`);
+            const dataUrl = await new Promise((resolve, reject) => {
+                const reader = new FileReader();
+                reader.onloadend = () => resolve(reader.result);
+                reader.onerror = () => reject(reader.error || new Error('Falha ao ler imagem'));
+                reader.readAsDataURL(blob);
+            });
+            window.dispatchEvent(new CustomEvent('MANGA_TRANSLATOR_FETCH_IMAGE_RESULT', {
+                detail: { requestId: detail.requestId, dataUrl }
+            }));
+        } catch (error) {
+            window.dispatchEvent(new CustomEvent('MANGA_TRANSLATOR_FETCH_IMAGE_RESULT', {
+                detail: { requestId: detail.requestId, error: error && error.message ? error.message : 'Falha ao buscar imagem' }
+            }));
+        }
+    });
+
     let _lastTriggerSendTime = 0;
     window.addEventListener('MANGA_TRANSLATOR_TRIGGER_SEND', () => {
         const now = Date.now();
@@ -342,3 +369,4 @@
 
     console.log("⚡ Anti-Hibernação SUPER ativado no Gemini! Flush RAF e Foco Ativo prontos!");
 })();
+

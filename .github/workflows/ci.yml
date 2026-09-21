@@ -6,9 +6,7 @@ concurrency:
 
 on:
   push:
-    branches: [ main, develop ]
   pull_request:
-    branches: [ main ]
 
 jobs:
   # ── Job 1: Verificação de Sintaxe dos Arquivos JS ──────────────────────────
@@ -150,12 +148,11 @@ jobs:
           path: tests/coverage/
           retention-days: 30
 
-  # ── Job 5: E2E Tests (apenas em push para main) ───────────────────────────────
+  # ── Job 5: E2E Tests ─────────────────────────────────────────────────────────
   e2e:
     name: E2E Tests (Playwright)
     runs-on: ubuntu-latest
     needs: unit-and-integration
-    if: ${{ always() && github.ref == 'refs/heads/main' }}
     defaults:
       run:
         working-directory: tests

@@ -547,7 +547,9 @@ Para cada job:
 
 ## 7.5 Modos de execução do Gemini
 
-Existem dois modos expostos pela UI atual:
+A UI persiste <code>geminiExecutionMode</code> e o valor é copiado para o registro
+durável de cada job. Isso impede que uma mudança de configuração durante um lote
+altere o comportamento de jobs que já foram abertos.
 
 ### temp_chat
 
@@ -560,6 +562,18 @@ Existem dois modos expostos pela UI atual:
 - abre o job em janela minimizada;
 - pode focar temporariamente a janela para ações que exigem interação;
 - ao final, tenta limpar a conversa antes de remover a janela.
+
+### background_delete
+
+- abre uma aba normal, não focada, em segundo plano;
+- não ativa a conversa temporária;
+- entrega a imagem e exclui somente a conversa do job antes de liberar o
+  fechamento da aba;
+- é apropriado quando a conversa temporária não está disponível, mas o histórico
+  normal não deve ser preservado.
+
+Os três modos compartilham fila, ownership, entrega e finalização. A diferença
+fica restrita ao ciclo de vida do Gemini; não há um segundo pipeline de jobs.
 
 ## 7.6 Fase 5 — claim do job
 
@@ -592,6 +606,12 @@ O resultado pode chegar como:
 - URL de imagem;
 - resultado vindo de aba auxiliar;
 - seleção manual assistida em caso extremo.
+
+No modo <code>background_delete</code>, a prioridade é extrair o resultado na
+própria aba autenticada do Gemini, sem criar uma aba auxiliar. Primeiro o script
+tenta converter a imagem já renderizada para Data URL via canvas. Se o canvas
+for bloqueado por CORS, <code>inject.js</code> realiza o fetch no mundo MAIN com
+<code>credentials: 'include'</code> e devolve o Data URL por CustomEvent.
 
 A identidade do job deve permanecer associada ao resultado.
 
@@ -1101,6 +1121,20 @@ superfícies com:
 Quando o resultado usa CDN do Google e o formato permite, o script tenta elevar
 a URL para a variante de maior resolução disponível, como o sufixo <code>=s0</code>.
 
+No modo <code>background_delete</code>, a conversão não deve depender do fetch
+anônimo do Service Worker, pois alguns URLs de <code>googleusercontent.com</code>
+não retornam uma imagem válida sem a sessão do Gemini. A ordem é:
+
+1. copiar a imagem renderizada com canvas;
+2. em caso de canvas contaminado por CORS, solicitar fetch autenticado ao MAIN
+   world por <code>MANGA_TRANSLATOR_FETCH_IMAGE</code>;
+3. converter o Blob para Data URL e enviar <code>GEMINI_IMAGE_EXTRACTED</code>;
+4. somente então iniciar a exclusão segura.
+
+Esse modo não encaminha <code>GEMINI_RESULT_URL</code>, pois essa mensagem cria a
+aba auxiliar de extração. Se as tentativas locais falharem, o job informa erro
+controlado em vez de abrir outra aba.
+
 ## 12.9 Assistência manual
 
 Existe HUD de assistência manual para cenários em que a heurística automática
@@ -1139,7 +1173,13 @@ O módulo contém mecanismos relacionados a:
 - requestAnimationFrame;
 - áudio;
 - ativação de elementos;
-- mitigação de throttling.
+- mitigação de throttling;
+- ponte autenticada de extração de imagem.
+
+A ponte <code>MANGA_TRANSLATOR_FETCH_IMAGE</code> só é usada pela aba de
+tradução. Ela recebe URL e requestId, busca no contexto autenticado da página e
+emite <code>MANGA_TRANSLATOR_FETCH_IMAGE_RESULT</code> com Data URL ou erro. O
+requestId evita confundir respostas de jobs concorrentes.
 
 ## 13.4 Evento removido
 
@@ -1165,7 +1205,7 @@ O popup concentra:
 - configurações rápidas;
 - logs;
 - modo debug;
-- modo de execução do Gemini;
+- modo de execução do Gemini, com <code>temp_chat</code>, <code>minimized_window</code> e <code>background_delete</code>;
 - redimensionamento;
 - imagens bloqueadas.
 
@@ -1177,7 +1217,7 @@ A página de opções concentra:
 - restauração automática;
 - sites;
 - imagens específicas;
-- modo do Gemini;
+- modo do Gemini, usando a mesma chave <code>geminiExecutionMode</code> do popup;
 - limpeza de entradas salvas.
 
 ## 14.3 shared-ui.js

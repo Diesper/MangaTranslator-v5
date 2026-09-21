@@ -791,6 +791,45 @@ function getEditableElement(root) {
     return (root.querySelector && root.querySelector('p')) || root;
 }
 
+function imageElementToDataUrl(image) {
+    if (!image || !image.complete || !image.naturalWidth || !image.naturalHeight) {
+        return Promise.reject(new Error('Imagem renderizada ainda não está pronta'));
+    }
+    const canvas = document.createElement('canvas');
+    canvas.width = image.naturalWidth;
+    canvas.height = image.naturalHeight;
+    const context = canvas.getContext('2d');
+    context.drawImage(image, 0, 0);
+    return Promise.resolve(canvas.toDataURL('image/png'));
+}
+
+function fetchImageThroughGeminiPage(url, timeoutMs = 20_000) {
+    return new Promise((resolve, reject) => {
+        const requestId = `mt-image-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+        const timer = setTimeout(() => finish(new Error('Tempo limite ao extrair imagem na página Gemini')), timeoutMs);
+        const onResult = event => {
+            const detail = event.detail || {};
+            if (detail.requestId !== requestId) return;
+            finish(detail.dataUrl ? null : new Error(detail.error || 'Página Gemini não retornou a imagem'), detail.dataUrl);
+        };
+        const finish = (error, dataUrl) => {
+            clearTimeout(timer);
+            window.removeEventListener('MANGA_TRANSLATOR_FETCH_IMAGE_RESULT', onResult);
+            if (error) reject(error); else resolve(dataUrl);
+        };
+        window.addEventListener('MANGA_TRANSLATOR_FETCH_IMAGE_RESULT', onResult);
+        window.dispatchEvent(new CustomEvent('MANGA_TRANSLATOR_FETCH_IMAGE', { detail: { requestId, url } }));
+    });
+}
+
+async function extractImageInGeminiTab(image, url) {
+    try {
+        return await imageElementToDataUrl(image);
+    } catch (_canvasError) {
+        return fetchImageThroughGeminiPage(url);
+    }
+}
+
 async function processGeminiJob() {
     debugConsole('log', '[MangaTranslator Gemini] processGeminiJob iniciado na aba');
     // 1. Obter Tab ID com tolerância a atrasos de reidratação do Service Worker
@@ -811,6 +850,23 @@ async function processGeminiJob() {
         return;
     }
 
+    const myTabId = response.tabId;
+    const recoveryKey = `gemini_delete_recovery_${myTabId}`;
+    const recoveryData = await new Promise(resolve => chrome.storage.local.get([recoveryKey], resolve));
+    const recovery = recoveryData[recoveryKey];
+    if (recovery && recovery.delivery) {
+        // Esta aba acabou de ser recarregada após falhar na primeira tentativa.
+        // Não reinicia o job: bloqueia a rolagem, tenta apagar e entrega o
+        // resultado que foi preservado antes do reload.
+        const deleted = await deleteCurrentConversation({ lockScroll: true });
+        await chrome.storage.local.remove(recoveryKey);
+        sendLog(deleted ? 'success' : 'warn', 'DELETE_RECOVERY', deleted
+            ? 'Conversa excluída após recarregar a aba.'
+            : 'Exclusão continuou sem confirmação após a recuperação.', { chatId: recovery.chatId || null });
+        chrome.runtime.sendMessage(recovery.delivery);
+        return;
+    }
+
     const currentPath = window.location.pathname;
     if (currentPath && currentPath.length > 8 && currentPath.startsWith('/app/')) {
         const st = await new Promise(r => chrome.storage.local.get(['deleting_urls'], r));
@@ -822,7 +878,6 @@ async function processGeminiJob() {
     }
 
     let job = null;
-    const myTabId = response.tabId;
     const jobKey = `gemini_job_${myTabId}`;
     const isExistingChat = currentPath.startsWith('/app/');
     const maxAttempts = 30; 
@@ -863,6 +918,31 @@ async function processGeminiJob() {
         const images = document.querySelectorAll('img');
         if (images.length > 0) images[images.length - 1].scrollIntoView({ behavior: 'smooth', block: 'center' });
     }, 2000);
+
+    async function deliverWithSecureDeletion(delivery, executionMode, shouldDeleteConversation) {
+        if (executionMode !== 'background_delete') {
+            if (shouldDeleteConversation) deleteCurrentConversation().catch(() => {});
+            chrome.runtime.sendMessage(delivery);
+            return true;
+        }
+
+        // A lista automática deixa de se mover antes de procurar a conversa.
+        clearInterval(scrollInterval);
+        if (await deleteCurrentConversation()) {
+            chrome.runtime.sendMessage(delivery);
+            return true;
+        }
+
+        // Preserva a entrega e refaz a página. Na nova injeção, o bloco de
+        // recuperação acima usa os métodos 1–3 com rolagem bloqueada.
+        await chrome.storage.local.set({ [recoveryKey]: {
+            chatId: window.location.pathname.match(/\/app\/([a-z0-9_-]+)/i)?.[1] || null,
+            delivery,
+            createdAt: Date.now(),
+        } });
+        window.location.reload();
+        return false;
+    }
 
     const assert = (condition, errorMessage, step, successMsg = '') => {
         if (!condition) {
@@ -1131,6 +1211,7 @@ async function processGeminiJob() {
             const ignoreImages = new Set(Array.from(document.querySelectorAll('img')).map(img => getImageSource(img)).filter(Boolean));
             createGeminiManualPanel(job, () => ignoreImages);
             let resultUrl = null;
+            let resultImageElement = null;
             let errorText = null;
 
             const WAIT_TIMEOUT_MS = 4 * 60 * 1000;
@@ -1168,6 +1249,7 @@ async function processGeminiJob() {
                     const candSrc = getImageSource(candidate) || '';
                     if (candSrc && (candidate.naturalHeight > 0 || candSrc.includes('googleusercontent.com/gg-dl/') || candSrc.startsWith('blob:'))) {
                         resultUrl = candSrc;
+                        resultImageElement = candidate;
                         break;
                     }
                 }
@@ -1186,12 +1268,12 @@ async function processGeminiJob() {
             }
             
             const shouldDeleteConversation = executionMode === 'minimized_window'
+                || executionMode === 'background_delete'
                 || (executionMode === 'temp_chat' && tempChatResult.notFound && !tempChatResult.alreadyActive);
 
             if (!resultUrl) {
                 sendLog('error', 'GEMINI_TIMEOUT', `Timeout 4 min estourou`, {});
-                if (shouldDeleteConversation) deleteCurrentConversation().catch(() => {});
-                chrome.runtime.sendMessage({ action: 'GEMINI_ERROR', mangaTabId: job.mangaTabId, index: job.index, error: 'Tempo limite (4 min)', jobId: job.jobId, batchId: job.batchId });
+                await deliverWithSecureDeletion({ action: 'GEMINI_ERROR', mangaTabId: job.mangaTabId, index: job.index, error: 'Tempo limite (4 min)', jobId: job.jobId, batchId: job.batchId }, executionMode, shouldDeleteConversation);
                 return;
             }
             
@@ -1218,21 +1300,54 @@ async function processGeminiJob() {
                         reader.readAsDataURL(blob);
                     });
                 } else {
-                    base64 = await new Promise((resolve, reject) => {
-                        chrome.runtime.sendMessage({ action: 'FETCH_IMAGE_AS_BASE64', url: resultUrl }, (resp) => {
-                            if (resp && resp.dataUrl) resolve(resp.dataUrl); else reject(new Error('Falha base64 background'));
+                    base64 = executionMode === 'background_delete'
+                        ? await extractImageInGeminiTab(resultImageElement, resultUrl)
+                        : await new Promise((resolve, reject) => {
+                            chrome.runtime.sendMessage({ action: 'FETCH_IMAGE_AS_BASE64', url: resultUrl }, (resp) => {
+                                if (resp && resp.dataUrl) resolve(resp.dataUrl); else reject(new Error('Falha base64 background'));
+                            });
                         });
-                    });
                 }
-                if (shouldDeleteConversation) deleteCurrentConversation().catch(() => {});
-                chrome.runtime.sendMessage({ action: 'GEMINI_IMAGE_EXTRACTED', mangaTabId: job.mangaTabId, index: job.index, src: base64, jobId: job.jobId, batchId: job.batchId });
+                await deliverWithSecureDeletion({ action: 'GEMINI_IMAGE_EXTRACTED', mangaTabId: job.mangaTabId, index: job.index, src: base64, jobId: job.jobId, batchId: job.batchId }, executionMode, shouldDeleteConversation);
             } catch(e) {
                 sendLog('warn', 'GEMINI_EXTRACT_ERR', 'Extração direta falhou, fallback bypass.', {
                     errorName: e && e.name ? e.name : 'Error',
                     messageLength: String(e && e.message || '').length,
                 });
-                if (shouldDeleteConversation) deleteCurrentConversation().catch(() => {});
-                chrome.runtime.sendMessage({ action: 'GEMINI_RESULT_URL', mangaTabId: job.mangaTabId, index: job.index, url: resultUrl, jobId: job.jobId, batchId: job.batchId });
+                if (executionMode === 'background_delete') {
+                    // Este modo não usa GEMINI_RESULT_URL: essa ação cria uma
+                    // aba extra de extração. Repete a via direta já usada pelos
+                    // modos originais e mantém todo o job na aba do Gemini.
+                    let base64 = null;
+                    for (let attempt = 1; attempt <= 3 && !base64; attempt++) {
+                        await sleep(700 * attempt);
+                        try {
+                            if (resultUrl.startsWith('data:image/')) {
+                                base64 = resultUrl;
+                            } else if (resultUrl.startsWith('blob:')) {
+                                const retryResponse = await fetch(resultUrl);
+                                const retryBlob = await retryResponse.blob();
+                                base64 = await new Promise((resolve, reject) => {
+                                    const reader = new FileReader();
+                                    reader.onloadend = () => resolve(reader.result);
+                                    reader.onerror = reject;
+                                    reader.readAsDataURL(retryBlob);
+                                });
+                            } else {
+                                base64 = await extractImageInGeminiTab(resultImageElement, resultUrl);
+                            }
+                        } catch (retryError) {
+                            sendLog('warn', 'GEMINI_EXTRACT_RETRY', 'Nova tentativa de extração direta falhou.', { attempt });
+                        }
+                    }
+                    if (base64) {
+                        await deliverWithSecureDeletion({ action: 'GEMINI_IMAGE_EXTRACTED', mangaTabId: job.mangaTabId, index: job.index, src: base64, jobId: job.jobId, batchId: job.batchId }, executionMode, shouldDeleteConversation);
+                    } else {
+                        await deliverWithSecureDeletion({ action: 'GEMINI_ERROR', mangaTabId: job.mangaTabId, index: job.index, error: 'Não foi possível extrair a imagem sem aba auxiliar', jobId: job.jobId, batchId: job.batchId }, executionMode, shouldDeleteConversation);
+                    }
+                    return;
+                }
+                await deliverWithSecureDeletion({ action: 'GEMINI_RESULT_URL', mangaTabId: job.mangaTabId, index: job.index, url: resultUrl, jobId: job.jobId, batchId: job.batchId }, executionMode, shouldDeleteConversation);
             }
         } catch (error) {
             chrome.runtime.sendMessage({ action: 'GEMINI_ERROR', mangaTabId: job.mangaTabId, index: job.index, error: error.message, jobId: job.jobId, batchId: job.batchId });
@@ -1354,117 +1469,161 @@ async function waitForConfirmButton(excludeEl = null, timeout = 2600) {
     return null;
 }
 
+function escapeCssAttributeValue(value) {
+    const input = String(value || '');
+    if (typeof CSS !== 'undefined' && typeof CSS.escape === 'function') return CSS.escape(input);
+    // chatId usa [a-z0-9_-], mas o fallback mantém o seletor seguro em
+    // runtimes de teste ou navegadores sem CSS.escape.
+    return input.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
+}
+
 let _deletionInProgress = false;
 
-async function deleteCurrentConversation() {
-    if (_deletionInProgress) return;
+async function waitForElementToSettle(element, samples = 3, interval = 300) {
+    if (!element || !element.isConnected) return false;
+    let previous = null;
+    for (let sample = 0; sample < samples; sample++) {
+        if (!element.isConnected) return false;
+        const rect = element.getBoundingClientRect();
+        const position = `${Math.round(rect.top)}:${Math.round(rect.left)}:${Math.round(rect.width)}:${Math.round(rect.height)}`;
+        if (previous !== null && position !== previous) {
+            sample = 0; // A lista se moveu; reinicia a janela de estabilidade.
+        }
+        previous = position;
+        await sleep(interval);
+    }
+    return element.isConnected;
+}
+
+async function deleteCurrentConversation({ lockScroll = false } = {}) {
+    if (_deletionInProgress) return false;
     _deletionInProgress = true;
+    let releaseScrollLock = () => {};
 
     try {
         const debugData = await new Promise(r => chrome.storage.local.get(['debugMode'], r));
         if (debugData.debugMode === true) {
             sendLog('info', 'DEBUG_MODE_SKIP', 'Modo debug ativo, pulando deleção da conversa');
-            return;
+            return true;
         }
 
-        await sleep(300);
+        const chatMatch = window.location.pathname.match(/\/app\/([a-z0-9_-]+)/i);
+        const chatId = chatMatch && chatMatch[1];
+        if (!chatId) throw new Error('A URL não possui o ID da conversa ativa.');
 
-        const currentPath = window.location.pathname;
-        let optionsBtn = null;
-        let containerEl = null;
+        // A barra lateral pode estar fechada em abas ocultas. O clique nativo é
+        // deliberado: evita coordenadas sintéticas e funciona sem cursor físico.
+        const sidebarToggle = document.querySelector('button[data-test-id="side-nav-toggle"], button[aria-label*="menu" i], button[aria-label*="barra lateral" i]');
+        if (!document.querySelector(`a[href*="${escapeCssAttributeValue(chatId)}"]`) && sidebarToggle) {
+            sidebarToggle.click();
+            await sleep(700); // Tempo para a animação e os itens da barra lateral aparecerem.
+        }
 
-        const allLinks = Array.from(document.querySelectorAll('a[href]'));
-        const currentLink = allLinks.find(a => {
-            const href = a.getAttribute('href') || '';
-            if (!href || href === '/' || href === '/app' || href === '/app/') return false;
-            return currentPath.endsWith(href) || href.endsWith(currentPath);
-        });
+        let activeLink = null;
+        for (let attempt = 0; attempt < 16; attempt++) {
+            activeLink = document.querySelector(`a[href*="${escapeCssAttributeValue(chatId)}"]`);
+            if (activeLink) break;
+            await sleep(250);
+        }
+        if (!activeLink) throw new Error('A conversa ativa não foi localizada na barra lateral.');
 
-        if (currentLink) {
-            let parent = currentLink.parentElement;
-            for (let i = 0; i < 8 && parent; i++, parent = parent.parentElement) {
-                hoverElement(parent);
+        // Método 2: estabiliza no viewport a linha que já foi validada pelo ID.
+        activeLink.scrollIntoView({ block: 'center', behavior: 'instant' });
+        await sleep(700);
+        if (!await waitForElementToSettle(activeLink)) {
+            throw new Error('A conversa alvo não estabilizou na barra lateral.');
+        }
 
-                const btns = Array.from(parent.querySelectorAll('button')).filter(b => {
-                    if (currentLink.contains(b)) return false;
-                    if (b.hasAttribute('aria-haspopup')) return true;
-                    const meta = [b.getAttribute('aria-label'), b.getAttribute('mattooltip'), b.getAttribute('title'), b.getAttribute('data-test-id')].join(" ").toLowerCase();
-                    if (meta.includes('opç') || meta.includes('option') || meta.includes('more') || meta.includes('mais') || meta.includes('menu')) return true;
-                    return false;
-                });
+        // Para jamais abrir o menu de uma conversa vizinha, sobe somente até o
+        // primeiro pai que contém mais de um link /app/.
+        let rowContainer = activeLink;
+        while (rowContainer.parentElement) {
+            const parent = rowContainer.parentElement;
+            if (parent.querySelectorAll('a[href*="/app/"]').length > 1) break;
+            rowContainer = parent;
+        }
 
-                if (btns.length > 0) {
-                    optionsBtn = btns.find(b => (b.getAttribute('aria-label') || '').toLowerCase().includes('opç')) || btns[btns.length - 1];
-                    containerEl = parent;
-                    break;
-                }
+        if (lockScroll) {
+            // Método 4 (fallback após reload): mantém a posição da página e do
+            // contêiner rolável da conversa enquanto o menu/modal é acionado.
+            const targets = [document.scrollingElement];
+            for (let parent = rowContainer.parentElement; parent && parent !== document.body; parent = parent.parentElement) {
+                const style = getComputedStyle(parent);
+                if (/(auto|scroll)/.test(style.overflowY)) targets.push(parent);
             }
+            const cleanups = [...new Set(targets.filter(Boolean))].map(target => {
+                const top = target.scrollTop;
+                const left = target.scrollLeft;
+                const restore = () => { target.scrollTop = top; target.scrollLeft = left; };
+                target.addEventListener('scroll', restore, { passive: true });
+                return () => target.removeEventListener('scroll', restore);
+            });
+            const preventScrollInput = event => event.preventDefault();
+            window.addEventListener('wheel', preventScrollInput, { passive: false });
+            window.addEventListener('touchmove', preventScrollInput, { passive: false });
+            releaseScrollLock = () => {
+                cleanups.forEach(cleanup => cleanup());
+                window.removeEventListener('wheel', preventScrollInput);
+                window.removeEventListener('touchmove', preventScrollInput);
+            };
+        }
+        const rowButtons = Array.from(rowContainer.querySelectorAll('button, [role="button"]'))
+            .filter(button => button !== activeLink && !activeLink.contains(button));
+        const menuButton = rowButtons.find(button => button.hasAttribute('aria-haspopup') || button.hasAttribute('aria-expanded'))
+            || rowButtons[rowButtons.length - 1];
+        if (!menuButton) throw new Error('Menu de opções da conversa não encontrado.');
+
+        await sleep(400); // Evita abrir o menu durante um reflow tardio da lista.
+        menuButton.click();
+        await sleep(700); // Aguarda o Angular CDK terminar de montar o overlay.
+        // Método 3: após abrir o menu, confirma que a mesma linha ainda está
+        // conectada e ainda representa o chatId do job antes de clicar Excluir.
+        if (!rowContainer.isConnected || !rowContainer.querySelector(`a[href*="${escapeCssAttributeValue(chatId)}"]`)) {
+            throw new Error('A lista mudou enquanto o menu era aberto.');
+        }
+        let deleteItem = null;
+        for (let attempt = 0; attempt < 20; attempt++) {
+            const candidates = Array.from(document.querySelectorAll('div[role="menuitem"], [role="menu"] button, .mat-mdc-menu-item, button'));
+            deleteItem = candidates.find(element => /^(excluir|delete)$/i.test((element.textContent || '').trim()));
+            if (deleteItem) break;
+            await sleep(100);
+        }
+        if (!deleteItem) throw new Error('Opção Excluir não encontrada no menu.');
+        if (!await waitForElementToSettle(deleteItem, 2, 250)) {
+            throw new Error('A opção Excluir não permaneceu estável no menu.');
         }
 
-        if (!optionsBtn) {
-            const selectors = ['[aria-selected="true"]', '[aria-current="page"]', '[data-active="true"]', '.active'];
-            for (const sel of selectors) {
-                const selected = document.querySelector(sel);
-                if (!selected) continue;
-                hoverElement(selected);
-                const btns = Array.from(selected.querySelectorAll('button')).filter(b => b.hasAttribute('aria-haspopup') || b.querySelector('svg'));
-                if (btns.length > 0) {
-                    optionsBtn = btns[btns.length - 1];
-                    containerEl = selected;
-                    break;
-                }
+        // Não use clickElement aqui: eventos MouseEvent sintéticos podem fazer o
+        // Angular CDK ativar o primeiro item do menu, e não o item Excluir.
+        (deleteItem.closest('div[role="menuitem"], li, button') || deleteItem).click();
+        await sleep(800); // Aguarda o diálogo de confirmação ser posicionado.
+
+        let confirmButton = null;
+        for (let attempt = 0; attempt < 25; attempt++) {
+            const deleteButtons = Array.from(document.querySelectorAll('button'))
+                .filter(button => /^(excluir|delete)$/i.test((button.textContent || '').trim()));
+            if (deleteButtons.length) {
+                // O diálogo é anexado por último no body; o último botão é a
+                // confirmação, não a opção recém-clicada do menu.
+                confirmButton = deleteButtons[deleteButtons.length - 1];
+                break;
             }
+            await sleep(200);
+        }
+        if (!confirmButton) throw new Error('Confirmação da exclusão não encontrada.');
+        if (!await waitForElementToSettle(confirmButton, 2, 300)) {
+            throw new Error('O botão de confirmação não estabilizou no diálogo.');
         }
 
-        if (!optionsBtn) {
-            const sidebarCandidates = document.querySelectorAll('nav button, aside button, [class*="sidebar"] button, [class*="history"] button, [class*="conversation"] button');
-            for (const btn of Array.from(sidebarCandidates).reverse()) {
-                const svg = btn.querySelector('svg');
-                if (!svg) continue;
-                const paths = svg.querySelectorAll('path, circle');
-                if (paths.length >= 2 && paths.length <= 5) {
-                    hoverElement(btn);
-                    optionsBtn = btn;
-                    break;
-                }
-            }
-        }
-
-        if (!optionsBtn) {
-            sendLog('warn', 'DELETE_NOT_FOUND', 'Botão de opções não encontrado no DOM', { path: currentPath });
-            return;
-        }
-
-        if (containerEl) {
-            hoverElement(containerEl);
-        }
-        hoverElement(optionsBtn);
-        await sleep(50); 
-        optionsBtn.scrollIntoView({ block: 'nearest', behavior: 'instant' });
-        clickElement(optionsBtn);
-        await sleep(120);
-
-        const deleteItem = await waitForDeleteMenuItem();
-
-        if (deleteItem) {
-            clickElement(deleteItem);
-            await sleep(120);
-            const confirmBtn = await waitForConfirmButton(deleteItem);
-            
-            if (confirmBtn) {
-                clickElement(confirmBtn);
-                sendLog('success', 'DELETE_OK', 'Conversa excluída!', { path: currentPath });
-            } else {
-                sendLog('warn', 'DELETE_NO_CONFIRM', 'Botão de confirmação não encontrado', { path: currentPath });
-                document.body.click();
-            }
-        } else {
-            sendLog('warn', 'DELETE_NO_ITEM', 'Item excluir não encontrado no menu', { path: currentPath });
-            document.body.click();
-        }
+        confirmButton.click();
+        await sleep(1200); // Dá tempo de a requisição batchexecute persistir.
+        sendLog('success', 'DELETE_OK', 'Conversa excluída com segurança!', { chatId });
+        return true;
     } catch (e) {
         sendLog('warn', 'DELETE_ERROR', `Erro na deleção: ${e.message}`, {});
+        return false;
     } finally {
+        releaseScrollLock();
         _deletionInProgress = false;
     }
 }
@@ -1493,7 +1652,8 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     }
 
     if (request.action === 'DELETE_CONVERSATION') {
-        deleteCurrentConversation().then(() => sendResponse({ ok: true })).catch((e) => sendResponse({ ok: false, error: e.message }));
+        deleteCurrentConversation().then(ok => sendResponse({ ok })).catch((e) => sendResponse({ ok: false, error: e.message }));
         return true; 
     }
 });
+
