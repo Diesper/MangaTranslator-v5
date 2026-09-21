@@ -1,4 +1,5 @@
 const { loadContentGeminiModule } = require('../../helpers/load-content-gemini-module.js');
+const { getStorageMock } = require('../../mocks/chrome-api.mock.js');
 
 function installImageMetrics(image, { width = 32, height = 48, complete = true } = {}) {
     Object.defineProperties(image, {
@@ -144,6 +145,47 @@ describe('content_gemini.js - modo background_delete', () => {
 
         await expect(mod.fetchImageThroughGeminiPage('https://lh3.googleusercontent.com/image', 1)).rejects
             .toThrow('Tempo limite ao extrair imagem na página Gemini');
+    });
+
+    test('BGD-10: após falha da página Gemini, usa Service Worker autenticado sem abrir aba', async () => {
+        const originalSendMessage = chrome.runtime.sendMessage;
+        chrome.runtime.sendMessage = jest.fn((message, callback) => {
+            if (message.action === 'FETCH_IMAGE_AS_BASE64') {
+                callback({ dataUrl: 'data:image/png;base64,U0VSVklDRVdPUktFUg==' });
+            }
+        });
+        const mod = loadContentGeminiModule();
+        const pageListener = event => {
+            window.dispatchEvent(new CustomEvent('MANGA_TRANSLATOR_FETCH_IMAGE_RESULT', {
+                detail: { requestId: event.detail.requestId, error: 'Failed to fetch' },
+            }));
+        };
+        window.addEventListener('MANGA_TRANSLATOR_FETCH_IMAGE', pageListener);
+
+        await expect(mod.extractImageInGeminiTab(null, 'https://lh3.googleusercontent.com/image')).resolves
+            .toBe('data:image/png;base64,U0VSVklDRVdPUktFUg==');
+        expect(chrome.runtime.sendMessage).toHaveBeenCalledWith(expect.objectContaining({
+            action: 'FETCH_IMAGE_AS_BASE64',
+            geminiSession: true,
+        }), expect.any(Function));
+
+        window.removeEventListener('MANGA_TRANSLATOR_FETCH_IMAGE', pageListener);
+        chrome.runtime.sendMessage = originalSendMessage;
+    });
+
+    test('BGD-11: preserva conversa após erro somente no background_delete com Debug ativo', async () => {
+        const storage = getStorageMock();
+        const mod = loadContentGeminiModule();
+        const delivery = { action: 'GEMINI_ERROR', error: 'Falha de extração' };
+
+        await storage.set({ debugMode: true });
+        await expect(mod.shouldKeepConversationForDebug(delivery, 'background_delete')).resolves.toBe(true);
+
+        await storage.set({ debugMode: false });
+        await expect(mod.shouldKeepConversationForDebug(delivery, 'background_delete')).resolves.toBe(false);
+        await storage.set({ debugMode: true });
+        await expect(mod.shouldKeepConversationForDebug({ action: 'GEMINI_IMAGE_EXTRACTED' }, 'background_delete')).resolves.toBe(false);
+        await expect(mod.shouldKeepConversationForDebug(delivery, 'temp_chat')).resolves.toBe(false);
     });
 });
 
