@@ -23,6 +23,17 @@
       };
     }
 
+    if (request.geminiSession === true) {
+      const host = parsedUrl.hostname.toLowerCase();
+      const isGoogleAsset = host === 'googleusercontent.com' || host.endsWith('.googleusercontent.com');
+      if (!isGoogleAsset) {
+        return {
+          code: 'INVALID_PAYLOAD',
+          message: 'Asset autenticado deve ser googleusercontent.com',
+        };
+      }
+    }
+
     return null;
   }
 
@@ -46,14 +57,19 @@
       allowedSources: ['content', 'gemini'],
     },
     validate,
-    async execute(request) {
+    async execute(request, context) {
+      const wantsGeminiSession = request.geminiSession === true;
+      const senderUrl = String(context && context.sender && context.sender.tab && context.sender.tab.url || '');
+      if (wantsGeminiSession && !/^https:\/\/gemini\.google\.com\//i.test(senderUrl)) {
+        throw new Error('Sessão Gemini permitida somente para a aba Gemini');
+      }
       const controller = new AbortController();
       const timeout = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
 
       try {
         const response = await fetch(request.url, {
           signal: controller.signal,
-          credentials: 'omit',
+          credentials: wantsGeminiSession ? 'include' : 'omit',
           cache: 'no-store',
         });
         if (!response.ok) throw new Error(`HTTP ${response.status}`);
@@ -76,3 +92,4 @@
     },
   });
 })(typeof self !== 'undefined' ? self : globalThis);
+
