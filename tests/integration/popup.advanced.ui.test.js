@@ -276,4 +276,35 @@ describe('REG-08/PU-33/PU-34/PU-35/PU-36/PU-37/PU-38/PU-39/PU-40/PU-41/PU-42/PU-
         }, expect.any(Function));
         expect(document.getElementById('debug-toggle-text').textContent).toContain('Debug ATIVADO');
     });
+    test('configurações do popup exibem e salvam o modo de exclusão segura', async () => {
+        const host = 'reader.test';
+        const tab = await createActiveTab(`https://${host}/chapter-safe-mode`, 'Reader Test');
+        registerPopupTabHandler(tab.id, { images: buildImages(host, 1) });
+        await storageMock.set({ enabledDomains: [host], geminiExecutionMode: 'background_delete' });
+
+        await loadExtensionPage({
+            htmlPath: 'extension/popup.html',
+            scriptPath: 'extension/popup.js',
+            fireDOMContentLoaded: true,
+        });
+        await flushAsyncTasks(10);
+
+        document.getElementById('btn-options').click();
+        await flushAsyncTasks(8);
+
+        const secureMode = document.getElementById('popup-gemini-mode-delete');
+        expect(secureMode).not.toBeNull();
+        expect(secureMode.checked).toBe(true);
+
+        document.getElementById('popup-gemini-mode-temp').checked = true;
+        document.getElementById('popup-gemini-mode-temp').dispatchEvent(new Event('change', { bubbles: true }));
+        await flushAsyncTasks(4);
+        expect((await storageMock.get(['geminiExecutionMode'])).geminiExecutionMode).toBe('temp_chat');
+
+        secureMode.checked = true;
+        secureMode.dispatchEvent(new Event('change', { bubbles: true }));
+        await flushAsyncTasks(4);
+        expect((await storageMock.get(['geminiExecutionMode'])).geminiExecutionMode).toBe('background_delete');
+    });
 });
+
