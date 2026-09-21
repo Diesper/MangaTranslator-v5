@@ -259,4 +259,30 @@ describe('OP-01/OP-02/OP-03/OP-04/OP-05/OP-06/OP-07/OP-08/OP-09/OP-10/OP-11/OP-1
         );
         expect(document.querySelectorAll('.options-image-item')).toHaveLength(1);
     });
+    test('modo de exclusão segura é restaurado e persistido nas opções', async () => {
+        await storageMock.set({ geminiExecutionMode: 'background_delete' });
+
+        await loadExtensionPage({
+            htmlPath: 'extension/options.html',
+            scriptPath: 'extension/options.js',
+            fireDOMContentLoaded: true,
+        });
+        await flushAsyncTasks(4);
+
+        const secureMode = document.getElementById('gemini-mode-delete');
+        expect(secureMode).not.toBeNull();
+        expect(secureMode.checked).toBe(true);
+
+        document.getElementById('gemini-mode-temp').checked = true;
+        document.getElementById('gemini-mode-temp').dispatchEvent(new Event('change', { bubbles: true }));
+        await flushAsyncTasks(4);
+        expect((await storageMock.get(['geminiExecutionMode'])).geminiExecutionMode).toBe('temp_chat');
+
+        secureMode.checked = true;
+        secureMode.dispatchEvent(new Event('change', { bubbles: true }));
+        await flushAsyncTasks(4);
+        expect((await storageMock.get(['geminiExecutionMode'])).geminiExecutionMode).toBe('background_delete');
+        expect(document.getElementById('gemini-mode-status').textContent).toContain('Exclusão Segura');
+    });
 });
+
