@@ -822,12 +822,49 @@ function fetchImageThroughGeminiPage(url, timeoutMs = 20_000) {
     });
 }
 
+function fetchGeminiImageThroughExtension(url) {
+    return new Promise((resolve, reject) => {
+        chrome.runtime.sendMessage({
+            action: 'FETCH_IMAGE_AS_BASE64',
+            url,
+            // O Service Worker só envia cookies quando a requisição parte de
+            // uma aba Gemini e o host é um asset Google validado no router.
+            geminiSession: true,
+        }, response => {
+            if (chrome.runtime.lastError) {
+                reject(new Error(chrome.runtime.lastError.message || 'Falha no Service Worker'));
+                return;
+            }
+            if (response && response.dataUrl) {
+                resolve(response.dataUrl);
+                return;
+            }
+            reject(new Error((response && response.error) || 'Service Worker não retornou a imagem'));
+        });
+    });
+}
+
 async function extractImageInGeminiTab(image, url) {
     try {
         return await imageElementToDataUrl(image);
     } catch (_canvasError) {
-        return fetchImageThroughGeminiPage(url);
+        try {
+            return await fetchImageThroughGeminiPage(url);
+        } catch (_pageFetchError) {
+            // Fallback privilegiado, ainda sem aba auxiliar: o Service Worker
+            // possui host permission e pode fazer a leitura com a sessão do
+            // Gemini, somente para assets googleusercontent validados.
+            return fetchGeminiImageThroughExtension(url);
+        }
     }
+}
+
+async function shouldKeepConversationForDebug(delivery, executionMode) {
+    if (executionMode !== 'background_delete' || !delivery || delivery.action !== 'GEMINI_ERROR') {
+        return false;
+    }
+    const debugData = await new Promise(resolve => chrome.storage.local.get(['debugMode'], resolve));
+    return debugData.debugMode === true;
 }
 
 async function processGeminiJob() {
@@ -922,6 +959,16 @@ async function processGeminiJob() {
     async function deliverWithSecureDeletion(delivery, executionMode, shouldDeleteConversation) {
         if (executionMode !== 'background_delete') {
             if (shouldDeleteConversation) deleteCurrentConversation().catch(() => {});
+            chrome.runtime.sendMessage(delivery);
+            return true;
+        }
+
+        // Em debug, um erro de extração preserva a conversa e a aba para que o
+        // usuário possa inspecionar exatamente o estado que causou a falha.
+        // Fora de debug o comportamento permanece idêntico: entrega o erro e
+        // executa a exclusão segura normalmente.
+        if (await shouldKeepConversationForDebug(delivery, executionMode)) {
+            sendLog('info', 'DEBUG_KEEP_CONVERSATION', 'Modo debug: conversa preservada após erro de extração.', {});
             chrome.runtime.sendMessage(delivery);
             return true;
         }
@@ -1656,4 +1703,5 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
         return true; 
     }
 });
+
 
