@@ -1469,6 +1469,14 @@ async function waitForConfirmButton(excludeEl = null, timeout = 2600) {
     return null;
 }
 
+function escapeCssAttributeValue(value) {
+    const input = String(value || '');
+    if (typeof CSS !== 'undefined' && typeof CSS.escape === 'function') return CSS.escape(input);
+    // chatId usa [a-z0-9_-], mas o fallback mantém o seletor seguro em
+    // runtimes de teste ou navegadores sem CSS.escape.
+    return input.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
+}
+
 let _deletionInProgress = false;
 
 async function waitForElementToSettle(element, samples = 3, interval = 300) {
@@ -1496,7 +1504,7 @@ async function deleteCurrentConversation({ lockScroll = false } = {}) {
         const debugData = await new Promise(r => chrome.storage.local.get(['debugMode'], r));
         if (debugData.debugMode === true) {
             sendLog('info', 'DEBUG_MODE_SKIP', 'Modo debug ativo, pulando deleção da conversa');
-            return false;
+            return true;
         }
 
         const chatMatch = window.location.pathname.match(/\/app\/([a-z0-9_-]+)/i);
@@ -1506,14 +1514,14 @@ async function deleteCurrentConversation({ lockScroll = false } = {}) {
         // A barra lateral pode estar fechada em abas ocultas. O clique nativo é
         // deliberado: evita coordenadas sintéticas e funciona sem cursor físico.
         const sidebarToggle = document.querySelector('button[data-test-id="side-nav-toggle"], button[aria-label*="menu" i], button[aria-label*="barra lateral" i]');
-        if (!document.querySelector(`a[href*="${CSS.escape(chatId)}"]`) && sidebarToggle) {
+        if (!document.querySelector(`a[href*="${escapeCssAttributeValue(chatId)}"]`) && sidebarToggle) {
             sidebarToggle.click();
             await sleep(700); // Tempo para a animação e os itens da barra lateral aparecerem.
         }
 
         let activeLink = null;
         for (let attempt = 0; attempt < 16; attempt++) {
-            activeLink = document.querySelector(`a[href*="${CSS.escape(chatId)}"]`);
+            activeLink = document.querySelector(`a[href*="${escapeCssAttributeValue(chatId)}"]`);
             if (activeLink) break;
             await sleep(250);
         }
@@ -1570,7 +1578,7 @@ async function deleteCurrentConversation({ lockScroll = false } = {}) {
         await sleep(700); // Aguarda o Angular CDK terminar de montar o overlay.
         // Método 3: após abrir o menu, confirma que a mesma linha ainda está
         // conectada e ainda representa o chatId do job antes de clicar Excluir.
-        if (!rowContainer.isConnected || !rowContainer.querySelector(`a[href*="${CSS.escape(chatId)}"]`)) {
+        if (!rowContainer.isConnected || !rowContainer.querySelector(`a[href*="${escapeCssAttributeValue(chatId)}"]`)) {
             throw new Error('A lista mudou enquanto o menu era aberto.');
         }
         let deleteItem = null;
