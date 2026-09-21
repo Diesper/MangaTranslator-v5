@@ -1,8 +1,7 @@
 {
-  "name": "@diesper/manga-translator",
+  "name": "manga-translator",
   "version": "6.0.0",
   "description": "Manga Translator v6.0 - extensão Chromium para tradução automática de mangás e quadrinhos usando Google Gemini",
-  "private": false,
   "scripts": {
     "test": "node tests/run-all-tests.js",
     "test:all": "node tests/run-all-tests.js",
@@ -12,14 +11,5 @@
     "test:unit": "node tests/run-all-tests.js --unit",
     "test:smoke": "node tests/smoke/run-smoke.js"
   },
-  "license": "MIT",
-  "files": [
-    "extension/**",
-    "README.md",
-    "LICENSE",
-    "docs/Documentação_V6.0.md"
-  ],
-  "publishConfig": {
-    "registry": "https://npm.pkg.github.com"
-  }
+  "license": "MIT"
 }
