@@ -32,6 +32,11 @@ function loadContentGeminiModule({ skipAutoProcess = true } = {}) {
                 setManualGeminiResultUrl,
                 findGeneratedResultImages,
                 isManualSelectableImage,
+                imageElementToDataUrl,
+                fetchImageThroughGeminiPage,
+                extractImageInGeminiTab,
+                waitForElementToSettle,
+                escapeCssAttributeValue,
                 __getDeletionInProgress: () => _deletionInProgress,
             };`
         );
