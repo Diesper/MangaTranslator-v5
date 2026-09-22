@@ -608,7 +608,7 @@ describe('content_gemini.js - RPA real do Gemini', () => {
                 <a href="/app/chat-1">Conversa atual</a>
                 <button id="options-btn" aria-haspopup="menu" aria-label="opções">...</button>
             </div>
-            <div id="delete-item" role="menuitem">Excluir conversa</div>
+            <div id="delete-item" role="menuitem">Excluir</div>
             <button id="confirm-delete">Excluir</button>
         `;
 
@@ -644,3 +644,4 @@ describe('content_gemini.js - RPA real do Gemini', () => {
         }));
     });
 });
+

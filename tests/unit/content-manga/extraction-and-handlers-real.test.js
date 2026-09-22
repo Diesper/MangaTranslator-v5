@@ -143,7 +143,10 @@ describe('CM-21/CM-22/CM-23/CM-24/CM-25/CM-26/CM-27/CM-28/CM-99/CM-100/CM-102/CM
             }
 
             if (message.action === 'FETCH_IMAGE_AS_BASE64') {
-                if (callback) setTimeout(() => callback(fetchFallbackResponse), 0);
+                const response = typeof fetchFallbackResponse === 'function'
+                    ? fetchFallbackResponse(message)
+                    : fetchFallbackResponse;
+                if (callback) setTimeout(() => callback(response), 0);
                 return;
             }
 
@@ -249,6 +252,38 @@ describe('CM-21/CM-22/CM-23/CM-24/CM-25/CM-26/CM-27/CM-28/CM-99/CM-100/CM-102/CM
             expect(sentMessages).toContainEqual(expect.objectContaining({
                 action: 'IMAGE_READY_FROM_NEW_TAB',
                 src: 'data:image/png;base64,RkFMTEJBQ0tfT0s=',
+            }));
+        });
+
+        test('repete a cadeia da aba auxiliar após falha transitória antes de entregar a imagem', async () => {
+            Object.defineProperty(window.HTMLCanvasElement.prototype, 'getContext', {
+                value: jest.fn(() => ({
+                    drawImage: () => { throw new DOMException('Canvas blocked', 'SecurityError'); },
+                })),
+                configurable: true,
+                writable: true,
+            });
+            let fetchCalls = 0;
+            const sentMessages = await loadExtractionScript({
+                fetchFallbackResponse: () => {
+                    fetchCalls += 1;
+                    return fetchCalls > 1
+                        ? { dataUrl: 'data:image/png;base64,UkVDVVBFUkFETw==' }
+                        : { error: 'Failed to fetch' };
+                },
+                buildDom: () => {
+                    const img = document.createElement('img');
+                    defineImageState(img, { complete: true, height: 900 });
+                    document.body.appendChild(img);
+                },
+            });
+
+            await waitFor(() => sentMessages.find(message => message.action === 'IMAGE_READY_FROM_NEW_TAB'), { timeout: 3000 });
+
+            expect(fetchCalls).toBeGreaterThan(1);
+            expect(sentMessages).toContainEqual(expect.objectContaining({
+                action: 'IMAGE_READY_FROM_NEW_TAB',
+                src: 'data:image/png;base64,UkVDVVBFUkFETw==',
             }));
         });
     });
@@ -528,3 +563,4 @@ describe('CM-21/CM-22/CM-23/CM-24/CM-25/CM-26/CM-27/CM-28/CM-99/CM-100/CM-102/CM
         });
     });
 });
+

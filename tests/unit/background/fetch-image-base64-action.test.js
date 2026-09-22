@@ -92,6 +92,45 @@ describe('background/actions/fetch-image-base64.js', () => {
         );
     });
 
+    test('busca asset googleusercontent com credenciais somente quando vem da aba Gemini', async () => {
+        global.fetch = jest.fn().mockResolvedValue({
+            ok: true,
+            status: 200,
+            headers: { get: jest.fn(() => 'image/png') },
+            blob: jest.fn().mockResolvedValue({ size: 1024, type: 'image/png' }),
+        });
+        const router = loadAction();
+
+        const result = await dispatch(router.createMessageRouter({}), {
+            action: 'FETCH_IMAGE_AS_BASE64',
+            url: 'https://lh3.googleusercontent.com/generated-image',
+            geminiSession: true,
+        }, { tab: { id: 17, url: 'https://gemini.google.com/app/chat-1' } });
+
+        expect(result.response).toEqual(expect.objectContaining({ ok: true, dataUrl: expect.any(String) }));
+        expect(global.fetch).toHaveBeenCalledWith(
+            'https://lh3.googleusercontent.com/generated-image',
+            expect.objectContaining({ credentials: 'include', cache: 'no-store' })
+        );
+    });
+
+    test.each([
+        ['host não Google', 'https://example.test/image.png', 'https://gemini.google.com/app/chat-1', 'Asset autenticado deve ser googleusercontent.com'],
+        ['origem fora do Gemini', 'https://lh3.googleusercontent.com/image.png', 'https://reader.example/chapter', 'Sessão Gemini permitida somente para a aba Gemini'],
+    ])('rejeita sessão autenticada para %s', async (_name, url, senderUrl, message) => {
+        global.fetch = jest.fn();
+        const router = loadAction();
+        const result = await dispatch(router.createMessageRouter({}), {
+            action: 'FETCH_IMAGE_AS_BASE64', url, geminiSession: true,
+        }, { tab: { id: 18, url: senderUrl } });
+
+        expect(result.response).toEqual(expect.objectContaining({
+            ok: false,
+            error: expect.objectContaining({ message }),
+        }));
+        expect(global.fetch).not.toHaveBeenCalled();
+    });
+
     test.each([
         ['aceita exatamente 50 MB', 50 * 1024 * 1024, true],
         ['rejeita mais de 50 MB', (50 * 1024 * 1024) + 1, false],
@@ -226,3 +265,4 @@ describe('background/actions/fetch-image-base64.js', () => {
         expect(signal.aborted).toBe(true);
     });
 });
+

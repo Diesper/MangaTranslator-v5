@@ -34,7 +34,12 @@ function loadContentGeminiModule({ skipAutoProcess = true } = {}) {
                 isManualSelectableImage,
                 imageElementToDataUrl,
                 fetchImageThroughGeminiPage,
+                fetchGeminiImageThroughExtension,
                 extractImageInGeminiTab,
+                extractResultImage,
+                extractResultImageWithRetry,
+                getExtractionFailureKind,
+                shouldKeepConversationForDebug,
                 waitForElementToSettle,
                 escapeCssAttributeValue,
                 __getDeletionInProgress: () => _deletionInProgress,
@@ -53,3 +58,4 @@ module.exports = {
     CONTENT_GEMINI_PATH,
     loadContentGeminiModule,
 };
+
