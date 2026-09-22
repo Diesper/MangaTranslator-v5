@@ -305,6 +305,9 @@ document.addEventListener('DOMContentLoaded', async () => {
             chrome.storage.local.get(['enabledDomains'], (data) => {
                 if ((data.enabledDomains || []).includes(hostname)) {
                     showPage(appContent);
+                    // Reconsulta a página porque o usuário pode ter acabado de
+                    // alterar o filtro dimensional nos ajustes.
+                    loadMainImages();
                 } else {
                     showPage(enablePage);
                 }
@@ -1133,6 +1136,58 @@ document.addEventListener('DOMContentLoaded', async () => {
         renderSettingsSites();
         initGeminiExecutionMode();
         initDebugToggle();
+        initImageMinimumFilter();
+    }
+
+    function initImageMinimumFilter() {
+        const widthInput = document.getElementById('settings-image-min-width');
+        const heightInput = document.getElementById('settings-image-min-height');
+        const widthRange = document.getElementById('settings-image-min-width-range');
+        const heightRange = document.getElementById('settings-image-min-height-range');
+        const resetButton = document.getElementById('settings-image-min-reset');
+        const shape = document.getElementById('image-filter-shape');
+        if (!widthInput || !heightInput || !widthRange || !heightRange || !resetButton || !shape) return;
+
+        const clamp = (value, fallback) => {
+            const number = Number.parseInt(value, 10);
+            return Number.isFinite(number) ? Math.max(0, Math.min(3000, number)) : fallback;
+        };
+        const render = (width, height) => {
+            widthInput.value = width;
+            heightInput.value = height;
+            widthRange.value = width;
+            heightRange.value = height;
+            // A prévia é proporcional, mas limitada para continuar legível no popup.
+            const scale = Math.min(118 / Math.max(width, 1), 128 / Math.max(height, 1), 1);
+            shape.style.setProperty('--filter-preview-width', `${Math.max(18, Math.round(width * scale))}px`);
+            shape.style.setProperty('--filter-preview-height', `${Math.max(18, Math.round(height * scale))}px`);
+            shape.textContent = `${width} × ${height}`;
+        };
+        const save = (width, height) => {
+            chrome.storage.local.set({ imageMinWidth: width, imageMinHeight: height });
+        };
+        const updateFrom = (source) => {
+            const width = clamp(source === 'width' ? widthInput.value : widthRange.value, 300);
+            const height = clamp(source === 'height' ? heightInput.value : heightRange.value, 400);
+            render(width, height);
+            save(width, height);
+        };
+
+        chrome.storage.local.get(['imageMinWidth', 'imageMinHeight'], (data) => {
+            render(clamp(data.imageMinWidth, 300), clamp(data.imageMinHeight, 400));
+        });
+
+        if (widthInput._imageFilterBound) return;
+        widthInput._imageFilterBound = true;
+        widthInput.addEventListener('input', () => updateFrom('width'));
+        heightInput.addEventListener('input', () => updateFrom('height'));
+        widthRange.addEventListener('input', () => updateFrom('widthRange'));
+        heightRange.addEventListener('input', () => updateFrom('heightRange'));
+        resetButton.addEventListener('click', () => {
+            render(300, 400);
+            save(300, 400);
+            showSettingsStatus('Tamanho mínimo restaurado para 300 × 400 px.', '#4CAF50');
+        });
     }
 
     function renderSettingsAutoRestore() {

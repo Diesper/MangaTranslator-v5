@@ -200,6 +200,19 @@
         .settings-auto-image-redo-btn { background: #1a5fa8; }
         .settings-auto-image-btn:hover { opacity: 0.85; }
 
+        .image-filter-control { display: grid; grid-template-columns: minmax(0, 1fr) 46px; gap: 8px; align-items: center; margin-top: 10px; }
+        .image-filter-preview { min-height: 158px; display: flex; align-items: center; justify-content: center; padding: 12px; background: #101010; border: 1px solid #2a2a2a; border-radius: 8px; }
+        .image-filter-shape { width: var(--filter-preview-width, 75px); height: var(--filter-preview-height, 100px); max-width: 100%; max-height: 130px; box-sizing: border-box; display: flex; align-items: center; justify-content: center; color: #fff; background: linear-gradient(135deg, #ff4444, #9b2424); border: 2px solid #ff7474; border-radius: 4px; box-shadow: 0 0 18px rgba(255, 68, 68, .22); font-size: 12px; font-weight: 700; transition: width .12s ease, height .12s ease; }
+        .image-filter-height { height: 150px; writing-mode: vertical-lr; direction: rtl; accent-color: #FF4444; cursor: pointer; }
+        .image-filter-width { width: 100%; accent-color: #FF4444; cursor: pointer; }
+        .image-filter-inputs { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 10px; }
+        .image-filter-field { display: flex; flex-direction: column; gap: 5px; color: #999; font-size: 11px; font-weight: 700; }
+        .image-filter-field input { width: 100%; box-sizing: border-box; background: #161616; border: 1px solid #333; color: #eee; border-radius: 5px; padding: 7px 8px; outline: none; font-size: 13px; }
+        .image-filter-field input:focus { border-color: #FF4444; }
+        .image-filter-axis-label { display: flex; justify-content: space-between; color: #777; font-size: 10px; margin-top: 3px; }
+        .image-filter-reset { margin-top: 8px; background: transparent; border: 1px solid #555; color: #ccc; border-radius: 5px; padding: 6px 9px; font-size: 11px; font-weight: 700; cursor: pointer; }
+        .image-filter-reset:hover { border-color: #FF4444; color: #fff; }
+
         .debug-toggle-row { display: flex; align-items: center; gap: 12px; cursor: pointer; user-select: none; padding: 10px 12px; background: #161616; border: 1px solid #2a2a2a; border-radius: 8px; transition: border-color 0.15s; }
         .debug-toggle-row:hover { border-color: #FF9800; }
         .debug-toggle-track { width: 42px; height: 24px; border-radius: 12px; background: #2a2a2a; position: relative; flex-shrink: 0; transition: background 0.2s; border: 1.5px solid #3a3a3a; }
@@ -347,40 +360,7 @@
                         <span class="settings-toggle-help">Quando desligado, nenhuma imagem é trocada automaticamente em nenhum site.</span>
                     </span>
                 </label>
-            </div>
-            <div class="settings-divider"></div>
-            <div class="settings-section">
-                <div class="settings-section-title">Modo de Execução do Gemini</div>
-                <div class="settings-section-desc">
-                    Escolha como o Gemini será aberto e gerenciado durante as traduções.
-                </div>
-                <div style="display:flex; flex-direction:column; gap:8px; margin-top:8px;">
-                    <label class="settings-toggle-row" style="cursor:pointer;">
-                        <input type="radio" name="popup-gemini-execution-mode" id="popup-gemini-mode-temp" value="temp_chat" style="accent-color:#FF4444; margin-top:2px;">
-                        <span>
-                            <span class="settings-toggle-title">Conversa Temporária (Segundo Plano) — Padrão</span>
-                            <span class="settings-toggle-help">Abre em aba oculta em segundo plano e ativa a conversa momentânea do Gemini. Não polui seu histórico e fecha rapidamente.</span>
-                        </span>
-                    </label>
-                    <label class="settings-toggle-row" style="cursor:pointer;">
-                        <input type="radio" name="popup-gemini-execution-mode" id="popup-gemini-mode-minimized" value="minimized_window" style="accent-color:#FF4444; margin-top:2px;">
-                        <span>
-                            <span class="settings-toggle-title">Janela Minimizada</span>
-                            <span class="settings-toggle-help">Abre em janela separada minimizada. Recomendado caso o navegador congele abas em segundo plano.</span>
-                        </span>
-                    </label>
-                    <label class="settings-toggle-row" style="cursor:pointer;">
-                        <input type="radio" name="popup-gemini-execution-mode" id="popup-gemini-mode-delete" value="background_delete" style="accent-color:#FF4444; margin-top:2px;">
-                        <span>
-                            <span class="settings-toggle-title">Conversa Normal com Exclusão Segura</span>
-                            <span class="settings-toggle-help">Abre em aba oculta em segundo plano usando uma conversa normal. Ao terminar, exclui a conversa automaticamente antes de fechar a aba.</span>
-                        </span>
-                    </label>
-                </div>
-            </div>
-            <div class="settings-divider"></div>
-            <div class="settings-section">
-                <div class="settings-section-title">Sites habilitados</div>
+                <div class="settings-section-title" style="margin-top:18px;">Sites habilitados</div>
                 <div class="settings-section-desc">
                     Domínios onde a extensão está ativa. Abra cada site para ver as imagens salvas dele, bloquear auto-substituição ou refazer uma tradução específica.
                 </div>
@@ -392,12 +372,39 @@
             </div>
             <div class="settings-divider"></div>
             <div class="settings-section">
+                <div class="settings-section-title">Modo de Execução do Gemini</div>
+                <div class="settings-section-desc">
+                    Escolha como o Gemini será aberto e gerenciado durante as traduções.
+                </div>
+                <div style="display:flex; flex-direction:column; gap:8px; margin-top:8px;">
+                    <label class="settings-toggle-row" style="cursor:pointer;"><input type="radio" name="popup-gemini-execution-mode" id="popup-gemini-mode-temp" value="temp_chat" style="accent-color:#FF4444; margin-top:2px;"><span><span class="settings-toggle-title">Conversa Temporária (Segundo Plano) — Padrão</span><span class="settings-toggle-help">Abre em aba oculta em segundo plano e ativa a conversa momentânea do Gemini. Não polui seu histórico e fecha rapidamente.</span></span></label>
+                    <label class="settings-toggle-row" style="cursor:pointer;"><input type="radio" name="popup-gemini-execution-mode" id="popup-gemini-mode-minimized" value="minimized_window" style="accent-color:#FF4444; margin-top:2px;"><span><span class="settings-toggle-title">Janela Minimizada</span><span class="settings-toggle-help">Abre em janela separada minimizada. Recomendado caso o navegador congele abas em segundo plano.</span></span></label>
+                    <label class="settings-toggle-row" style="cursor:pointer;"><input type="radio" name="popup-gemini-execution-mode" id="popup-gemini-mode-delete" value="background_delete" style="accent-color:#FF4444; margin-top:2px;"><span><span class="settings-toggle-title">Conversa Normal com Exclusão Segura</span><span class="settings-toggle-help">Abre em aba oculta em segundo plano usando uma conversa normal. Ao terminar, exclui a conversa automaticamente antes de fechar a aba.</span></span></label>
+                </div>
+            </div>
+            <div class="settings-divider"></div>
+            <div class="settings-section">
                 <div class="settings-section-title">Traduções em Paralelo</div>
                 <div class="settings-section-desc">Quantas imagens processar no Gemini ao mesmo tempo. Maior = mais rápido, mas requer abas abertas simultâneas.</div>
                 <div style="display:flex; align-items:center; gap: 15px; margin-top: 10px;">
                     <input type="range" id="settings-parallel" min="1" max="10" value="1" style="flex:1;">
                     <span id="settings-parallel-val" style="font-weight:bold; font-size: 16px; min-width: 20px; text-align: center;">1</span>
                 </div>
+            </div>
+            <div class="settings-divider"></div>
+            <div class="settings-section">
+                <div class="settings-section-title">Tamanho mínimo das imagens</div>
+                <div class="settings-section-desc">Somente imagens que atendem à largura e à altura mínimas entram na lista para tradução. Ajuste para incluir páginas menores.</div>
+                <div class="image-filter-inputs">
+                    <label class="image-filter-field">Largura mínima (px)<input id="settings-image-min-width" type="number" min="0" max="3000" step="1" inputmode="numeric" value="300"></label>
+                    <label class="image-filter-field">Altura mínima (px)<input id="settings-image-min-height" type="number" min="0" max="3000" step="1" inputmode="numeric" value="400"></label>
+                </div>
+                <button class="image-filter-reset" id="settings-image-min-reset" type="button">↩ Restaurar padrão (300 × 400)</button>
+                <div class="image-filter-control" id="image-filter-control">
+                    <div class="image-filter-preview"><div class="image-filter-shape" id="image-filter-shape">300 × 400</div></div>
+                    <input class="image-filter-height" id="settings-image-min-height-range" type="range" min="0" max="3000" step="1" value="400" aria-label="Altura mínima">
+                </div>
+                <div style="padding-right:54px;"><input class="image-filter-width" id="settings-image-min-width-range" type="range" min="0" max="3000" step="1" value="300" aria-label="Largura mínima"><div class="image-filter-axis-label"><span>0 px</span><span>largura</span><span>3000 px</span></div></div>
             </div>
             <div class="settings-divider"></div>
             <div class="settings-section">

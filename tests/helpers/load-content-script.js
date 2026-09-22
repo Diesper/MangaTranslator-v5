@@ -37,6 +37,8 @@ const CONTENT_MANGA_PATH = path.join(ROOT, 'extension/content_manga.js');
  * @param {string}   options.hostname         - Hostname simulado (default: 'testmanga.com')
  * @param {string[]} options.enabledDomains   - Domínios na whitelist (default: [hostname])
  * @param {string[]} options.bannedImages     - URLs banidas para o hostname
+ * @param {number}   options.imageMinWidth    - Largura mínima configurada para varredura
+ * @param {number}   options.imageMinHeight   - Altura mínima configurada para varredura
  * @param {Array}    options.domImages        - Array de { src, width, height, className, attributes } para criar no DOM
  * @returns {Promise<Object>}  { listeners, getState }
  */
@@ -44,6 +46,8 @@ async function loadContentScript({
     hostname = 'testmanga.com',
     enabledDomains = null,
     bannedImages = [],
+    imageMinWidth,
+    imageMinHeight,
     domImages = [],
 } = {}) {
     // 1. Configura window.location
@@ -67,6 +71,8 @@ async function loadContentScript({
         [`bannedImages_${hostname}`]: bannedImages,
         customPrompt: 'Teste prompt',
     };
+    if (imageMinWidth !== undefined) storageInit.imageMinWidth = imageMinWidth;
+    if (imageMinHeight !== undefined) storageInit.imageMinHeight = imageMinHeight;
     await global.chrome.storage.local.set(storageInit);
 
     // 4. Constrói DOM com imagens de teste

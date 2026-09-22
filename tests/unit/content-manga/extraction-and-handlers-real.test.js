@@ -372,6 +372,44 @@ describe('CM-21/CM-22/CM-23/CM-24/CM-25/CM-26/CM-27/CM-28/CM-99/CM-100/CM-102/CM
             });
         });
 
+        test('GET_PAGE_IMAGES respeita os limites de tamanho configurados pelo usuário', async () => {
+            const context = await loadContentScript({
+                hostname: 'localhost',
+                imageMinWidth: 150,
+                imageMinHeight: 100,
+                domImages: [
+                    { src: 'http://localhost/page-menor.png', width: 180, height: 120 },
+                    { src: 'http://localhost/page-baixa.png', width: 180, height: 90 },
+                ],
+            });
+
+            const response = await context.sendMessage('GET_PAGE_IMAGES');
+
+            expect(response.images).toHaveLength(1);
+            expect(response.images[0]).toMatchObject({
+                src: 'http://localhost/page-menor.png',
+                width: 180,
+                height: 120,
+            });
+        });
+
+        test('GET_PAGE_IMAGES aplica novos limites sem recarregar o content script', async () => {
+            const context = await loadContentScript({
+                hostname: 'localhost',
+                domImages: [
+                    { src: 'http://localhost/page-pequena.png', width: 180, height: 120 },
+                ],
+            });
+
+            expect((await context.sendMessage('GET_PAGE_IMAGES')).images).toHaveLength(0);
+
+            await storageMock.set({ imageMinWidth: 150, imageMinHeight: 100 });
+
+            expect((await context.sendMessage('GET_PAGE_IMAGES')).images).toEqual([
+                expect.objectContaining({ src: 'http://localhost/page-pequena.png' }),
+            ]);
+        });
+
         test('REQUEST_IMAGE_DATA devolve base64 direto quando o canvas funciona', async () => {
             await loadContentScript({
                 hostname: 'localhost',

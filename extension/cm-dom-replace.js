@@ -69,10 +69,16 @@
         return false;
     }
 
-    function getScanEligibleImages(banned = []) {
+    function getScanEligibleImages(banned = [], minDimensions = {}) {
+        // Os limites vêm do painel de ajustes. Valores inválidos voltam aos
+        // padrões históricos para não bloquear a leitura da página.
+        const parsedWidth = Number.parseInt(minDimensions.minWidth, 10);
+        const parsedHeight = Number.parseInt(minDimensions.minHeight, 10);
+        const minWidth = Number.isFinite(parsedWidth) && parsedWidth >= 0 ? parsedWidth : 300;
+        const minHeight = Number.isFinite(parsedHeight) && parsedHeight >= 0 ? parsedHeight : 400;
         const candidates = [];
         Array.from(document.querySelectorAll('img')).forEach((img, index) => {
-            if (img.naturalWidth >= 300 && img.naturalHeight >= 400 && img.dataset.translated !== 'true' && !banned.includes(img.src)) {
+            if (img.naturalWidth >= minWidth && img.naturalHeight >= minHeight && img.dataset.translated !== 'true' && !banned.includes(img.src)) {
                 candidates.push({
                     element: img,
                     index,

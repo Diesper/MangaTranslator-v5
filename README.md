@@ -17,6 +17,7 @@
 - **Ciclo de Vida Durável (Manifest V3):** Reconciliação automática de abas e estado persistente resistente ao descarregamento (*unload*) do Service Worker do Chrome.
 - **Leitor Embutido (Reader Mode):** Interface dedicada para visualização sequencial ou em página dupla dos mangás traduzidos, com opção de download local em lote.
 - **Controle de Concorrência:** Fila assíncrona inteligente com limite de páginas simultâneas configurável para evitar sobrecarga ou bloqueio.
+- **Filtro dimensional configurável:** Defina a largura e a altura mínimas das imagens elegíveis, com campos numéricos, controles deslizantes sincronizados, prévia proporcional e restauração rápida do padrão `300 × 400 px`.
 
 ---
 
@@ -67,6 +68,10 @@ Como a extensão está em formato de código aberto, você pode carregá-la dire
 ## 🧪 Executando os Testes
 
 O projeto conta com suíte abrangente de testes unitários, de integração, visuais, smoke e E2E.
+
+Os testes de popup e content script também cobrem o filtro dimensional: valores
+personalizados, atualização imediata após alteração no armazenamento,
+sincronização entre campos/sliders/prévia e o reset para o padrão.
 
 > **Baseline validado em 20/09/2026:** **81/81 suítes Jest (574/574 testes)** e **8/8 testes E2E Playwright**, sem flaky na execução final de referência. A pipeline também valida sintaxe recursiva dos scripts, Manifest V3, smoke/visual e cobertura.
 

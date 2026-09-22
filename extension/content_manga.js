@@ -79,6 +79,29 @@ if (!window.__manga_translator_content_injected) {
     const BUTTON_MIN_WIDTH = 130;
     const BUTTON_MIN_HEIGHT = 48;
     const BUTTON_MAX_HEIGHT = 96;
+    let imageMinDimensions = { minWidth: 300, minHeight: 400 };
+
+    function normalizeImageMinDimensions(data = {}) {
+        const normalize = (value, fallback) => {
+            const parsed = Number.parseInt(value, 10);
+            return Number.isFinite(parsed) && parsed >= 0 ? parsed : fallback;
+        };
+        return {
+            minWidth: normalize(data.imageMinWidth, 300),
+            minHeight: normalize(data.imageMinHeight, 400),
+        };
+    }
+
+    chrome.storage.local.get(['imageMinWidth', 'imageMinHeight'], (data) => {
+        imageMinDimensions = normalizeImageMinDimensions(data);
+    });
+    chrome.storage.onChanged.addListener((changes, areaName) => {
+        if (areaName !== 'local' || (!changes.imageMinWidth && !changes.imageMinHeight)) return;
+        imageMinDimensions = normalizeImageMinDimensions({
+            imageMinWidth: changes.imageMinWidth ? changes.imageMinWidth.newValue : imageMinDimensions.minWidth,
+            imageMinHeight: changes.imageMinHeight ? changes.imageMinHeight.newValue : imageMinDimensions.minHeight,
+        });
+    });
 
     function clampButtonHeight(btn) {
         if (!btn) return;
@@ -919,7 +942,7 @@ if (!window.__manga_translator_content_injected) {
                 if (selectedImagesIndices.size === 0) {
                     chrome.storage.local.get([`bannedImages_${hostname}`], (data) => {
                         const banned = data[`bannedImages_${hostname}`] || [];
-                        const validImages = getScanEligibleImages(banned);
+                        const validImages = getScanEligibleImages(banned, imageMinDimensions);
                         validImages.forEach(img => selectedImagesIndices.add(img.index));
                         sendLog('info', 'UI_ACTION', `Botão FLUTUANTE vermelho na página apertado! (${selectedImagesIndices.size} imagens elegíveis)`);
                         extractAndSendImages(Array.from(selectedImagesIndices));
@@ -1973,7 +1996,7 @@ if (!window.__manga_translator_content_injected) {
             } else if (request.action === 'GET_PAGE_IMAGES') {
                 chrome.storage.local.get([`bannedImages_${hostname}`], (data) => {
                     const banned = data[`bannedImages_${hostname}`] || [];
-                    const validImages = getScanEligibleImages(banned);
+                    const validImages = getScanEligibleImages(banned, imageMinDimensions);
                     sendResponse({ images: validImages, total: validImages.length });
                 });
                 return true; 
