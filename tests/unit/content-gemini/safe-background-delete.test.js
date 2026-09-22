@@ -187,5 +187,72 @@ describe('content_gemini.js - modo background_delete', () => {
         await expect(mod.shouldKeepConversationForDebug({ action: 'GEMINI_IMAGE_EXTRACTED' }, 'background_delete')).resolves.toBe(false);
         await expect(mod.shouldKeepConversationForDebug(delivery, 'temp_chat')).resolves.toBe(false);
     });
+
+    test('BGD-12: registra host, etapa e causa quando as três rotas diretas falham', async () => {
+        const originalSendMessage = chrome.runtime.sendMessage;
+        chrome.runtime.sendMessage = jest.fn((message, callback) => {
+            if (message.action === 'FETCH_IMAGE_AS_BASE64') {
+                callback({ error: 'Failed to fetch' });
+            } else if (callback) {
+                callback();
+            }
+        });
+        const mod = loadContentGeminiModule();
+        const pageListener = event => {
+            window.dispatchEvent(new CustomEvent('MANGA_TRANSLATOR_FETCH_IMAGE_RESULT', {
+                detail: { requestId: event.detail.requestId, error: 'HTTP 403' },
+            }));
+        };
+        window.addEventListener('MANGA_TRANSLATOR_FETCH_IMAGE', pageListener);
+
+        await expect(mod.extractImageInGeminiTab(null, 'https://lh3.googleusercontent.com/image', 1)).rejects
+            .toThrow('Failed to fetch');
+
+        const stageLogs = chrome.runtime.sendMessage.mock.calls
+            .map(([message]) => message)
+            .filter(message => message.action === 'LOG_ENTRY' && message.action_name === 'GEMINI_EXTRACT_STAGE');
+        expect(stageLogs).toEqual(expect.arrayContaining([
+            expect.objectContaining({ extra: expect.objectContaining({ host: 'lh3.googleusercontent.com', stage: 'canvas', attempt: 1, failureKind: 'unknown' }) }),
+            expect.objectContaining({ extra: expect.objectContaining({ host: 'lh3.googleusercontent.com', stage: 'gemini_page_fetch', attempt: 1, failureKind: 'http' }) }),
+            expect.objectContaining({ extra: expect.objectContaining({ host: 'lh3.googleusercontent.com', stage: 'service_worker_session', attempt: 1, failureKind: 'network' }) }),
+        ]));
+
+        window.removeEventListener('MANGA_TRANSLATOR_FETCH_IMAGE', pageListener);
+        chrome.runtime.sendMessage = originalSendMessage;
+    });
+
+    test('BGD-13: repete a cadeia inteira uma vez e recupera uma falha transitória', async () => {
+        const originalSendMessage = chrome.runtime.sendMessage;
+        let serviceWorkerCalls = 0;
+        chrome.runtime.sendMessage = jest.fn((message, callback) => {
+            if (message.action === 'FETCH_IMAGE_AS_BASE64') {
+                serviceWorkerCalls += 1;
+                callback(serviceWorkerCalls === 1
+                    ? { error: 'Failed to fetch' }
+                    : { dataUrl: 'data:image/png;base64,UkVDVVBFUkFETw==' });
+            } else if (callback) {
+                callback();
+            }
+        });
+        const mod = loadContentGeminiModule();
+        const pageListener = event => {
+            window.dispatchEvent(new CustomEvent('MANGA_TRANSLATOR_FETCH_IMAGE_RESULT', {
+                detail: { requestId: event.detail.requestId, error: 'Failed to fetch' },
+            }));
+        };
+        window.addEventListener('MANGA_TRANSLATOR_FETCH_IMAGE', pageListener);
+
+        await expect(mod.extractResultImageWithRetry(null, 'https://lh3.googleusercontent.com/image', 'background_delete', 2, 0)).resolves
+            .toBe('data:image/png;base64,UkVDVVBFUkFETw==');
+        expect(serviceWorkerCalls).toBe(2);
+        expect(chrome.runtime.sendMessage).toHaveBeenCalledWith(expect.objectContaining({
+            action: 'LOG_ENTRY',
+            action_name: 'GEMINI_EXTRACT_RETRY_ALL',
+            extra: expect.objectContaining({ host: 'lh3.googleusercontent.com', attempt: 1 }),
+        }), expect.any(Function));
+
+        window.removeEventListener('MANGA_TRANSLATOR_FETCH_IMAGE', pageListener);
+        chrome.runtime.sendMessage = originalSendMessage;
+    });
 });
 
