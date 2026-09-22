@@ -1144,8 +1144,9 @@ document.addEventListener('DOMContentLoaded', async () => {
         const heightInput = document.getElementById('settings-image-min-height');
         const widthRange = document.getElementById('settings-image-min-width-range');
         const heightRange = document.getElementById('settings-image-min-height-range');
+        const resetButton = document.getElementById('settings-image-min-reset');
         const shape = document.getElementById('image-filter-shape');
-        if (!widthInput || !heightInput || !widthRange || !heightRange || !shape) return;
+        if (!widthInput || !heightInput || !widthRange || !heightRange || !resetButton || !shape) return;
 
         const clamp = (value, fallback) => {
             const number = Number.parseInt(value, 10);
@@ -1182,6 +1183,11 @@ document.addEventListener('DOMContentLoaded', async () => {
         heightInput.addEventListener('input', () => updateFrom('height'));
         widthRange.addEventListener('input', () => updateFrom('widthRange'));
         heightRange.addEventListener('input', () => updateFrom('heightRange'));
+        resetButton.addEventListener('click', () => {
+            render(300, 400);
+            save(300, 400);
+            showSettingsStatus('Tamanho mínimo restaurado para 300 × 400 px.', '#4CAF50');
+        });
     }
 
     function renderSettingsAutoRestore() {

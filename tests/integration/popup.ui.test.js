@@ -413,4 +413,88 @@ describe('REG-06/REG-07/PU-01/PU-02/PU-03/PU-04/PU-05/PU-06/PU-07/PU-08/PU-09/PU
         expect(document.getElementById('btn-force-reload')).toBeTruthy();
         expect(document.getElementById('image-grid').textContent).not.toContain('Nenhuma imagem detectada');
     });
+
+    test('sincroniza campos, controles deslizantes, prévia e reset do filtro de tamanho', async () => {
+        const tab = await createActiveTab('https://reader.test/chapter-filter', 'Reader Test');
+        registerPopupTabHandler(tab.id, {
+            images: [{ index: 0, src: 'https://reader.test/p1.png', width: 800, height: 1200 }],
+        });
+        await storageMock.set({
+            enabledDomains: ['reader.test'],
+            imageMinWidth: 180,
+            imageMinHeight: 120,
+        });
+
+        await loadExtensionPage({
+            htmlPath: 'extension/popup.html',
+            scriptPath: 'extension/popup.js',
+            fireDOMContentLoaded: true,
+        });
+        await flushAsyncTasks(8);
+        document.getElementById('btn-options').click();
+        await flushAsyncTasks(8);
+
+        const widthInput = document.getElementById('settings-image-min-width');
+        const heightInput = document.getElementById('settings-image-min-height');
+        const widthRange = document.getElementById('settings-image-min-width-range');
+        const heightRange = document.getElementById('settings-image-min-height-range');
+        const shape = document.getElementById('image-filter-shape');
+
+        expect(widthInput.value).toBe('180');
+        expect(heightInput.value).toBe('120');
+        expect(widthRange.value).toBe('180');
+        expect(heightRange.value).toBe('120');
+        expect(shape.textContent).toBe('180 × 120');
+
+        widthRange.value = '220';
+        widthRange.dispatchEvent(new Event('input', { bubbles: true }));
+        heightInput.value = '160';
+        heightInput.dispatchEvent(new Event('input', { bubbles: true }));
+        await flushAsyncTasks(4);
+
+        expect(widthInput.value).toBe('220');
+        expect(heightRange.value).toBe('160');
+        expect(shape.textContent).toBe('220 × 160');
+        expect(await storageMock.get(['imageMinWidth', 'imageMinHeight'])).toEqual({
+            imageMinWidth: 220,
+            imageMinHeight: 160,
+        });
+
+        document.getElementById('settings-image-min-reset').click();
+        await flushAsyncTasks(4);
+
+        expect(widthInput.value).toBe('300');
+        expect(heightInput.value).toBe('400');
+        expect(widthRange.value).toBe('300');
+        expect(heightRange.value).toBe('400');
+        expect(shape.textContent).toBe('300 × 400');
+        expect(await storageMock.get(['imageMinWidth', 'imageMinHeight'])).toEqual({
+            imageMinWidth: 300,
+            imageMinHeight: 400,
+        });
+    });
+
+    test('mantém sites habilitados agrupados com a substituição automática e o filtro entre paralelo e debug', async () => {
+        const tab = await createActiveTab('https://reader.test/chapter-layout', 'Reader Test');
+        registerPopupTabHandler(tab.id);
+        await storageMock.set({ enabledDomains: ['reader.test'] });
+
+        await loadExtensionPage({
+            htmlPath: 'extension/popup.html',
+            scriptPath: 'extension/popup.js',
+            fireDOMContentLoaded: true,
+        });
+        await flushAsyncTasks(8);
+        document.getElementById('btn-options').click();
+        await flushAsyncTasks(8);
+
+        const autoRestoreSection = document.getElementById('settings-auto-restore-row').closest('.settings-section');
+        expect(document.getElementById('settings-sites-list').closest('.settings-section')).toBe(autoRestoreSection);
+
+        const parallel = document.getElementById('settings-parallel').closest('.settings-section');
+        const filter = document.getElementById('image-filter-control').closest('.settings-section');
+        const debug = document.getElementById('debug-toggle-label').closest('.settings-section');
+        expect(parallel.compareDocumentPosition(filter) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+        expect(filter.compareDocumentPosition(debug) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    });
 });

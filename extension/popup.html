@@ -210,6 +210,8 @@
         .image-filter-field input { width: 100%; box-sizing: border-box; background: #161616; border: 1px solid #333; color: #eee; border-radius: 5px; padding: 7px 8px; outline: none; font-size: 13px; }
         .image-filter-field input:focus { border-color: #FF4444; }
         .image-filter-axis-label { display: flex; justify-content: space-between; color: #777; font-size: 10px; margin-top: 3px; }
+        .image-filter-reset { margin-top: 8px; background: transparent; border: 1px solid #555; color: #ccc; border-radius: 5px; padding: 6px 9px; font-size: 11px; font-weight: 700; cursor: pointer; }
+        .image-filter-reset:hover { border-color: #FF4444; color: #fff; }
 
         .debug-toggle-row { display: flex; align-items: center; gap: 12px; cursor: pointer; user-select: none; padding: 10px 12px; background: #161616; border: 1px solid #2a2a2a; border-radius: 8px; transition: border-color 0.15s; }
         .debug-toggle-row:hover { border-color: #FF9800; }
@@ -397,6 +399,7 @@
                     <label class="image-filter-field">Largura mínima (px)<input id="settings-image-min-width" type="number" min="0" max="3000" step="1" inputmode="numeric" value="300"></label>
                     <label class="image-filter-field">Altura mínima (px)<input id="settings-image-min-height" type="number" min="0" max="3000" step="1" inputmode="numeric" value="400"></label>
                 </div>
+                <button class="image-filter-reset" id="settings-image-min-reset" type="button">↩ Restaurar padrão (300 × 400)</button>
                 <div class="image-filter-control" id="image-filter-control">
                     <div class="image-filter-preview"><div class="image-filter-shape" id="image-filter-shape">300 × 400</div></div>
                     <input class="image-filter-height" id="settings-image-min-height-range" type="range" min="0" max="3000" step="1" value="400" aria-label="Altura mínima">
