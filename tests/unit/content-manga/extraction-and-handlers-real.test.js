@@ -337,6 +337,27 @@ describe('CM-21/CM-22/CM-23/CM-24/CM-25/CM-26/CM-27/CM-28/CM-99/CM-100/CM-102/CM
             });
         });
 
+        test('GET_PAGE_IMAGES respeita os limites de tamanho configurados pelo usuário', async () => {
+            const context = await loadContentScript({
+                hostname: 'localhost',
+                imageMinWidth: 150,
+                imageMinHeight: 100,
+                domImages: [
+                    { src: 'http://localhost/page-menor.png', width: 180, height: 120 },
+                    { src: 'http://localhost/page-baixa.png', width: 180, height: 90 },
+                ],
+            });
+
+            const response = await context.sendMessage('GET_PAGE_IMAGES');
+
+            expect(response.images).toHaveLength(1);
+            expect(response.images[0]).toMatchObject({
+                src: 'http://localhost/page-menor.png',
+                width: 180,
+                height: 120,
+            });
+        });
+
         test('REQUEST_IMAGE_DATA devolve base64 direto quando o canvas funciona', async () => {
             await loadContentScript({
                 hostname: 'localhost',
