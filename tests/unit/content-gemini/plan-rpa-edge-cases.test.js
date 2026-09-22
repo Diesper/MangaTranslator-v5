@@ -485,7 +485,7 @@ describe('content_gemini.js - bordas RPA do plano v3.1', () => {
                 <a href="/app/chat-1">Conversa atual</a>
                 <button id="options-btn" aria-haspopup="menu" aria-label="opções">...</button>
             </div>
-            <div id="delete-item" role="menuitem">Excluir conversa</div>
+            <div id="delete-item" role="menuitem">Excluir</div>
             <button id="confirm-delete">Excluir</button>
         `);
         document.getElementById('options-btn').scrollIntoView = jest.fn();
@@ -507,10 +507,11 @@ describe('content_gemini.js - bordas RPA do plano v3.1', () => {
         await waitFor(() => sentMessages.find(message => message.action === 'GEMINI_IMAGE_EXTRACTED'), { timeout: 12000 });
         await waitFor(() => sentMessages.find(message =>
             message.action === 'LOG_ENTRY' && message.action_name === 'DELETE_OK'
-        ), { timeout: 4000 });
+        ), { timeout: 8000 });
 
         expect(document.getElementById('options-btn').click).toHaveBeenCalled();
         expect(document.getElementById('delete-item').click).toHaveBeenCalled();
         expect(document.getElementById('confirm-delete').click).toHaveBeenCalled();
-    }, 16000);
+    }, 20000);
 });
+

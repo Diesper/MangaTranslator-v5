@@ -187,4 +187,33 @@ describe('v6.0 Log Buffer e Exportador — popup.js', () => {
 
         expect(window.alert).toHaveBeenCalledWith('Nenhum log para exportar.');
     });
+
+    test('copia todos os logs, inclusive os ocultos pelo filtro, para a área de transferência', async () => {
+        const sampleLogs = [
+            { ts: 1700000000000, level: 'warn', source: 'gemini', action: 'GEMINI_AUXILIARY_FALLBACK', detail: 'Último recurso', extra: { host: 'lh3.googleusercontent.com' } },
+            { ts: 1700000001000, level: 'info', source: 'bg', action: 'BATCH_DONE', detail: 'Concluído' },
+        ];
+        Object.defineProperty(navigator, 'clipboard', {
+            configurable: true,
+            value: { writeText: jest.fn().mockResolvedValue() },
+        });
+        await storageMock.set({ translatorLog: sampleLogs, enabledDomains: ['manga.test'] });
+        const activeTab = await tabsMock.create({ url: 'https://manga.test/ch1', active: true, title: 'Manga Test' });
+        tabsMock._activeTabId = activeTab.id;
+
+        await loadExtensionPage({ htmlPath: 'extension/popup.html', scriptPath: 'extension/popup.js', fireDOMContentLoaded: true });
+        await flushAsyncTasks(8);
+        await openLogsSection();
+        const filterLevel = document.getElementById('log-filter-level');
+        filterLevel.value = 'warn';
+        filterLevel.dispatchEvent(new Event('change'));
+
+        document.getElementById('btn-log-copy').click();
+        await flushAsyncTasks(4);
+
+        expect(navigator.clipboard.writeText).toHaveBeenCalledWith(expect.stringContaining('GEMINI_AUXILIARY_FALLBACK'));
+        expect(navigator.clipboard.writeText).toHaveBeenCalledWith(expect.stringContaining('BATCH_DONE'));
+        expect(document.getElementById('btn-log-copy').textContent).toBe('Copiado!');
+    });
 });
+

@@ -395,7 +395,7 @@ describe('content_gemini.js - helpers, delecao e regressao real', () => {
         expect(sentMessages.some((message) => message.action === 'GEMINI_ERROR')).toBe(false);
     });
 
-    test('CG-45/CG-48/CG-49: deleteCurrentConversation usa a estrategia do item selecionado quando nao ha link atual', async () => {
+    test('CG-45: deleteCurrentConversation recusa apagar item selecionado sem link do chat atual', async () => {
         document.body.innerHTML = `
             <div aria-selected="true" id="selected-row">
                 <button id="selected-options" aria-haspopup="menu">...</button>
@@ -417,14 +417,15 @@ describe('content_gemini.js - helpers, delecao e regressao real', () => {
         installResponder();
 
         const mod = loadContentGeminiModule();
-        await mod.deleteCurrentConversation();
+        await expect(mod.deleteCurrentConversation()).resolves.toBe(false);
 
-        expect(optionsBtn.click).toHaveBeenCalled();
-        expect(deleteItem.click).toHaveBeenCalled();
-        expect(confirmBtn.click).toHaveBeenCalled();
+        expect(optionsBtn.click).not.toHaveBeenCalled();
+        expect(deleteItem.click).not.toHaveBeenCalled();
+        expect(confirmBtn.click).not.toHaveBeenCalled();
+        expect(sentMessages).toContainEqual(expect.objectContaining({ action: 'LOG_ENTRY', action_name: 'DELETE_ERROR' }));
     });
 
-    test('CG-46/CG-48/CG-49: deleteCurrentConversation usa a heuristica da sidebar quando nao encontra conversa ativa', async () => {
+    test('CG-46: deleteCurrentConversation recusa heuristica generica da sidebar sem link do chat atual', async () => {
         document.body.innerHTML = `
             <nav>
                 <button id="sidebar-menu">
@@ -448,20 +449,23 @@ describe('content_gemini.js - helpers, delecao e regressao real', () => {
         installResponder();
 
         const mod = loadContentGeminiModule();
-        await mod.deleteCurrentConversation();
+        await expect(mod.deleteCurrentConversation()).resolves.toBe(false);
 
+        // O toggle pode abrir a barra lateral para procurar o chatId, mas não
+        // pode acionar a exclusão de um item genérico.
         expect(optionsBtn.click).toHaveBeenCalled();
-        expect(deleteItem.click).toHaveBeenCalled();
-        expect(confirmBtn.click).toHaveBeenCalled();
+        expect(deleteItem.click).not.toHaveBeenCalled();
+        expect(confirmBtn.click).not.toHaveBeenCalled();
+        expect(sentMessages).toContainEqual(expect.objectContaining({ action: 'LOG_ENTRY', action_name: 'DELETE_ERROR' }));
     });
 
-    test('CG-50: deleteCurrentConversation registra DELETE_NO_CONFIRM e fecha o modal quando falta confirmacao', async () => {
+    test('CG-50: deleteCurrentConversation falha sem confirmação e não clica fora do modal', async () => {
         document.body.innerHTML = `
             <div id="conversation-row">
                 <a href="/app/chat-1">Conversa atual</a>
                 <button id="options-btn" aria-haspopup="menu" aria-label="opções">...</button>
             </div>
-            <div id="delete-item" role="menuitem">Excluir conversa</div>
+            <div id="delete-item" role="menuitem">Excluir</div>
         `;
 
         const optionsBtn = document.getElementById('options-btn');
@@ -476,13 +480,13 @@ describe('content_gemini.js - helpers, delecao e regressao real', () => {
         installResponder();
 
         const mod = loadContentGeminiModule();
-        await mod.deleteCurrentConversation();
+        await expect(mod.deleteCurrentConversation()).resolves.toBe(false);
 
         expect(deleteItem.click).toHaveBeenCalled();
-        expect(bodyClickSpy).toHaveBeenCalled();
+        expect(bodyClickSpy).not.toHaveBeenCalled();
         expect(sentMessages).toContainEqual(expect.objectContaining({
             action: 'LOG_ENTRY',
-            action_name: 'DELETE_NO_CONFIRM',
+            action_name: 'DELETE_ERROR',
         }));
     });
 
@@ -501,7 +505,7 @@ describe('content_gemini.js - helpers, delecao e regressao real', () => {
                 const deleteItem = document.createElement('button');
                 deleteItem.id = 'delete-item';
                 deleteItem.setAttribute('role', 'menuitem');
-                deleteItem.textContent = 'Excluir conversa';
+                deleteItem.textContent = 'Excluir';
                 deleteItem.click = jest.fn(() => {
                     setTimeout(() => {
                         const dialog = document.createElement('div');
@@ -533,7 +537,7 @@ describe('content_gemini.js - helpers, delecao e regressao real', () => {
         }));
     });
 
-    test('deleteCurrentConversation registra DELETE_NO_ITEM quando o menu nao tem a acao de excluir', async () => {
+    test('deleteCurrentConversation falha sem item exato de exclusão e não clica fora do menu', async () => {
         document.body.innerHTML = `
             <div id="conversation-row">
                 <a href="/app/chat-1">Conversa atual</a>
@@ -552,27 +556,27 @@ describe('content_gemini.js - helpers, delecao e regressao real', () => {
         installResponder();
 
         const mod = loadContentGeminiModule();
-        await mod.deleteCurrentConversation();
+        await expect(mod.deleteCurrentConversation()).resolves.toBe(false);
 
         expect(optionsBtn.click).toHaveBeenCalled();
-        expect(bodyClickSpy).toHaveBeenCalled();
+        expect(bodyClickSpy).not.toHaveBeenCalled();
         expect(sentMessages).toContainEqual(expect.objectContaining({
             action: 'LOG_ENTRY',
-            action_name: 'DELETE_NO_ITEM',
+            action_name: 'DELETE_ERROR',
         }));
     });
 
-    test('CG-47: deleteCurrentConversation registra DELETE_NOT_FOUND quando nao encontra botao de opcoes', async () => {
-        document.body.innerHTML = '<div>sem sidebar e sem conversa ativa</div>';
+    test('CG-47: deleteCurrentConversation falha quando o chat exato não tem botão de opções', async () => {
+        document.body.innerHTML = '<div><a href="/app/chat-1">Conversa atual</a></div>';
         await storageMock.set({ debugMode: false });
         installResponder();
 
         const mod = loadContentGeminiModule();
-        await mod.deleteCurrentConversation();
+        await expect(mod.deleteCurrentConversation()).resolves.toBe(false);
 
         expect(sentMessages).toContainEqual(expect.objectContaining({
             action: 'LOG_ENTRY',
-            action_name: 'DELETE_NOT_FOUND',
+            action_name: 'DELETE_ERROR',
         }));
     });
 
@@ -582,7 +586,7 @@ describe('content_gemini.js - helpers, delecao e regressao real', () => {
                 <a href="/app/chat-1">Conversa atual</a>
                 <button id="options-btn" aria-haspopup="menu" aria-label="opções">...</button>
             </div>
-            <div id="delete-item" role="menuitem">Excluir conversa</div>
+            <div id="delete-item" role="menuitem">Excluir</div>
             <button id="confirm-delete">Excluir</button>
         `;
 
@@ -610,3 +614,4 @@ describe('content_gemini.js - helpers, delecao e regressao real', () => {
         expect(mod.__getDeletionInProgress()).toBe(false);
     });
 });
+

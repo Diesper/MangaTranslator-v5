@@ -611,7 +611,13 @@ No modo <code>background_delete</code>, a prioridade é extrair o resultado na
 própria aba autenticada do Gemini, sem criar uma aba auxiliar. Primeiro o script
 tenta converter a imagem já renderizada para Data URL via canvas. Se o canvas
 for bloqueado por CORS, <code>inject.js</code> realiza o fetch no mundo MAIN com
-<code>credentials: 'include'</code> e devolve o Data URL por CustomEvent.
+<code>credentials: 'include'</code> e devolve o Data URL por CustomEvent. Se a
+página não puder ler o asset, o Service Worker tenta a mesma URL com a sessão do
+Gemini, limitada a assets <code>googleusercontent.com</code> validados.
+
+A cadeia direta é repetida antes de recorrer à compatibilidade histórica da aba
+auxiliar. As falhas por etapa registram host, tentativa e classe da falha no log,
+sem registrar URL assinada, imagem ou cookies.
 
 A identidade do job deve permanecer associada ao resultado.
 
@@ -1146,17 +1152,32 @@ a URL para a variante de maior resolução disponível, como o sufixo <code>=s0<
 
 No modo <code>background_delete</code>, a conversão não deve depender do fetch
 anônimo do Service Worker, pois alguns URLs de <code>googleusercontent.com</code>
-não retornam uma imagem válida sem a sessão do Gemini. A ordem é:
+não retornam uma imagem válida sem a sessão do Gemini. Uma passagem da cadeia
+direta segue esta ordem:
 
 1. copiar a imagem renderizada com canvas;
 2. em caso de canvas contaminado por CORS, solicitar fetch autenticado ao MAIN
    world por <code>MANGA_TRANSLATOR_FETCH_IMAGE</code>;
-3. converter o Blob para Data URL e enviar <code>GEMINI_IMAGE_EXTRACTED</code>;
-4. somente então iniciar a exclusão segura.
+3. se a página falhar, solicitar <code>FETCH_IMAGE_AS_BASE64</code> ao Service
+   Worker com sessão Gemini, exclusivamente para host
+   <code>googleusercontent.com</code> validado;
+4. converter o Blob para Data URL e enviar <code>GEMINI_IMAGE_EXTRACTED</code>;
+5. somente então iniciar a exclusão segura.
 
-Esse modo não encaminha <code>GEMINI_RESULT_URL</code>, pois essa mensagem cria a
-aba auxiliar de extração. Se as tentativas locais falharem, o job informa erro
-controlado em vez de abrir outra aba.
+São preservadas quatro passagens completas dessa cadeia antes de qualquer aba
+auxiliar. Cada nova passagem aguarda um pequeno intervalo e cobre instabilidade
+transitória sem mudar de aba.
+
+Se todas as passagens diretas falharem, o script registra
+<code>GEMINI_EXTRACT_DIAGNOSTIC</code> e
+<code>GEMINI_AUXILIARY_FALLBACK</code> como avisos laranja. Esses registros são
+silenciosos para o usuário: não exibem o antigo erro “sem aba auxiliar”. Então
+<code>GEMINI_RESULT_URL</code> abre uma aba auxiliar não focada. Nela,
+<code>content_manga.js</code> identifica o mapeamento da aba, aguarda a imagem,
+tenta canvas e depois <code>FETCH_IMAGE_AS_BASE64</code>. A própria aba auxiliar
+faz até três passagens totais (a inicial e duas repetições) antes de deixar o
+watchdog tratar uma falha persistente. Ao receber Data URL, o background valida
+ownership, entrega a imagem à página de mangá e fecha a aba auxiliar.
 
 ## 12.9 Assistência manual
 
@@ -1450,9 +1471,24 @@ Logs detalhados do RPA não devem vazar por padrão.
 
 O debug é controlado pela configuração da extensão.
 
-## 17.5 Exportação
+## 17.5 Cópia e exportação
 
-O popup possui fluxo de visualização, filtragem, limpeza e exportação de logs.
+O popup possui fluxo de visualização, filtragem, limpeza, cópia integral e
+exportação de logs. O botão <strong>Copiar tudo</strong> copia todas as entradas
+do buffer, inclusive as ocultas pelo filtro visual; se a API Clipboard não estiver
+disponível, usa a cópia compatível por textarea. Os avisos de fallback de extração
+são exibidos em laranja por usarem nível <code>warn</code>.
+
+Os eventos relevantes de diagnóstico são:
+
+- <code>GEMINI_EXTRACT_STAGE</code>: resultado de canvas, fetch da página ou
+  Service Worker; inclui host sanitizado, tentativa e classe de falha;
+- <code>GEMINI_EXTRACT_RETRY_ALL</code>: início de nova passagem direta;
+- <code>GEMINI_EXTRACT_DIAGNOSTIC</code>: esgotamento das passagens diretas;
+- <code>GEMINI_AUXILIARY_FALLBACK</code>: uso excepcional da aba auxiliar;
+- <code>AUXILIARY_EXTRACT_RETRY</code> e
+  <code>AUXILIARY_EXTRACT_FAILED</code>: repetição ou esgotamento dentro da aba
+  auxiliar.
 
 ## 17.6 Telemetria de áudio
 
@@ -2186,3 +2222,4 @@ A regra de manutenção mais importante permanece simples:
 
 > **o código atual, os testes atuais e a documentação atual precisam descrever o
 > mesmo contrato.**
+
