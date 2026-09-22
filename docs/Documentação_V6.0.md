@@ -1398,6 +1398,12 @@ Cada entrada pode conter:
 - detail;
 - extra.
 
+Os eventos de áudio usam <code>source: "audio"</code>, separado dos eventos
+normais da página (<code>source: "manga"</code>). O campo <code>extra</code>
+inclui <code>originTabId</code>, <code>originTabRole: "manga_reader"</code> e
+<code>pageHost</code>, permitindo identificar de qual aba leitora veio cada
+notificação mesmo com traduções simultâneas.
+
 ## 17.3 Níveis
 
 A UI trabalha com níveis como:
@@ -1416,6 +1422,22 @@ O debug é controlado pela configuração da extensão.
 ## 17.5 Exportação
 
 O popup possui fluxo de visualização, filtragem, limpeza e exportação de logs.
+
+## 17.6 Telemetria de áudio
+
+Os eventos relevantes de diagnóstico são:
+
+- <code>AUDIO_CONTEXT_CREATED</code>: foi criado o único <code>AudioContext</code>
+  reutilizado pela aba;
+- <code>AUDIO_UNLOCKED</code>, <code>AUDIO_UNLOCK_INCOMPLETE</code> e
+  <code>AUDIO_UNLOCK_FAILED</code>: resultado da liberação pelo clique do usuário;
+- <code>AUDIO_SUCCESS_SCHEDULED</code>: as três notas de conclusão foram aceitas
+  pelo navegador; <code>AUDIO_SUCCESS_FINISHED</code> confirma o encerramento da
+  última nota;
+- <code>AUDIO_SUCCESS_SKIPPED</code>, <code>AUDIO_SUCCESS_FAILED</code> e
+  <code>AUDIO_UNAVAILABLE</code>: motivo explícito para o som não ter sido
+  reproduzido ou agendado. Esses eventos trazem <code>contextState</code> e, em
+  falhas, <code>errorName</code>/<code>errorMessage</code> sanitizados.
 
 ---
 
