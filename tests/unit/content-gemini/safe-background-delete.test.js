@@ -254,5 +254,32 @@ describe('content_gemini.js - modo background_delete', () => {
         window.removeEventListener('MANGA_TRANSLATOR_FETCH_IMAGE', pageListener);
         chrome.runtime.sendMessage = originalSendMessage;
     });
+
+    test('BGD-14: mantém quatro passagens completas antes do último recurso', async () => {
+        const originalSendMessage = chrome.runtime.sendMessage;
+        let serviceWorkerCalls = 0;
+        chrome.runtime.sendMessage = jest.fn((message, callback) => {
+            if (message.action === 'FETCH_IMAGE_AS_BASE64') {
+                serviceWorkerCalls += 1;
+                callback({ error: 'Failed to fetch' });
+            } else if (callback) {
+                callback();
+            }
+        });
+        const mod = loadContentGeminiModule();
+        const pageListener = event => {
+            window.dispatchEvent(new CustomEvent('MANGA_TRANSLATOR_FETCH_IMAGE_RESULT', {
+                detail: { requestId: event.detail.requestId, error: 'Failed to fetch' },
+            }));
+        };
+        window.addEventListener('MANGA_TRANSLATOR_FETCH_IMAGE', pageListener);
+
+        await expect(mod.extractResultImageWithRetry(null, 'https://lh3.googleusercontent.com/image', 'background_delete', undefined, 0)).rejects
+            .toThrow('Failed to fetch');
+        expect(serviceWorkerCalls).toBe(4);
+
+        window.removeEventListener('MANGA_TRANSLATOR_FETCH_IMAGE', pageListener);
+        chrome.runtime.sendMessage = originalSendMessage;
+    });
 });
 
