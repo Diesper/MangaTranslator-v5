@@ -919,7 +919,7 @@ async function extractResultImage(resultImageElement, resultUrl, executionMode, 
     });
 }
 
-async function extractResultImageWithRetry(resultImageElement, resultUrl, executionMode, maxAttempts = 2, retryDelayMs = 1000) {
+async function extractResultImageWithRetry(resultImageElement, resultUrl, executionMode, maxAttempts = 4, retryDelayMs = 1000) {
     let lastError = null;
     for (let attempt = 0; attempt < maxAttempts; attempt++) {
         if (attempt > 0) {
@@ -1415,8 +1415,8 @@ async function processGeminiJob() {
             let base64 = null;
             let extractionError = null;
             try {
-                // A cadeia completa é tentada duas vezes. A segunda passagem
-                // trata instabilidade transitória sem abrir uma aba.
+                // Preserva as quatro tentativas históricas da extensão. Cada
+                // passagem percorre a cadeia completa sem abrir uma aba.
                 base64 = await extractResultImageWithRetry(resultImageElement, resultUrl, executionMode);
             } catch (error) {
                 extractionError = error;
@@ -1431,7 +1431,7 @@ async function processGeminiJob() {
             // continua pela compatibilidade histórica da aba auxiliar.
             sendLog('warn', 'GEMINI_EXTRACT_DIAGNOSTIC', 'Todas as rotas sem aba auxiliar falharam; diagnóstico registrado.', {
                 ...getUrlLogMetadata(resultUrl),
-                attempts: 2,
+                attempts: 4,
                 finalErrorName: extractionError && extractionError.name ? extractionError.name : 'Error',
                 finalFailureKind: getExtractionFailureKind(extractionError),
                 finalMessageLength: String(extractionError && extractionError.message || '').length,
