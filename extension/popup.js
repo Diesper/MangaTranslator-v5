@@ -1567,6 +1567,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     });
 
     const btnClearLog = document.getElementById('btn-log-clear');
+    const btnCopyLog = document.getElementById('btn-log-copy');
     const btnExportLog = document.getElementById('btn-log-export');
     const logContainer = document.getElementById('log-container');
     const filterLevel = document.getElementById('log-filter-level');
@@ -1649,19 +1650,56 @@ document.addEventListener('DOMContentLoaded', async () => {
         });
     });
 
-    if(btnExportLog) btnExportLog.addEventListener('click', () => {
-        if (currentLogData.length === 0) {
-            alert('Nenhum log para exportar.');
-            return;
-        }
+    function serializeLogs(entries) {
         let txt = "=== Manga Translator System Log ===\n\n";
-        currentLogData.forEach(e => {
+        entries.forEach(e => {
             let msg = `[${new Date(e.ts).toISOString()}] [${e.level.toUpperCase()}] [${e.source}] ${e.action}: ${e.detail}`;
             if (e.extra && Object.keys(e.extra).length > 0) {
                 msg += ` | Extra: ${JSON.stringify(e.extra)}`;
             }
             txt += msg + "\n";
         });
+        return txt;
+    }
+
+    async function copyLogText(text) {
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+            await navigator.clipboard.writeText(text);
+            return;
+        }
+        const textarea = document.createElement('textarea');
+        textarea.value = text;
+        textarea.setAttribute('readonly', '');
+        textarea.style.position = 'fixed';
+        textarea.style.opacity = '0';
+        document.body.appendChild(textarea);
+        textarea.select();
+        const copied = document.execCommand('copy');
+        textarea.remove();
+        if (!copied) throw new Error('O navegador bloqueou a cópia para a área de transferência');
+    }
+
+    if(btnCopyLog) btnCopyLog.addEventListener('click', async () => {
+        if (currentLogData.length === 0) {
+            alert('Nenhum log para copiar.');
+            return;
+        }
+        const originalLabel = btnCopyLog.textContent;
+        try {
+            await copyLogText(serializeLogs(currentLogData));
+            btnCopyLog.textContent = 'Copiado!';
+        } catch (error) {
+            alert('Não foi possível copiar o log. Use Exportar para salvar o arquivo.');
+        }
+        setTimeout(() => { btnCopyLog.textContent = originalLabel; }, 1400);
+    });
+
+    if(btnExportLog) btnExportLog.addEventListener('click', () => {
+        if (currentLogData.length === 0) {
+            alert('Nenhum log para exportar.');
+            return;
+        }
+        const txt = serializeLogs(currentLogData);
         const blob = new Blob([txt], { type: 'text/plain;charset=utf-8' });
         const url = URL.createObjectURL(blob);
         chrome.downloads.download({
@@ -1676,4 +1714,5 @@ document.addEventListener('DOMContentLoaded', async () => {
     });
 
 });
+
 
