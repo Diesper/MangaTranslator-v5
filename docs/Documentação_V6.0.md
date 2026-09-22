@@ -1018,6 +1018,29 @@ O pipeline tenta excluir:
 - elementos não elegíveis;
 - imagens bloqueadas pelo usuário.
 
+### Limites dimensionais configuráveis
+
+Além dos critérios visuais, uma imagem só entra na varredura quando satisfaz a
+largura e a altura mínimas configuradas. Os valores padrão são **300 × 400 px**,
+preservando o comportamento das instalações existentes.
+
+Os limites são persistidos em `chrome.storage.local` nas chaves
+`imageMinWidth` e `imageMinHeight`. O `content_manga.js` os mantém em memória e
+reage a mudanças no storage, portanto uma alteração feita no popup passa a
+valer para `GET_PAGE_IMAGES` e para a seleção do botão flutuante sem recarregar
+a página.
+
+O popup oferece quatro formas sincronizadas de alterar esse filtro:
+
+- campos numéricos para largura e altura;
+- slider vertical de altura ao lado da prévia;
+- slider horizontal de largura abaixo da prévia;
+- representação proporcional atualizada em tempo real.
+
+O botão **Restaurar padrão (300 × 400)** atualiza todos os controles e grava os
+valores padrão novamente. Ao fechar os ajustes, o popup consulta a página outra
+vez para atualizar a grade de imagens elegíveis.
+
 ## 11.4 URL limpa
 
 URLs de CDN podem conter:
@@ -1206,8 +1229,16 @@ O popup concentra:
 - logs;
 - modo debug;
 - modo de execução do Gemini, com <code>temp_chat</code>, <code>minimized_window</code> e <code>background_delete</code>;
+- filtro de tamanho mínimo de imagem, sincronizado com o content script;
 - redimensionamento;
 - imagens bloqueadas.
+
+### Organização dos ajustes
+
+As opções de **Substituição automática** incluem a permissão global e a lista
+de **Sites habilitados**, porque ambas governam quando uma tradução salva pode
+ser reaplicada. O filtro dimensional fica entre **Traduções em Paralelo** e
+**Modo Debug**, para separar os parâmetros de processamento dos diagnósticos.
 
 ## 14.2 options.js
 
