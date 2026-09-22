@@ -529,16 +529,35 @@ if (!window.__manga_translator_content_injected) {
                     const img = document.querySelector('img');
                     if (!img) { setTimeout(extractAndSend, 500); return; }
                     
+                    const MAX_EXTRACTION_PASSES = 3;
+                    let extractionPass = 0;
+                    let imageDelivered = false;
+                    const deliverImage = (src) => {
+                        if (imageDelivered) return;
+                        imageDelivered = true;
+                        chrome.runtime.sendMessage({ action: 'IMAGE_READY_FROM_NEW_TAB', mangaTabId: response.mangaTabId, index: response.index, src, geminiTabId: response.geminiTabId, jobId: response.jobId, batchId: response.batchId });
+                    };
+                    const scheduleRetry = () => {
+                        if (imageDelivered) return;
+                        if (extractionPass >= MAX_EXTRACTION_PASSES) {
+                            sendLog('warn', 'AUXILIARY_EXTRACT_FAILED', 'Aba auxiliar esgotou as tentativas de extração.', { attempts: extractionPass });
+                            return;
+                        }
+                        sendLog('warn', 'AUXILIARY_EXTRACT_RETRY', 'Aba auxiliar repetirá a cadeia canvas e fetch.', { nextAttempt: extractionPass + 1 });
+                        setTimeout(sendImage, 700);
+                    };
                     const sendImage = () => {
-                        if (sendImage._sent) return; sendImage._sent = true;
+                        if (imageDelivered) return;
+                        extractionPass++;
                         try {
                             const canvas = document.createElement('canvas');
                             canvas.width = img.naturalWidth; canvas.height = img.naturalHeight;
                             canvas.getContext('2d').drawImage(img, 0, 0);
-                            chrome.runtime.sendMessage({ action: 'IMAGE_READY_FROM_NEW_TAB', mangaTabId: response.mangaTabId, index: response.index, src: canvas.toDataURL('image/png'), geminiTabId: response.geminiTabId, jobId: response.jobId, batchId: response.batchId });
+                            deliverImage(canvas.toDataURL('image/png'));
                         } catch (e) {
                             chrome.runtime.sendMessage({ action: 'FETCH_IMAGE_AS_BASE64', url: img.src }, (resp) => {
-                                if (resp && resp.dataUrl) chrome.runtime.sendMessage({ action: 'IMAGE_READY_FROM_NEW_TAB', mangaTabId: response.mangaTabId, index: response.index, src: resp.dataUrl, geminiTabId: response.geminiTabId, jobId: response.jobId, batchId: response.batchId });
+                                if (resp && resp.dataUrl) deliverImage(resp.dataUrl);
+                                else scheduleRetry();
                             });
                         }
                     };
@@ -547,12 +566,7 @@ if (!window.__manga_translator_content_injected) {
                     else {
                         img.addEventListener('load', sendImage, { once: true });
                         img.addEventListener('error', () => {
-                            if (!sendImage._sent) {
-                                sendImage._sent = true;
-                                chrome.runtime.sendMessage({ action: 'FETCH_IMAGE_AS_BASE64', url: img.src }, (resp) => {
-                                    if (resp && resp.dataUrl) chrome.runtime.sendMessage({ action: 'IMAGE_READY_FROM_NEW_TAB', mangaTabId: response.mangaTabId, index: response.index, src: resp.dataUrl, geminiTabId: response.geminiTabId, jobId: response.jobId, batchId: response.batchId });
-                                });
-                            }
+                            sendImage();
                         }, { once: true });
                         const pollLoaded = setInterval(() => { if (img.naturalHeight > 0) { clearInterval(pollLoaded); sendImage(); } }, 100);
                         setTimeout(() => clearInterval(pollLoaded), 20000);
@@ -1903,3 +1917,4 @@ if (!window.__manga_translator_content_injected) {
         });
     }
 }
+
