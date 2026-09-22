@@ -107,6 +107,7 @@ describe('CM-65/CM-66/CM-67/CM-68/CM-69/CM-70/CM-71/CM-72/CM-73/CM-74/CM-82/CM-8
         onSave,
         onDownload,
         onStartBatch,
+        onGetTabId,
     } = {}) {
         runtimeMock.sendMessage = jest.fn((message, callback) => {
             sentMessages.push(message);
@@ -138,6 +139,12 @@ describe('CM-65/CM-66/CM-67/CM-68/CM-69/CM-70/CM-71/CM-72/CM-73/CM-74/CM-82/CM-8
             if (message.action === 'START_BATCH') {
                 if (typeof onStartBatch === 'function') onStartBatch(message);
                 if (callback) setTimeout(() => callback({ ok: true }), 0);
+                return;
+            }
+
+            if (message.action === 'GET_TAB_ID') {
+                const response = onGetTabId ? onGetTabId(message) : { tabId: null };
+                if (callback) setTimeout(() => callback(response), 0);
                 return;
             }
 
@@ -356,6 +363,105 @@ describe('CM-65/CM-66/CM-67/CM-68/CM-69/CM-70/CM-71/CM-72/CM-73/CM-74/CM-82/CM-8
 
         expect(completionLogs).toHaveLength(1);
         expect(document.querySelector('[data-testid="img-0"]').getAttribute('src')).toBe('data:image/png;base64,RklSU1Q=');
+    });
+
+    test('reutiliza o AudioContext e registra a telemetria da aba de origem', async () => {
+        installRuntimeResponder({ onGetTabId: () => ({ tabId: 73 }) });
+        const originalAudioContext = Object.getOwnPropertyDescriptor(window, 'AudioContext');
+        const audioCtx = {
+            state: 'running',
+            currentTime: 0,
+            destination: {},
+            createOscillator: jest.fn(() => ({
+                connect: jest.fn(), start: jest.fn(), stop: jest.fn(),
+                frequency: { setValueAtTime: jest.fn() },
+            })),
+            createGain: jest.fn(() => ({
+                connect: jest.fn(),
+                gain: {
+                    setValueAtTime: jest.fn(), linearRampToValueAtTime: jest.fn(),
+                    exponentialRampToValueAtTime: jest.fn(),
+                },
+            })),
+        };
+        const AudioContextMock = jest.fn(() => audioCtx);
+        Object.defineProperty(window, 'AudioContext', { value: AudioContextMock, configurable: true });
+
+        try {
+            await loadContentScript({
+                hostname: 'localhost',
+                domImages: [{ src: 'http://localhost/page-0.png', width: 800, height: 1200 }],
+            });
+
+            for (let batch = 0; batch < 2; batch++) {
+                await dispatchToContent(runtimeMock, { action: 'START_TRANSLATION_FROM_POPUP', indices: [0] });
+                await waitFor(() => sentMessages.filter(message => message.action === 'START_BATCH').length === batch + 1);
+                await dispatchToContent(runtimeMock, { action: 'BATCH_COMPLETE' });
+            }
+
+            expect(AudioContextMock).toHaveBeenCalledTimes(1);
+            expect(audioCtx.createOscillator).toHaveBeenCalledTimes(6);
+            const audioLogs = sentMessages.filter(message => message.source === 'audio');
+            expect(audioLogs).toEqual(expect.arrayContaining([
+                expect.objectContaining({
+                    action_name: 'AUDIO_CONTEXT_CREATED',
+                    extra: expect.objectContaining({ originTabId: 73, originTabRole: 'manga_reader', pageHost: 'localhost' }),
+                }),
+                expect.objectContaining({
+                    action_name: 'AUDIO_SUCCESS_SCHEDULED',
+                    level: 'success',
+                    extra: expect.objectContaining({ originTabId: 73, contextState: 'running', notes: 3 }),
+                }),
+            ]));
+        } finally {
+            if (originalAudioContext) Object.defineProperty(window, 'AudioContext', originalAudioContext);
+            else delete window.AudioContext;
+        }
+    });
+
+    test('registra a falha de retomada do áudio com a aba de origem', async () => {
+        installRuntimeResponder({ onGetTabId: () => ({ tabId: 91 }) });
+        const originalAudioContext = Object.getOwnPropertyDescriptor(window, 'AudioContext');
+        const audioCtx = {
+            state: 'suspended',
+            currentTime: 0,
+            destination: {},
+            resume: jest.fn(() => Promise.reject(Object.assign(new Error('Autoplay blocked'), { name: 'NotAllowedError' }))),
+            createOscillator: jest.fn(),
+            createGain: jest.fn(),
+        };
+        Object.defineProperty(window, 'AudioContext', {
+            value: jest.fn(() => audioCtx),
+            configurable: true,
+        });
+
+        try {
+            await loadContentScript({
+                hostname: 'localhost',
+                domImages: [{ src: 'http://localhost/page-0.png', width: 800, height: 1200 }],
+            });
+            await dispatchToContent(runtimeMock, { action: 'START_TRANSLATION_FROM_POPUP', indices: [0] });
+            await waitFor(() => sentMessages.some(message => message.action === 'START_BATCH'));
+            await dispatchToContent(runtimeMock, { action: 'BATCH_COMPLETE' });
+            await delay(0);
+
+            expect(sentMessages).toContainEqual(expect.objectContaining({
+                source: 'audio',
+                level: 'error',
+                action_name: 'AUDIO_SUCCESS_FAILED',
+                extra: expect.objectContaining({
+                    originTabId: 91,
+                    originTabRole: 'manga_reader',
+                    pageHost: 'localhost',
+                    errorName: 'NotAllowedError',
+                    errorMessage: 'Autoplay blocked',
+                }),
+            }));
+            expect(audioCtx.createOscillator).not.toHaveBeenCalled();
+        } finally {
+            if (originalAudioContext) Object.defineProperty(window, 'AudioContext', originalAudioContext);
+            else delete window.AudioContext;
+        }
     });
 
     test('BATCH_COMPLETE em debug mode sem erros abre a drawer com mensagem positiva', async () => {

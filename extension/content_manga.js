@@ -13,6 +13,32 @@ if (!window.__manga_translator_content_injected) {
         chrome.runtime.sendMessage({ action: 'LOG_ENTRY', level, source: 'manga', action_name, detail, extra }, () => { if (chrome.runtime.lastError) {} });
     }
 
+    let contentTabId = null;
+
+    function sendAudioLog(level, action_name, detail, extra = {}) {
+        chrome.runtime.sendMessage({
+            action: 'LOG_ENTRY',
+            level,
+            source: 'audio',
+            action_name,
+            detail,
+            extra: {
+                originTabId: contentTabId,
+                originTabRole: 'manga_reader',
+                pageHost: window.location.hostname || null,
+                ...extra,
+            },
+        }, () => { if (chrome.runtime.lastError) {} });
+    }
+
+    // O sender do content script é a fonte confiável do tabId. Guardamos o
+    // valor apenas para telemetria: cada evento de áudio fica atribuível à aba
+    // leitora que o emitiu, inclusive quando há várias abas traduzindo.
+    chrome.runtime.sendMessage({ action: 'GET_TAB_ID' }, (response) => {
+        if (chrome.runtime.lastError) return;
+        if (response && Number.isInteger(response.tabId)) contentTabId = response.tabId;
+    });
+
     const domReplaceApi = window.MangaTranslatorDomReplace;
     if (!domReplaceApi) {
         throw new Error('cm-dom-replace.js deve ser carregado antes de content_manga.js');
@@ -102,6 +128,110 @@ if (!window.__manga_translator_content_injected) {
     let isTranslating = false;
     let _countedJobIndices = new Set();
     let _currentBatchId = null;
+    // Um contexto por página é importante: Chromium impõe um limite baixo de
+    // AudioContexts simultâneos. Criar um a cada lote fazia o som parar depois
+    // de algumas traduções e o catch abaixo escondia a causa.
+    let notificationAudioContext = null;
+
+    function getNotificationAudioContext() {
+        if (notificationAudioContext && notificationAudioContext.state !== 'closed') {
+            return { audioCtx: notificationAudioContext, created: false };
+        }
+        const AudioContextCtor = window.AudioContext || window.webkitAudioContext;
+        if (!AudioContextCtor) return { audioCtx: null, created: false };
+        notificationAudioContext = new AudioContextCtor();
+        return { audioCtx: notificationAudioContext, created: true };
+    }
+
+    function audioErrorExtra(error) {
+        return {
+            errorName: error && error.name ? error.name : 'Error',
+            errorMessage: error && error.message ? String(error.message).slice(0, 160) : '',
+        };
+    }
+
+    function getLoggedNotificationAudioContext(trigger) {
+        const result = getNotificationAudioContext();
+        if (result.created) {
+            sendAudioLog('info', 'AUDIO_CONTEXT_CREATED', 'Contexto de áudio criado para notificações.', {
+                trigger,
+                contextState: result.audioCtx.state,
+            });
+        }
+        if (!result.audioCtx) {
+            sendAudioLog('error', 'AUDIO_UNAVAILABLE', 'O navegador não disponibilizou AudioContext.', { trigger });
+        }
+        return result.audioCtx;
+    }
+
+    // Deve ser chamado no clique real que inicia o lote, enquanto a ativação do
+    // usuário ainda é válida para a política de autoplay do navegador.
+    function unlockNotificationAudio() {
+        try {
+            const audioCtx = getLoggedNotificationAudioContext('reader_button');
+            if (!audioCtx) return;
+            if (audioCtx.state === 'running') {
+                sendAudioLog('success', 'AUDIO_UNLOCKED', 'Áudio já estava liberado pelo gesto do usuário.', { contextState: audioCtx.state });
+            } else if (audioCtx.state === 'suspended') {
+                Promise.resolve(audioCtx.resume()).then(() => {
+                    if (audioCtx.state === 'running') {
+                        sendAudioLog('success', 'AUDIO_UNLOCKED', 'Áudio liberado pelo gesto do usuário.', { contextState: audioCtx.state });
+                    } else {
+                        sendAudioLog('warn', 'AUDIO_UNLOCK_INCOMPLETE', 'A retomada terminou, mas o contexto não ficou em execução.', { contextState: audioCtx.state });
+                    }
+                }).catch((error) => {
+                    sendAudioLog('warn', 'AUDIO_UNLOCK_FAILED', 'O navegador recusou liberar o áudio no gesto do usuário.', audioErrorExtra(error));
+                });
+            } else {
+                sendAudioLog('warn', 'AUDIO_UNLOCK_INCOMPLETE', 'O contexto de áudio não está disponível para reprodução.', { contextState: audioCtx.state });
+            }
+        } catch (error) {
+            sendAudioLog('error', 'AUDIO_UNLOCK_FAILED', 'Falha ao preparar o áudio de notificação.', audioErrorExtra(error));
+        }
+    }
+
+    function scheduleSuccessSound(audioCtx) {
+        try {
+            let lastOscillator = null;
+            [0, 0.18, 0.36].forEach((t, i) => {
+                const osc = audioCtx.createOscillator(), gain = audioCtx.createGain();
+                osc.connect(gain); gain.connect(audioCtx.destination);
+                osc.type = 'sine'; osc.frequency.setValueAtTime([660, 880, 1100][i], audioCtx.currentTime + t);
+                gain.gain.setValueAtTime(0, audioCtx.currentTime + t); gain.gain.linearRampToValueAtTime(0.4, audioCtx.currentTime + t + 0.04); gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + t + 0.28);
+                osc.start(audioCtx.currentTime + t); osc.stop(audioCtx.currentTime + t + 0.3);
+                lastOscillator = osc;
+            });
+            if (lastOscillator) {
+                lastOscillator.onended = () => {
+                    sendAudioLog('success', 'AUDIO_SUCCESS_FINISHED', 'Som de conclusão terminou sem erro.', { contextState: audioCtx.state, notes: 3 });
+                };
+            }
+            sendAudioLog('success', 'AUDIO_SUCCESS_SCHEDULED', 'Som de conclusão agendado com sucesso.', { contextState: audioCtx.state, notes: 3 });
+        } catch (error) {
+            sendAudioLog('error', 'AUDIO_SUCCESS_FAILED', 'Não foi possível agendar o som de conclusão.', audioErrorExtra(error));
+        }
+    }
+
+    function playSuccessSound() {
+        try {
+            const audioCtx = getLoggedNotificationAudioContext('batch_complete');
+            if (!audioCtx) return;
+            if (audioCtx.state === 'running') {
+                scheduleSuccessSound(audioCtx);
+            } else if (audioCtx.state === 'suspended') {
+                Promise.resolve(audioCtx.resume()).then(() => {
+                    if (audioCtx.state === 'running') scheduleSuccessSound(audioCtx);
+                    else sendAudioLog('warn', 'AUDIO_SUCCESS_SKIPPED', 'Som não foi agendado: contexto permaneceu suspenso.', { contextState: audioCtx.state });
+                }).catch((error) => {
+                    sendAudioLog('error', 'AUDIO_SUCCESS_FAILED', 'O navegador recusou retomar o áudio de conclusão.', audioErrorExtra(error));
+                });
+            } else {
+                sendAudioLog('warn', 'AUDIO_SUCCESS_SKIPPED', 'Som não foi agendado: contexto indisponível.', { contextState: audioCtx.state });
+            }
+        } catch (error) {
+            sendAudioLog('error', 'AUDIO_SUCCESS_FAILED', 'Falha inesperada ao preparar o som de conclusão.', audioErrorExtra(error));
+        }
+    }
 
     // Mantém os pontos de chamada do pipeline enquanto a implementação DOM
     // permanece isolada em cm-dom-replace.js.
@@ -785,6 +915,7 @@ if (!window.__manga_translator_content_injected) {
             mainContent.addEventListener('click', (e) => {
                 if (Math.abs(e.clientX - dragStartX) > 5 || Math.abs(e.clientY - dragStartY) > 5) return; 
                 if (isTranslating) { chrome.runtime.sendMessage({ action: 'STOP_BATCH' }); isTranslating = false; updateBtnStatus(); return; }
+                unlockNotificationAudio();
                 if (selectedImagesIndices.size === 0) {
                     chrome.storage.local.get([`bannedImages_${hostname}`], (data) => {
                         const banned = data[`bannedImages_${hostname}`] || [];
@@ -1695,15 +1826,7 @@ if (!window.__manga_translator_content_injected) {
             if ((processedCount >= totalToProcess && totalToProcess > 0) || force) {
                 isTranslating = false; updateBtnStatus(); 
                 _currentBatchId = null;
-                try {
-                    const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-                    [0, 0.18, 0.36].forEach((t, i) => {
-                        const osc = audioCtx.createOscillator(), gain = audioCtx.createGain(); osc.connect(gain); gain.connect(audioCtx.destination);
-                        osc.type = 'sine'; osc.frequency.setValueAtTime([660, 880, 1100][i], audioCtx.currentTime + t);
-                        gain.gain.setValueAtTime(0, audioCtx.currentTime + t); gain.gain.linearRampToValueAtTime(0.4, audioCtx.currentTime + t + 0.04); gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + t + 0.28);
-                        osc.start(audioCtx.currentTime + t); osc.stop(audioCtx.currentTime + t + 0.3);
-                    });
-                } catch(e) {}
+                playSuccessSound();
                 sendLog('success', 'BATCH_COMPLETE', 'Lote de tradução concluído');
 
                 const toast = document.createElement('div');
