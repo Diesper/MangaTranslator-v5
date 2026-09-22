@@ -844,19 +844,98 @@ function fetchGeminiImageThroughExtension(url) {
     });
 }
 
-async function extractImageInGeminiTab(image, url) {
+function getExtractionFailureKind(error) {
+    const message = String(error && error.message || '').toLowerCase();
+    if (/taint|cors|security|cross-origin/.test(message)) return 'canvas_or_cors';
+    if (/failed to fetch|network|load failed/.test(message)) return 'network';
+    if (/tempo limite|timeout|abort/.test(message)) return 'timeout';
+    if (/http \d{3}/.test(message)) return 'http';
+    return 'unknown';
+}
+
+function logExtractionStage(level, stage, url, attempt, error = null) {
+    const extra = { ...getUrlLogMetadata(url), stage, attempt };
+    if (error) {
+        extra.errorName = error.name || 'Error';
+        extra.failureKind = getExtractionFailureKind(error);
+        extra.messageLength = String(error.message || '').length;
+    }
+    sendLog(level, 'GEMINI_EXTRACT_STAGE', error
+        ? `Etapa ${stage} falhou durante a extração.`
+        : `Etapa ${stage} concluiu a extração.`, extra);
+}
+
+function blobToDataUrl(blob) {
+    return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onloadend = () => resolve(reader.result);
+        reader.onerror = reject;
+        reader.readAsDataURL(blob);
+    });
+}
+
+async function extractImageInGeminiTab(image, url, attempt = 0) {
     try {
-        return await imageElementToDataUrl(image);
-    } catch (_canvasError) {
+        const dataUrl = await imageElementToDataUrl(image);
+        logExtractionStage('info', 'canvas', url, attempt);
+        return dataUrl;
+    } catch (canvasError) {
+        logExtractionStage('warn', 'canvas', url, attempt, canvasError);
         try {
-            return await fetchImageThroughGeminiPage(url);
-        } catch (_pageFetchError) {
+            const dataUrl = await fetchImageThroughGeminiPage(url);
+            logExtractionStage('info', 'gemini_page_fetch', url, attempt);
+            return dataUrl;
+        } catch (pageFetchError) {
+            logExtractionStage('warn', 'gemini_page_fetch', url, attempt, pageFetchError);
             // Fallback privilegiado, ainda sem aba auxiliar: o Service Worker
             // possui host permission e pode fazer a leitura com a sessão do
             // Gemini, somente para assets googleusercontent validados.
-            return fetchGeminiImageThroughExtension(url);
+            try {
+                const dataUrl = await fetchGeminiImageThroughExtension(url);
+                logExtractionStage('info', 'service_worker_session', url, attempt);
+                return dataUrl;
+            } catch (serviceWorkerError) {
+                logExtractionStage('warn', 'service_worker_session', url, attempt, serviceWorkerError);
+                throw serviceWorkerError;
+            }
         }
     }
+}
+
+async function extractResultImage(resultImageElement, resultUrl, executionMode, attempt = 0) {
+    if (resultUrl.startsWith('data:image/')) return resultUrl;
+    if (resultUrl.startsWith('blob:')) {
+        const response = await fetch(resultUrl);
+        return blobToDataUrl(await response.blob());
+    }
+    if (executionMode === 'background_delete') {
+        return extractImageInGeminiTab(resultImageElement, resultUrl, attempt);
+    }
+    return new Promise((resolve, reject) => {
+        chrome.runtime.sendMessage({ action: 'FETCH_IMAGE_AS_BASE64', url: resultUrl }, response => {
+            if (response && response.dataUrl) resolve(response.dataUrl);
+            else reject(new Error('Falha base64 background'));
+        });
+    });
+}
+
+async function extractResultImageWithRetry(resultImageElement, resultUrl, executionMode, maxAttempts = 2, retryDelayMs = 1000) {
+    let lastError = null;
+    for (let attempt = 0; attempt < maxAttempts; attempt++) {
+        if (attempt > 0) {
+            sendLog('warn', 'GEMINI_EXTRACT_RETRY_ALL', 'Repetindo toda a cadeia de extração por possível instabilidade.', {
+                ...getUrlLogMetadata(resultUrl),
+                attempt,
+            });
+            await sleep(retryDelayMs);
+        }
+        try {
+            return await extractResultImage(resultImageElement, resultUrl, executionMode, attempt);
+        } catch (error) {
+            lastError = error;
+        }
+    }
+    throw lastError || new Error('Todas as tentativas de extração falharam');
 }
 
 async function shouldKeepConversationForDebug(delivery, executionMode) {
@@ -1333,69 +1412,35 @@ async function processGeminiJob() {
                 resultUrl = resultUrl.replace(/=s\d+[^?#]*/, '=s0');
             }
 
+            let base64 = null;
+            let extractionError = null;
             try {
-                let base64 = null;
-                if (resultUrl.startsWith('data:image/')) {
-                    base64 = resultUrl;
-                } else if (resultUrl.startsWith('blob:')) {
-                    const response = await fetch(resultUrl);
-                    const blob = await response.blob();
-                    base64 = await new Promise((resolve, reject) => {
-                        const reader = new FileReader();
-                        reader.onloadend = () => resolve(reader.result);
-                        reader.onerror = reject;
-                        reader.readAsDataURL(blob);
-                    });
-                } else {
-                    base64 = executionMode === 'background_delete'
-                        ? await extractImageInGeminiTab(resultImageElement, resultUrl)
-                        : await new Promise((resolve, reject) => {
-                            chrome.runtime.sendMessage({ action: 'FETCH_IMAGE_AS_BASE64', url: resultUrl }, (resp) => {
-                                if (resp && resp.dataUrl) resolve(resp.dataUrl); else reject(new Error('Falha base64 background'));
-                            });
-                        });
-                }
-                await deliverWithSecureDeletion({ action: 'GEMINI_IMAGE_EXTRACTED', mangaTabId: job.mangaTabId, index: job.index, src: base64, jobId: job.jobId, batchId: job.batchId }, executionMode, shouldDeleteConversation);
-            } catch(e) {
-                sendLog('warn', 'GEMINI_EXTRACT_ERR', 'Extração direta falhou, fallback bypass.', {
-                    errorName: e && e.name ? e.name : 'Error',
-                    messageLength: String(e && e.message || '').length,
-                });
-                if (executionMode === 'background_delete') {
-                    // Este modo não usa GEMINI_RESULT_URL: essa ação cria uma
-                    // aba extra de extração. Repete a via direta já usada pelos
-                    // modos originais e mantém todo o job na aba do Gemini.
-                    let base64 = null;
-                    for (let attempt = 1; attempt <= 3 && !base64; attempt++) {
-                        await sleep(700 * attempt);
-                        try {
-                            if (resultUrl.startsWith('data:image/')) {
-                                base64 = resultUrl;
-                            } else if (resultUrl.startsWith('blob:')) {
-                                const retryResponse = await fetch(resultUrl);
-                                const retryBlob = await retryResponse.blob();
-                                base64 = await new Promise((resolve, reject) => {
-                                    const reader = new FileReader();
-                                    reader.onloadend = () => resolve(reader.result);
-                                    reader.onerror = reject;
-                                    reader.readAsDataURL(retryBlob);
-                                });
-                            } else {
-                                base64 = await extractImageInGeminiTab(resultImageElement, resultUrl);
-                            }
-                        } catch (retryError) {
-                            sendLog('warn', 'GEMINI_EXTRACT_RETRY', 'Nova tentativa de extração direta falhou.', { attempt });
-                        }
-                    }
-                    if (base64) {
-                        await deliverWithSecureDeletion({ action: 'GEMINI_IMAGE_EXTRACTED', mangaTabId: job.mangaTabId, index: job.index, src: base64, jobId: job.jobId, batchId: job.batchId }, executionMode, shouldDeleteConversation);
-                    } else {
-                        await deliverWithSecureDeletion({ action: 'GEMINI_ERROR', mangaTabId: job.mangaTabId, index: job.index, error: 'Não foi possível extrair a imagem sem aba auxiliar', jobId: job.jobId, batchId: job.batchId }, executionMode, shouldDeleteConversation);
-                    }
-                    return;
-                }
-                await deliverWithSecureDeletion({ action: 'GEMINI_RESULT_URL', mangaTabId: job.mangaTabId, index: job.index, url: resultUrl, jobId: job.jobId, batchId: job.batchId }, executionMode, shouldDeleteConversation);
+                // A cadeia completa é tentada duas vezes. A segunda passagem
+                // trata instabilidade transitória sem abrir uma aba.
+                base64 = await extractResultImageWithRetry(resultImageElement, resultUrl, executionMode);
+            } catch (error) {
+                extractionError = error;
             }
+
+            if (base64) {
+                await deliverWithSecureDeletion({ action: 'GEMINI_IMAGE_EXTRACTED', mangaTabId: job.mangaTabId, index: job.index, src: base64, jobId: job.jobId, batchId: job.batchId }, executionMode, shouldDeleteConversation);
+                return;
+            }
+
+            // O diagnóstico é propositalmente apenas no log: a tradução ainda
+            // continua pela compatibilidade histórica da aba auxiliar.
+            sendLog('warn', 'GEMINI_EXTRACT_DIAGNOSTIC', 'Todas as rotas sem aba auxiliar falharam; diagnóstico registrado.', {
+                ...getUrlLogMetadata(resultUrl),
+                attempts: 2,
+                finalErrorName: extractionError && extractionError.name ? extractionError.name : 'Error',
+                finalFailureKind: getExtractionFailureKind(extractionError),
+                finalMessageLength: String(extractionError && extractionError.message || '').length,
+            });
+            sendLog('warn', 'GEMINI_AUXILIARY_FALLBACK', 'Último recurso: usando aba auxiliar. Este não é o comportamento padrão e deve ser investigado.', {
+                ...getUrlLogMetadata(resultUrl),
+                reason: 'all_direct_paths_failed',
+            });
+            await deliverWithSecureDeletion({ action: 'GEMINI_RESULT_URL', mangaTabId: job.mangaTabId, index: job.index, url: resultUrl, jobId: job.jobId, batchId: job.batchId }, executionMode, shouldDeleteConversation);
         } catch (error) {
             chrome.runtime.sendMessage({ action: 'GEMINI_ERROR', mangaTabId: job.mangaTabId, index: job.index, error: error.message, jobId: job.jobId, batchId: job.batchId });
         } finally {
