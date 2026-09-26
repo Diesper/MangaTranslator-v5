@@ -319,4 +319,161 @@ test.describe('E2E-01/E2E-02/E2E-03/E2E-04/E2E-05/E2E-06/E2E-07/E2E-08/E2E-09/E2
         });
     }
 
+
+    test('E2E resposta rápida: resultado no mesmo instante lógico do submit não é perdido', async () => {
+        await resetExtensionState(backgroundWorker, {
+            geminiExecutionMode: 'temp_chat',
+            geminiBaseUrl: 'http://127.0.0.1:3999/gemini/?fastResult=1',
+        });
+
+        const page = await browserContext.newPage();
+        await page.goto('http://localhost:3999/manga-page.html');
+        await page.waitForLoadState('networkidle');
+
+        await page.evaluate(() => {
+            const second = document.querySelector('[data-testid="manga-image-1"]');
+            if (second) second.remove();
+        });
+
+        const mainContent = page.locator('#manga-main-content');
+        await expect(mainContent).toContainText('TRADUZIR', { timeout: 10000 });
+        await mainContent.click();
+
+        await expect.poll(async () => {
+            return page.evaluate(() =>
+                document.querySelectorAll('img[data-translated="true"]').length
+            );
+        }, {
+            timeout: 30000,
+            message: 'Observer V2 deveria capturar resultado instantâneo',
+        }).toBe(1);
+
+        await expect.poll(async () => {
+            backgroundWorker = await getBackgroundWorker(browserContext);
+            const storage = await readStorage(backgroundWorker, ['mt_state']);
+            const state = storage.mt_state || {};
+            return {
+                completedJobs: state.completedJobs || 0,
+                activeJobsCount: state.activeJobsCount || 0,
+                jobIndex: Array.isArray(state.jobIndex) ? state.jobIndex : [],
+            };
+        }, {
+            timeout: 30000,
+            message: 'Esperava finalização completa após resposta instantânea',
+        }).toEqual({
+            completedJobs: 1,
+            activeJobsCount: 0,
+            jobIndex: [],
+        });
+
+        await page.close();
+    });
+
+    test('E2E submit ignorado: falha cedo sem entrar em espera de geração de 4 minutos', async () => {
+        await resetExtensionState(backgroundWorker, {
+            geminiExecutionMode: 'temp_chat',
+            geminiBaseUrl: 'http://127.0.0.1:3999/gemini/?ignoreSubmit=1',
+        });
+
+        const page = await browserContext.newPage();
+        await page.goto('http://localhost:3999/manga-page.html');
+        await page.waitForLoadState('networkidle');
+
+        await page.evaluate(() => {
+            const second = document.querySelector('[data-testid="manga-image-1"]');
+            if (second) second.remove();
+        });
+
+        const mainContent = page.locator('#manga-main-content');
+        await expect(mainContent).toContainText('TRADUZIR', { timeout: 10000 });
+
+        const startedAt = Date.now();
+        await mainContent.click();
+
+        await expect.poll(async () => {
+            backgroundWorker = await getBackgroundWorker(browserContext);
+            const storage = await readStorage(backgroundWorker, ['translatorLog']);
+            const logs = Array.isArray(storage.translatorLog)
+                ? storage.translatorLog
+                : [];
+            return logs.some(entry =>
+                entry && entry.action === 'GEMINI_SUBMISSION_NOT_CONFIRMED'
+            );
+        }, {
+            timeout: 35000,
+            message: 'Esperava GEMINI_SUBMISSION_NOT_CONFIRMED em timeout curto',
+        }).toBe(true);
+
+        expect(Date.now() - startedAt).toBeLessThan(35000);
+
+        await expect.poll(async () => {
+            backgroundWorker = await getBackgroundWorker(browserContext);
+            const storage = await readStorage(backgroundWorker, ['mt_state']);
+            const state = storage.mt_state || {};
+            return {
+                activeJobsCount: state.activeJobsCount || 0,
+                isProcessing: !!state.isProcessing,
+                queueLength: Array.isArray(state.jobQueue)
+                    ? state.jobQueue.length
+                    : -1,
+            };
+        }, {
+            timeout: 15000,
+            message: 'Job com submit não confirmado deveria liberar o lote cedo',
+        }).toEqual({
+            activeJobsCount: 0,
+            isProcessing: false,
+            queueLength: 0,
+        });
+
+        expect(
+            await page.evaluate(() =>
+                document.querySelectorAll('img[data-translated="true"]').length
+            )
+        ).toBe(0);
+
+        await page.close();
+    });
+
+    test('E2E aba Gemini manual: zero automação, zero keepalive e DOM intacto', async () => {
+        await backgroundWorker.evaluate(() => {
+            chrome.storage.local.set({ __e2e_keepalive_count: 0 });
+            chrome.runtime.onConnect.addListener(port => {
+                if (!port || port.name !== 'gemini-keep-alive') return;
+                chrome.storage.local.get(['__e2e_keepalive_count'], data => {
+                    const count = Number(data.__e2e_keepalive_count) || 0;
+                    chrome.storage.local.set({
+                        __e2e_keepalive_count: count + 1,
+                    });
+                });
+            });
+        });
+
+        const manual = await browserContext.newPage();
+        await manual.goto('http://127.0.0.1:3999/gemini/?manual=1');
+        await manual.waitForLoadState('networkidle');
+        await manual.waitForTimeout(1500);
+
+        await expect(manual.locator('#mock-status')).toHaveText('Aguardando entrada');
+        await expect(manual.locator('#attachment-label')).toHaveText('Nenhuma imagem anexada');
+        await expect(manual.locator('.prompt-box')).toHaveText('');
+        await expect(manual.locator('#result-zone')).toBeEmpty();
+
+        backgroundWorker = await getBackgroundWorker(browserContext);
+        const storage = await readStorage(backgroundWorker, [
+            '__e2e_keepalive_count',
+            'translatorLog',
+        ]);
+        expect(storage.__e2e_keepalive_count || 0).toBe(0);
+
+        const logs = Array.isArray(storage.translatorLog)
+            ? storage.translatorLog
+            : [];
+        expect(logs.some(entry =>
+            entry && entry.action === 'JOB_NOT_FOUND'
+        )).toBe(true);
+
+        await manual.close();
+    });
+
 });

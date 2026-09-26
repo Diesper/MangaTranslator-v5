@@ -1,4 +1,4 @@
-// content_gemini.js — Manga Translator v6.0
+// content_gemini.js — Manga Translator
 //
 // Bootstrap/orquestração do worker Gemini.
 // Implementação detalhada vive em extension/gemini/*.js.
@@ -233,107 +233,6 @@ const jobRunner = GeminiJobRunner.createGeminiJobRunner({
     closeKeepAlive,
 });
 
-// Compatibilidade temporária com testes/chamadas existentes.
-// A implementação real dessas rotinas já vive nos módulos novos.
-const TemporaryChatActivator =
-    GeminiTemporaryChat.createLegacyAdapter({ root: document });
-
-function dataURLtoFile(dataurl, filename) {
-    return jobRunner.dataURLtoFile(dataurl, filename);
-}
-
-function waitForElement(selector, timeout = 20000) {
-    return jobRunner.waitForElement(selector, timeout);
-}
-
-function createGeminiManualPanel(job, getIgnoreImages) {
-    return jobRunner.createGeminiManualPanel(job, getIgnoreImages);
-}
-
-function removeGeminiManualPanel() {
-    return jobRunner.removeGeminiManualPanel();
-}
-
-function setManualGeminiResultUrl(url, source = 'manual') {
-    return jobRunner.setManualGeminiResultUrl(url, source);
-}
-
-function findGeneratedResultImages(ignoreImages = new Set()) {
-    return jobRunner.findGeneratedResultImages(ignoreImages);
-}
-
-function isManualSelectableImage(image, ignoreImages = new Set()) {
-    return jobRunner.isManualSelectableImage(image, ignoreImages);
-}
-
-function imageElementToDataUrl(image) {
-    return resultExtractor.imageElementToDataUrl(image);
-}
-
-function fetchImageThroughGeminiPage(url, timeoutMs) {
-    return resultExtractor.fetchImageThroughGeminiPage(url, timeoutMs);
-}
-
-function fetchGeminiImageThroughExtension(url) {
-    return resultExtractor.fetchGeminiImageThroughExtension(url);
-}
-
-function getExtractionFailureKind(error) {
-    return resultExtractor.getExtractionFailureKind(error);
-}
-
-function extractImageInGeminiTab(image, url, attempt = 0) {
-    return resultExtractor.extractImageInGeminiTab(image, url, attempt);
-}
-
-function extractResultImage(image, url, executionMode, attempt = 0) {
-    return resultExtractor.extractResultImage(
-        image,
-        url,
-        executionMode,
-        attempt
-    );
-}
-
-function extractResultImageWithRetry(
-    image,
-    url,
-    executionMode,
-    maxAttempts = 4,
-    retryDelayMs = 1000
-) {
-    return resultExtractor.extractResultImageWithRetry(
-        image,
-        url,
-        executionMode,
-        maxAttempts,
-        retryDelayMs
-    );
-}
-
-function shouldKeepConversationForDebug(delivery, executionMode) {
-    return jobRunner.shouldKeepConversationForDebug(
-        delivery,
-        executionMode
-    );
-}
-
-function waitForElementToSettle(element, samples = 3, interval = 300) {
-    return deletionController.waitForElementToSettle(
-        element,
-        samples,
-        interval
-    );
-}
-
-function escapeCssAttributeValue(value) {
-    return deletionController.escapeCssAttributeValue(value);
-}
-
-function deleteCurrentConversation(options = {}) {
-    return deletionController.deleteCurrentConversation(options);
-}
-
 // ── Claim seguro ─────────────────────────────────────────────────────────────
 function getExpectedGeminiJobId() {
     try {
@@ -498,7 +397,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     }
 
     if (request.action === 'DELETE_CONVERSATION') {
-        deleteCurrentConversation()
+        deletionController.deleteCurrentConversation()
             .then(ok => sendResponse({ ok }))
             .catch(error => sendResponse({
                 ok: false,
@@ -508,7 +407,44 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     }
 });
 
-if (!window.__mt_gemini_started) {
+const contentGeminiApi = {
+    sleep,
+    getExpectedGeminiJobId,
+    claimGeminiJob,
+    openKeepAlive,
+    closeKeepAlive,
+    processGeminiJob,
+    dataURLtoFile: (...args) => jobRunner.dataURLtoFile(...args),
+    waitForElement: (...args) => jobRunner.waitForElement(...args),
+    createGeminiManualPanel: (...args) => jobRunner.createGeminiManualPanel(...args),
+    removeGeminiManualPanel: (...args) => jobRunner.removeGeminiManualPanel(...args),
+    setManualGeminiResultUrl: (...args) => jobRunner.setManualGeminiResultUrl(...args),
+    findGeneratedResultImages: (...args) => jobRunner.findGeneratedResultImages(...args),
+    isManualSelectableImage: (...args) => jobRunner.isManualSelectableImage(...args),
+    shouldKeepConversationForDebug: (...args) => jobRunner.shouldKeepConversationForDebug(...args),
+    imageElementToDataUrl: (...args) => resultExtractor.imageElementToDataUrl(...args),
+    fetchImageThroughGeminiPage: (...args) => resultExtractor.fetchImageThroughGeminiPage(...args),
+    fetchImageThroughExtension: (...args) => resultExtractor.fetchGeminiImageThroughExtension(...args),
+    fetchImageThroughGeminiExtension: (...args) => resultExtractor.fetchGeminiImageThroughExtension(...args),
+    fetchGeminiImageThroughExtension: (...args) => resultExtractor.fetchGeminiImageThroughExtension(...args),
+    extractImageInGeminiTab: (...args) => resultExtractor.extractImageInGeminiTab(...args),
+    extractResultImage: (...args) => resultExtractor.extractResultImage(...args),
+    extractResultImageWithRetry: (...args) => resultExtractor.extractResultImageWithRetry(...args),
+    getExtractionFailureKind: (...args) => resultExtractor.getExtractionFailureKind(...args),
+    deleteCurrentConversation: (...args) => deletionController.deleteCurrentConversation(...args),
+    waitForElementToSettle: (...args) => deletionController.waitForElementToSettle(...args),
+    escapeCssAttributeValue: (...args) => deletionController.escapeCssAttributeValue(...args),
+    __getDeletionInProgress: () => deletionController.isDeletionInProgress(),
+}
+
+const isCommonJsTest =
+    typeof module !== 'undefined' &&
+    module &&
+    module.exports;
+
+if (isCommonJsTest) {
+    module.exports = contentGeminiApi;
+} else if (!window.__mt_gemini_started) {
     window.__mt_gemini_started = true;
     processGeminiJob();
 }

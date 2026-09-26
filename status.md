@@ -31,8 +31,8 @@
 - [x] PASSO 17 — extrair attachment/result/deletion.
 - [x] PASSO 18 — criar job runner.
 - [x] PASSO 19 — reduzir anti-throttling.
-- [ ] PASSO 20 — remover legado.
-- [ ] PASSO 21 — atualizar documentação/README.
+- [x] PASSO 20 — remover legado.
+- [x] PASSO 21 — atualizar documentação/README.
 
 ## PRs planejados
 
@@ -73,7 +73,7 @@
 - [x] `gemini/dom.js`.
 - [x] Manifest com load order explícito.
 - [x] Funções puras testáveis por `require()`.
-- [ ] CI do PR 3 verde.
+- [x] CI do PR 3 verde — run #333.
 
 ### PR 4 — Observer V2
 - [x] `gemini/observer.js`.
@@ -82,7 +82,7 @@
 - [x] `generationActiveObserved`.
 - [x] Cleanup idempotente.
 - [x] OBS-01 a OBS-12.
-- [ ] CI do PR 4 verde.
+- [x] CI do PR 4 verde — run #396.
 
 ### PR 5 — Submit confirmado
 - [x] `gemini/editor.js`.
@@ -93,7 +93,7 @@
 - [x] Máximo de 2 tentativas.
 - [x] Falha curta `GEMINI_SUBMISSION_NOT_CONFIRMED`.
 - [x] SEND-01 a SEND-07.
-- [ ] CI do PR 5 verde.
+- [x] CI do PR 5 verde — run #398.
 
 ### PR 6 — Observer como fonte de resultado
 - [x] Polling pesado de 1 s removido do caminho primário.
@@ -101,14 +101,14 @@
 - [x] Resposta instantânea capturada.
 - [x] Imagem antiga não capturada.
 - [x] CG-36 atualizado; E2E de resposta rápida permanece para o gate desta etapa.
-- [ ] CI do PR 6 verde.
+- [x] CI do PR 6 verde — run #407.
 
 ### PR 7 — Temporary Chat verificado
 - [x] `gemini/temporary-chat.js`.
 - [x] Estado relido após clique controla o retorno; falso sucesso de `activeNow` removido.
 - [x] Fallback geométrico exige semântica.
 - [x] TEMP-01 a TEMP-05.
-- [ ] CI do PR 7 verde.
+- [x] CI do PR 7 verde — run #410.
 
 ### PR 8 — Attachment modular
 - [x] `gemini/attachment.js`.
@@ -125,7 +125,7 @@
 - [x] `gemini/deletion.js`.
 - [x] Menu/confirm/settle/recovery movidos.
 - [x] Idempotência preservada por controller único com lock interno.
-- [ ] CI do PR 10 verde.
+- [x] CI do PR 10 verde — run #480.
 
 ### PR 11 — Job runner e redução do monólito
 - [x] `gemini/job-runner.js`.
@@ -141,28 +141,74 @@
 - [x] CI do PR 12 verde — run #529.
 
 ### PR 13 — Limpeza do legado
-- [ ] Observer legado removido.
-- [ ] 50-attempt send removido.
-- [ ] Polling de resultado legado removido.
-- [ ] Fallback positional inseguro removido.
-- [ ] Flags temporárias removidas.
-- [ ] Helper textual/`new Function` removido quando não houver consumidores.
-- [ ] Docs V6/README atualizados.
-- [ ] CI final verde.
+- [x] Observer legado removido; Observer V2 é a única fonte de resultado/submit.
+- [x] Loop legado de 50 tentativas de send removido.
+- [x] Polling de resultado legado removido; espera pertence ao Observer V2.
+- [x] Fallback posicional inseguro do Temporary Chat removido.
+- [x] Flags transitórias de migração/teste removidas (`__mangaTranslatorJobSent`, `__MT_SKIP_GEMINI_AUTO_PROCESS__`).
+- [x] Helper textual/`new Function` removido; testes importam o módulo real via CommonJS.
+- [x] Docs/README atualizados para arquitetura modular e anti-throttling progressivo.
+- [x] Versionamento centralizado em `package.json` com `version:sync` / `version:check`.
+- [x] Manifest e metadados de teste derivados da fonte única; versão executável elevada para 6.5/6.5.0.
+- [x] UI remove versão hardcoded e lê `chrome.runtime.getManifest().version`.
+- [x] Documento canônico passa a `docs/Documentação.md` e publicação passa a usar nomes dinâmicos.
+- [x] CI final verde — run #549 (13/13 E2E; todos os jobs verdes).
+
+## Critérios globais de aceite do plano
+
+- [x] Não existe falso sucesso de submit.
+- [x] `MANGA_TRANSLATOR_TRIGGER_SEND` significa tentativa, não confirmação.
+- [x] `DO_SEND_NOW` significa tentativa, não confirmação.
+- [x] `activeNow=false` não retorna ativação bem-sucedida.
+- [x] Stop escondido não é considerado geração.
+- [x] Send disabled não é habilitado por mutação forçada.
+- [x] Observer é instalado antes do envio.
+- [x] Nova resposta é identificada por ownership.
+- [x] Resultado antigo não é confundido com resultado atual.
+- [x] Cleanup é idempotente.
+- [x] Aba manual Gemini permanece inerte no contrato unitário KEEP/TAB.
+- [x] Keepalive só abre após claim.
+- [x] `storage.get(null)` não participa do routing de job.
+- [x] `onReplaced` preserva ownership.
+- [x] Replacement chain funciona.
+- [x] Restart durante rekey funciona.
+- [x] Reconciler não descarta aba substituída.
+- [x] Watchdog continua funcionando.
+- [x] DOM ACK continua funcionando.
+- [x] Finalização continua idempotente.
+- [x] GTC e IndexedDB não sofreram regressão no CI do PR 12.
+- [x] Reader não sofreu regressão no CI do PR 12.
+- [x] Todos os testes existentes atualizados passam no PR 12 — run #529.
+- [x] Novos testes TAB/SEND/OBS/TEMP/KEEP passam.
+- [x] E2E de tradução completa passa — PR 12 run #529.
+- [x] E2E de resposta rápida passa — run #549.
+- [x] E2E de submit ignorado falha cedo — run #549.
+- [x] E2E de aba manual não toca no Gemini / não abre keepalive — run #549.
 
 ## Invariantes que serão preservados
 
-- [ ] `jobId` lógico permanece independente de `tabId`.
-- [ ] Nenhuma aba manual do Gemini executa automação sem claim válido.
-- [ ] Nenhum submit é considerado sucesso apenas por click/Enter/CustomEvent.
-- [ ] Finalização continua idempotente.
-- [ ] DOM ACK continua sendo a barreira para liberar slot após entrega.
-- [ ] Cadeia de extração atual não é simplificada antes da estabilização de ownership/observer.
-- [ ] Logs não armazenam prompt, signed URL, imagem, cookie ou token.
+- [x] `jobId` lógico permanece independente de `tabId`.
+- [x] Nenhuma aba manual do Gemini executa automação sem claim válido.
+- [x] Nenhum submit é considerado sucesso apenas por click/Enter/CustomEvent.
+- [x] Finalização continua idempotente.
+- [x] DOM ACK continua sendo a barreira para liberar slot após entrega.
+- [x] Cadeia de extração atual foi preservada após estabilização de ownership/observer.
+- [x] Logs sanitizam prompt, signed URL, imagem/base64, cookie e token.
 
 ## Notas de execução
 
+- PR 13: baseline funcional mais recente validado no run #551; 94/94 suítes Jest, 693/693 testes Jest e 13/13 E2E Playwright passaram, além de sintaxe, manifest e coverage.
+
 - PR 12: CI completo verde no run #529.
+- Critérios E2E finais adicionados no PR 13: tradução completa, resposta instantânea, submit ignorado com falha curta e aba Gemini manual inerte/sem keepalive.
+
+- Runs históricos reconciliados no tracker: PR 3 #333, PR 4 #396, PR 5 #398, PR 6 #407, PR 7 #410, PR 10 #480 e PR 11 #490.
+- Invariantes finais foram reconferidos no código modular: ownership lógico por jobId, claim obrigatório, submit observável, finalização idempotente, ACK de DOM, cadeia de extração e sanitização de logs.
+
+- PR 13 remove o legado transitório: fallback posicional do Temporary Chat, adapter legado, flag de submit já confirmado e loader textual baseado em `new Function`.
+- `content_gemini.js` passa a exportar sua API somente em CommonJS de teste e não autoexecuta nesse ambiente; no navegador mantém o bootstrap normal. Após remover wrappers transitórios, o arquivo ficou com ~451 linhas.
+- README e `docs/Documentação.md` descrevem os módulos `gemini/*`, Observer V2, Job Runner, deletion/recovery, extração, anti-throttling progressivo e versionamento centralizado.
+- `package.json` é a fonte única de versão; Manifest/testes são sincronizados e o workflow de release não depende mais de nomes `v6.0`/`v6.5` hardcoded.
 
 - PR 12 substitui o anti-throttling permanente por níveis progressivos: `minimal` (padrão), `balanced` (background/minimized) e `legacy` apenas na segunda tentativa de submit.
 - O loop de `mousemove` aleatório foi removido. O foco periódico deixou de existir em `minimal`; balanced usa 5 s e legacy usa 1 s somente durante escalada.

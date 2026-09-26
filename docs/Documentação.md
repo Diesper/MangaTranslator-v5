@@ -1,13 +1,15 @@
-# Manga Translator v6.0 — Documentação Técnica Consolidada
+# Manga Translator — Documentação Técnica Consolidada
 
-> **Documento canônico da release 6.0.**
+> **Documento canônico da arquitetura atual do Manga Translator.**
+>
+> **Fonte única da versão:** `package.json`. O Manifest, os metadados de teste, a UI e os artefatos de release são derivados dessa fonte.
 >
 > Esta documentação descreve a arquitetura que existe no código atual do projeto.
 > Ela substitui, como fonte operacional de verdade, a documentação incremental da
 > série v5.x. O arquivo anterior permanece apenas como registro histórico das
 > etapas de refatoração.
 >
-> **Data da consolidação:** 20/09/2026.
+> **Data da consolidação:** 26/09/2026.
 >
 > **Escopo da auditoria:** manifesto, Service Worker, módulos de background,
 > content scripts, cache perceptual, IndexedDB, persistência de capítulos,
@@ -18,7 +20,7 @@
 ## Índice
 
 1. [Objetivo e regras desta documentação](#1-objetivo-e-regras-desta-documentação)
-2. [Estado da release 6.0](#2-estado-da-release-60)
+2. [Estado documentado na v6.5](#2-estado-documentado-na-v65)
 3. [Topologia do repositório](#3-topologia-do-repositório)
 4. [Manifest V3 e modelo de injeção](#4-manifest-v3-e-modelo-de-injeção)
 5. [Service Worker e bootstrap modular](#5-service-worker-e-bootstrap-modular)
@@ -29,7 +31,7 @@
 10. [Cache Global de Traduções — GTC](#10-cache-global-de-traduções--gtc)
 11. [Pipeline do content_manga](#11-pipeline-do-content_manga)
 12. [Automação do Gemini](#12-automação-do-gemini)
-13. [Anti-hibernação e script MAIN](#13-anti-hibernação-e-script-main)
+13. [Anti-throttling e script MAIN](#13-anti-throttling-e-script-main)
 14. [Popup, opções, UI compartilhada e Reader](#14-popup-opções-ui-compartilhada-e-reader)
 15. [Compatibilidade e legado que ainda existem](#15-compatibilidade-e-legado-que-ainda-existem)
 16. [Segurança, origem e limites de confiança](#16-segurança-origem-e-limites-de-confiança)
@@ -37,7 +39,7 @@
 18. [Testes e CI](#18-testes-e-ci)
 19. [Falhas esperadas e diagnóstico](#19-falhas-esperadas-e-diagnóstico)
 20. [Regras de manutenção](#20-regras-de-manutenção)
-21. [Mudanças documentais da v6.0](#21-mudanças-documentais-da-v60)
+21. [Mudanças documentais da v6.5](#21-mudanças-documentais-da-v65)
 22. [Apêndice A — Inventário dos módulos](#apêndice-a--inventário-dos-módulos)
 23. [Apêndice B — Matriz IPC](#apêndice-b--matriz-ipc)
 24. [Apêndice C — Armazenamento e chaves](#apêndice-c--armazenamento-e-chaves)
@@ -48,8 +50,7 @@
 
 # 1. Objetivo e regras desta documentação
 
-A v6.0 deixa de usar o modelo de documentação do tipo "este arquivo atualiza o
-documento anterior". A documentação agora é autocontida.
+Esta documentação mantém um modelo autocontido, em vez do tipo "este arquivo atualiza o\ndocumento anterior".
 
 Isso significa:
 
@@ -62,9 +63,11 @@ Isso significa:
   histórico, não como arquitetura;
 - o código em <code>main</code> prevalece sobre qualquer texto antigo.
 
-## 1.1 O que significa "v6.0"
+## 1.1 O que significa "v6.5"
 
-A versão 6.0 é a versão do produto MangaTranslator.
+A v6.5 é a versão desta documentação técnica consolidada. Ela descreve o estado arquitetural presente no PR 13 após a refatoração Gemini RPA V2.
+
+O marco v6.5 também torna o versionamento do produto automático: `package.json` contém a versão SemVer canônica, enquanto `manifest.json` e os metadados de teste são sincronizados por `scripts/sync-version.js`.
 
 Ela não altera automaticamente:
 
@@ -79,38 +82,38 @@ quando o respectivo schema mudar.
 
 ---
 
-# 2. Estado da release 6.0
+# 2. Estado documentado na v6.5
 
 ## 2.1 Metadados oficiais
 
 | Item | Valor |
 |---|---|
 | Produto | MangaTranslator |
-| Release | **6.0** |
+| Marco desta consolidação | **6.5** |
+| Fonte única da versão executável | <code>package.json</code> |
+| Versão executável desta consolidação | **6.5** (Manifest) / **6.5.0** (SemVer) |
 | Manifest | **Manifest V3** |
 | Navegadores alvo | Chromium: Chrome, Edge, Brave, Opera e derivados compatíveis |
 | Service Worker | <code>extension/background.js</code> |
 | Persistência principal de páginas | IndexedDB <code>manga_translator_data</code> |
 | Cache global visual | IndexedDB <code>manga_translator_gtc</code> |
 | Automação de tradução | Interface web do Google Gemini |
-| Documento canônico | <code>docs/Documentação_V6.0.md</code> |
+| Documento canônico | <code>docs/Documentação.md</code> |
 
 ## 2.2 Baseline funcional conhecido
 
-O último baseline funcional completo validado imediatamente antes da
-consolidação da release foi:
+O baseline funcional completo mais recente validado antes desta atualização documental é o **GitHub Actions run #551**:
 
-- **81/81 suítes Jest**;
-- **574/574 testes Jest**;
-- **8/8 testes E2E Playwright**;
+- **94/94 suítes Jest**;
+- **693/693 testes Jest**;
+- **13/13 testes E2E Playwright**;
 - sintaxe JavaScript aprovada;
 - Manifest V3 aprovado;
 - smoke tests aprovados;
 - testes visuais/perceptuais aprovados;
 - pipeline sem mascaramento das falhas funcionais.
 
-A atualização para v6.0 desta rodada altera metadados, rótulos, comentários e
-documentação; não altera a lógica funcional do pipeline de tradução.
+O marco v6.5 preserva a lógica funcional do pipeline de tradução e adiciona versionamento centralizado, validação de consistência e publicação independente de números hardcoded.
 
 ## 2.3 O que não deve mais ser considerado estado atual
 
@@ -137,7 +140,7 @@ MangaTranslator/
 │       └── ci.yml
 ├── docs/
 │   ├── DOCUMENTACAO_v5.1.1_ATUALIZACAO.md   # histórico
-│   └── v6.0.md                                # fonte técnica atual
+│   └── Documentação.md                       # fonte técnica canônica, nome estável
 ├── extension/
 │   ├── manifest.json
 │   ├── background.js
@@ -176,6 +179,16 @@ MangaTranslator/
 │   ├── cm-gtc-client.js
 │   ├── content_manga.js
 │   ├── content_gemini.js
+│   ├── gemini/
+│   │   ├── selectors.js
+│   │   ├── dom.js
+│   │   ├── observer.js
+│   │   ├── editor.js
+│   │   ├── temporary-chat.js
+│   │   ├── attachment.js
+│   │   ├── result-extractor.js
+│   │   ├── deletion.js
+│   │   └── job-runner.js
 │   ├── gtc-fingerprint.js
 │   ├── gtc-indexeddb.js
 │   ├── inject.js
@@ -210,8 +223,8 @@ A extensão possui cinco blocos arquiteturais principais:
 1. **orquestração MV3** — background, estado, lifecycle, watchdog e router;
 2. **captura e aplicação na página de mangá** — módulos <code>cm-*</code> +
    <code>content_manga.js</code>;
-3. **automação do Gemini** — <code>inject.js</code> +
-   <code>content_gemini.js</code>;
+3. **automação do Gemini** — <code>inject.js</code>,
+   <code>content_gemini.js</code> e módulos de <code>gemini/</code>;
 4. **persistência e cache** — StorageManager + GTC;
 5. **interfaces da extensão** — popup, opções, shared-ui e reader.
 
@@ -273,10 +286,23 @@ o manifesto injeta:
 - mundo: **MAIN**;
 - momento: **document_start**.
 
-### content_gemini.js
+### Worker Gemini no mundo isolado
 
-- mundo isolado padrão do content script;
-- momento: **document_idle**.
+Em <strong>document_idle</strong>, a ordem é:
+
+1. <code>gemini/selectors.js</code>;
+2. <code>gemini/dom.js</code>;
+3. <code>gemini/observer.js</code>;
+4. <code>gemini/editor.js</code>;
+5. <code>gemini/attachment.js</code>;
+6. <code>gemini/temporary-chat.js</code>;
+7. <code>gemini/result-extractor.js</code>;
+8. <code>gemini/deletion.js</code>;
+9. <code>gemini/job-runner.js</code>;
+10. <code>content_gemini.js</code>.
+
+<code>content_gemini.js</code> é o bootstrap: claim, keep-alive, wiring e
+handlers. A execução detalhada do job pertence a <code>job-runner.js</code>.
 
 ## 4.4 Por que a injeção é estática
 
@@ -1084,153 +1110,188 @@ Quando o background entrega uma tradução:
 
 # 12. Automação do Gemini
 
-## 12.1 Princípio
+## 12.1 Princípio e ownership
 
-<code>content_gemini.js</code> não deve transformar toda aba manual do Gemini
-numa aba controlada pela extensão.
+Uma aba manual do Gemini não vira worker automaticamente. O content script só
+executa automação após obter um job por <code>CLAIM_GEMINI_JOB</code> (ou pela
+ponte direcionada de compatibilidade que consulta somente a chave da própria
+aba).
 
-O pipeline precisa de contexto de job.
+<code>jobId</code> é identidade lógica e permanece independente de
+<code>tabId</code>. Replacement de aba e finalização usam ownership explícito.
 
-## 12.2 Keep-alive sob demanda
+## 12.2 Bootstrap e Job Runner
 
-A porta de keep-alive não deve ser aberta indiscriminadamente em toda aba do
-Gemini.
+<code>content_gemini.js</code> contém apenas infraestrutura:
 
-Ela existe somente quando o job exige atividade.
+- claim;
+- keep-alive sob demanda;
+- criação/injeção dos controllers;
+- handlers de runtime;
+- chamada de <code>jobRunner.run(job)</code>.
+
+<code>gemini/job-runner.js</code> coordena, nessa ordem:
+
+1. recovery pendente de deletion;
+2. aquisição da imagem da aba do mangá;
+3. preparação/validação do editor;
+4. Temporary Chat quando aplicável;
+5. attachment;
+6. prompt;
+7. Observer V2 antes do submit;
+8. submit com confirmação observável;
+9. espera do resultado;
+10. extração;
+11. entrega/deletion;
+12. cleanup.
 
 ## 12.3 Conversa temporária
 
-No modo padrão, o script tenta reconhecer e ativar conversa temporária.
+<code>gemini/temporary-chat.js</code> usa somente identificação semântica
+(texto, aria-label, test-id, estado e indicadores conhecidos), em português e
+inglês.
 
-A detecção atual usa sinais semânticos e compatibilidade com variações da UI,
-incluindo português e inglês.
+O antigo fallback baseado em posição na tela foi removido. Se nenhum controle
+semântico confiável existir, o módulo retorna <code>unavailable</code>; ele não
+clica em um botão apenas por estar numa coordenada provável.
 
-A lógica também reconhece estados em que o modo já está ativo.
+Um clique também não basta para declarar sucesso. Depois do clique, o módulo
+aguarda evidência de que o estado ficou ativo e não alterna o controle
+repetidamente.
 
-## 12.4 Editor
+## 12.4 Attachment
 
-Antes de injetar o prompt, o script valida o editor.
+<code>gemini/attachment.js</code> preserva paste, file input e drag/drop, mas
+separa <em>tentativa</em> de <em>confirmação</em>.
 
-Estados explicitamente desabilitados incluem sinais como:
+Antes do dispatch é capturado um baseline. O attachment só é confirmado quando
+surge evidência nova/alterada de mídia no DOM; alterações cosméticas de classe,
+style ou dimensões de um thumbnail antigo não são suficientes.
 
-- <code>disabled</code>;
-- <code>aria-disabled="true"</code>;
-- <code>contenteditable="false"</code>.
+## 12.5 Editor e submit
 
-Nesses casos o fluxo deve falhar cedo, em vez de aguardar o watchdog sem chance
-de sucesso.
+<code>gemini/editor.js</code> manipula o editor e o submit, enquanto
+<code>gemini/observer.js</code> é a fonte de verdade para confirmação.
 
-## 12.5 Inserção da imagem
+O pipeline não considera click, Enter ou CustomEvent como sucesso de envio.
+Cada um é apenas uma tentativa. O submit só é confirmado quando o Observer V2
+detecta transição observável da UI, como início da geração ou mudança
+equivalente pertencente ao job atual.
 
-O script possui múltiplos caminhos de compatibilidade:
+A segunda tentativa pode solicitar <code>FORCE_SEND_ACTIVATION</code> e elevar
+temporariamente o anti-throttling, mas a confirmação continua pertencendo ao
+Observer.
 
-- paste;
-- input de arquivo;
-- drag and drop.
+## 12.6 Observer V2 e resultado
 
-Esses caminhos existem porque a UI do Gemini pode mudar sem aviso.
+O Observer V2 é instalado <strong>antes</strong> do submit, com baseline de
+imagens já existentes. Ele acompanha mutações e estado da geração e resolve o
+resultado apenas quando encontra evidência posterior pertencente à resposta do
+modelo.
 
-## 12.6 Confirmação de envio
+Erros visíveis da UI produzem <code>GEMINI_UI_ERROR</code>; ausência de
+resultado dentro da janela terminal produz <code>GEMINI_RESULT_TIMEOUT</code>.
+Não existe mais polling legado independente competindo com o Observer.
 
-O pipeline considera sinais reais de progresso.
+## 12.7 Resolução e extração
 
-Não deve considerar o clique no botão de enviar como sucesso absoluto.
+Quando o resultado usa CDN do Google e o formato permite, a URL é elevada para
+<code>=s0</code> antes da extração.
 
-## 12.7 Erros de UI
+<code>gemini/result-extractor.js</code> preserva os caminhos por modo:
 
-Durante a geração, o polling considera elementos de erro visível, incluindo
-superfícies com:
+- Data URL: retorno direto;
+- Blob URL: fetch local + FileReader;
+- <code>background_delete</code>: canvas → bridge MAIN autenticada → Service
+  Worker com sessão Gemini;
+- demais modos HTTP: fetch do Service Worker compatível com o fluxo anterior.
 
-- classes de erro;
-- textos de erro;
-- <code>role="alert"</code>.
+A cadeia completa pode ser repetida até quatro vezes. Somente depois de esgotar
+as rotas diretas o módulo aciona o fallback auxiliar por callback e registra
+<code>GEMINI_EXTRACT_DIAGNOSTIC</code> /
+<code>GEMINI_AUXILIARY_FALLBACK</code>.
 
-## 12.8 Resolução de imagem
+## 12.8 Deletion e recovery
 
-Quando o resultado usa CDN do Google e o formato permite, o script tenta elevar
-a URL para a variante de maior resolução disponível, como o sufixo <code>=s0</code>.
+<code>gemini/deletion.js</code> concentra:
 
-No modo <code>background_delete</code>, a conversão não deve depender do fetch
-anônimo do Service Worker, pois alguns URLs de <code>googleusercontent.com</code>
-não retornam uma imagem válida sem a sessão do Gemini. Uma passagem da cadeia
-direta segue esta ordem:
+- lock idempotente de exclusão;
+- localização da conversa pelo chatId atual;
+- menu Excluir e confirmação;
+- settle dos elementos;
+- scroll lock durante recovery;
+- persistência de <code>gemini_delete_recovery_&lt;tabId&gt;</code>;
+- retomada após reload;
+- limpeza do marker e entrega preservada.
 
-1. copiar a imagem renderizada com canvas;
-2. em caso de canvas contaminado por CORS, solicitar fetch autenticado ao MAIN
-   world por <code>MANGA_TRANSLATOR_FETCH_IMAGE</code>;
-3. se a página falhar, solicitar <code>FETCH_IMAGE_AS_BASE64</code> ao Service
-   Worker com sessão Gemini, exclusivamente para host
-   <code>googleusercontent.com</code> validado;
-4. converter o Blob para Data URL e enviar <code>GEMINI_IMAGE_EXTRACTED</code>;
-5. somente então iniciar a exclusão segura.
-
-São preservadas quatro passagens completas dessa cadeia antes de qualquer aba
-auxiliar. Cada nova passagem aguarda um pequeno intervalo e cobre instabilidade
-transitória sem mudar de aba.
-
-Se todas as passagens diretas falharem, o script registra
-<code>GEMINI_EXTRACT_DIAGNOSTIC</code> e
-<code>GEMINI_AUXILIARY_FALLBACK</code> como avisos laranja. Esses registros são
-silenciosos para o usuário: não exibem o antigo erro “sem aba auxiliar”. Então
-<code>GEMINI_RESULT_URL</code> abre uma aba auxiliar não focada. Nela,
-<code>content_manga.js</code> identifica o mapeamento da aba, aguarda a imagem,
-tenta canvas e depois <code>FETCH_IMAGE_AS_BASE64</code>. A própria aba auxiliar
-faz até três passagens totais (a inicial e duas repetições) antes de deixar o
-watchdog tratar uma falha persistente. Ao receber Data URL, o background valida
-ownership, entrega a imagem à página de mangá e fecha a aba auxiliar.
+No modo debug, erros podem preservar a conversa para diagnóstico.
 
 ## 12.9 Assistência manual
 
-Existe HUD de assistência manual para cenários em que a heurística automática
-não consegue identificar com segurança a imagem correta.
-
-Isso é fallback de recuperação, não caminho principal.
+O HUD de assistência manual continua disponível quando a heurística automática
+não consegue identificar com segurança a imagem correta. A escolha manual é
+encaminhada ao mesmo Observer ativo; não cria um pipeline paralelo.
 
 ## 12.10 Privacidade de logs
 
-Logs de console do Gemini são gateados pelo modo debug e dados sensíveis são
-sanitizados antes de exposição.
+Logs do Gemini são sanitizados. Prompt, signed URL, Data URL/base64, cookies,
+tokens e campos equivalentes não devem ser persistidos no log.
 
 ---
 
-# 13. Anti-hibernação e script MAIN
+# 13. Anti-throttling e script MAIN
 
 ## 13.1 Papel de inject.js
 
-<code>inject.js</code> roda no mundo MAIN porque algumas intervenções precisam
-agir no mesmo mundo JavaScript da página.
+<code>inject.js</code> roda no mundo MAIN porque precisa atuar no mesmo contexto
+JavaScript da página para a ponte de prompt, submit e fetch autenticado.
 
-## 13.2 Guarda de isolamento
+A guarda de isolamento exige uma aba marcada pelo MangaTranslator; uma aba
+manual comum do Gemini não recebe o mecanismo.
 
-O script verifica se a aba possui sinal de que pertence a um fluxo
-MangaTranslator.
+## 13.2 Política progressiva
 
-Ele não deve aplicar técnicas de anti-hibernação livremente em uma aba comum do
-Gemini.
+O anti-throttling não simula mais atividade humana aleatória. O antigo
+<code>mousemove</code> periódico foi removido.
 
-## 13.3 Técnicas
+Existem três níveis internos:
 
-O módulo contém mecanismos relacionados a:
+- <code>minimal</code> — padrão; sem foco periódico, rAF/idle em cadência de
+  aproximadamente 250 ms;
+- <code>balanced</code> — usado em <code>background_delete</code> e
+  <code>minimized_window</code>; foco periódico espaçado e rAF/idle em
+  aproximadamente 100 ms;
+- <code>legacy</code> — escalada temporária da segunda tentativa de submit;
+  foco a cada ~1 s e rAF/idle em ~50 ms.
 
-- foco;
-- eventos de visibilidade;
-- requestAnimationFrame;
-- áudio;
-- ativação de elementos;
-- mitigação de throttling;
-- ponte autenticada de extração de imagem.
+Depois da confirmação ou cleanup, o runner retorna a <code>minimal</code>.
 
-A ponte <code>MANGA_TRANSLATOR_FETCH_IMAGE</code> só é usada pela aba de
-tradução. Ela recebe URL e requestId, busca no contexto autenticado da página e
-emite <code>MANGA_TRANSLATOR_FETCH_IMAGE_RESULT</code> com Data URL ou erro. O
-requestId evita confundir respostas de jobs concorrentes.
+## 13.3 Visibilidade, rAF e idle
 
-## 13.4 Evento removido
+Enquanto a aba é um worker válido, o MAIN world mantém a visão de
+<code>visibilityState = visible</code>, <code>hidden = false</code> e
+<code>hasFocus() = true</code>, além de impedir que blur/pagehide derrubem o
+pipeline da página.
 
-A antiga ideia de ativar a anti-hibernação por um CustomEvent enviado pelo
-content script foi removida porque não existia consumidor correspondente.
+<code>requestAnimationFrame</code> e <code>requestIdleCallback</code> possuem
+fallbacks próprios para background, mas a cadência segue o nível atual em vez
+de acordar permanentemente a cada 50 ms.
 
-A ativação atual depende da própria lógica de <code>inject.js</code>.
+## 13.4 Controle pelo runner
+
+O isolated world envia
+<code>MANGA_TRANSLATOR_ANTI_THROTTLE_SET_MODE</code> ao MAIN world.
+
+O nível é derivado do modo de execução e só sobe para <code>legacy</code>
+durante a escalada de submit. Não há intervalo global de foco de 1 s no
+baseline.
+
+## 13.5 Ponte autenticada de imagem
+
+<code>MANGA_TRANSLATOR_FETCH_IMAGE</code> recebe URL + requestId, realiza fetch
+no contexto autenticado do Gemini e responde por
+<code>MANGA_TRANSLATOR_FETCH_IMAGE_RESULT</code>. O requestId impede mistura de
+respostas concorrentes.
 
 ---
 
@@ -1308,7 +1369,7 @@ A atualização por scroll/resize é limitada por requestAnimationFrame.
 
 # 15. Compatibilidade e legado que ainda existem
 
-A v6.0 **não** significa remover toda compatibilidade.
+A documentação v6.5 **não** significa remover toda compatibilidade.
 
 A regra é:
 
@@ -1689,16 +1750,28 @@ Verificar:
 
 ## 20.1 Regra de versão
 
-Ao lançar nova versão do produto, atualizar em conjunto:
+<code>package.json</code> é a **única fonte manual da versão do produto**.
 
-- <code>extension/manifest.json</code>;
-- <code>package.json</code>;
-- <code>tests/package.json</code>;
-- metadados raiz do <code>tests/package-lock.json</code>;
-- README;
-- labels de UI que exibem versão;
-- runners que exibem versão;
-- documento canônico.
+Ao preparar uma nova versão:
+
+1. alterar somente <code>package.json#version</code> para um SemVer numérico como <code>6.5.0</code> ou <code>6.5.1</code>;
+2. executar <code>npm run version:sync</code>;
+3. executar <code>npm run version:check</code>.
+
+<code>scripts/sync-version.js</code> deriva e valida:
+
+- <code>extension/manifest.json#version</code>;
+- <code>tests/package.json#version</code>;
+- <code>tests/package-lock.json#version</code>;
+- <code>tests/package-lock.json#packages[""].version</code>.
+
+Para versões cujo patch é zero, a versão Chromium pode omitir o último zero
+(<code>6.5.0 → 6.5</code>). Quando existe patch, ele é preservado
+(<code>6.5.1 → 6.5.1</code>).
+
+A UI não contém versão fixa: lê <code>chrome.runtime.getManifest().version</code>.
+A documentação canônica usa sempre <code>docs/Documentação.md</code>. O workflow
+de release cria nomes versionados apenas nos artefatos publicados.
 
 ## 20.2 Não alterar versão de schema sem migração
 
@@ -1760,7 +1833,7 @@ Sem isso, deve ser removido junto com testes e documentação.
 
 ---
 
-# 21. Mudanças documentais da v6.0
+# 21. Mudanças documentais da v6.5
 
 A criação deste documento corrige problemas estruturais da documentação anterior.
 
@@ -1791,7 +1864,7 @@ A documentação antiga misturava:
 - fallback ainda necessário;
 - formato legado ainda migrável.
 
-Na v6.0 esses conceitos são separados.
+Na v6.5 esses conceitos permanecem separados.
 
 ## 21.4 Versão do produto foi separada de schema interno
 
@@ -1817,8 +1890,35 @@ A documentação agora trata explicitamente:
 
 ## 21.6 Labels antigos do código foram normalizados
 
-Cabeçalhos e UI que ainda se identificavam como v4.0, v5.1 ou v5.1.1 foram
-atualizados para a release 6.0 quando representavam a versão do produto.
+Rótulos de versão do produto deixaram de ser espalhados como literais pelo
+runtime, testes e UI. Quando a versão precisa ser exibida em runtime, ela é
+obtida do Manifest; quando precisa ser usada em automação, é derivada de
+<code>package.json</code>.
+
+## 21.7 Consolidação Gemini RPA V2 no marco v6.5
+
+A v6.5 incorpora como estado canônico a refatoração concluída na pilha de PRs Gemini RPA V2:
+
+- identidade canônica de abas e `CLAIM_GEMINI_JOB` obrigatório;
+- keep-alive somente após claim válido;
+- `selectors.js`, `dom.js`, Observer V2 e editor modular;
+- submit tratado como tentativa até existir confirmação observável;
+- Temporary Chat com verificação de estado e sem fallback posicional inseguro;
+- attachment, extração de resultado e deletion/recovery em módulos dedicados;
+- `job-runner.js` como orquestrador do pipeline;
+- anti-throttling progressivo `minimal` / `balanced` / `legacy`;
+- remoção dos adapters, flags e polling legado já sem produtor/consumidor;
+- critérios E2E finais para resposta instantânea, submit ignorado, aba manual inerte, `minimized_window` e `background_delete`.
+
+## 21.8 Versionamento sem caminhos hardcoded
+
+O marco v6.5 elimina dependência operacional do número da versão:
+
+- o documento canônico passa a se chamar `docs/Documentação.md`;
+- a publicação passa a usar `.github/workflows/publish.yml`;
+- pasta, ZIP, documento publicado, título e tag são calculados a partir da versão;
+- o CI bloqueia divergência entre package, Manifest e metadados de teste;
+- nomes históricos continuam históricos e não participam da descoberta de arquivos.
 
 ---
 
@@ -1966,11 +2066,16 @@ Orquestrador e integração com UI/runtime.
 
 ### inject.js
 
-Script MAIN de anti-throttling/anti-hibernação.
+Script MAIN de anti-throttling progressivo e pontes com a página.
 
 ### content_gemini.js
 
-RPA, prompt, envio, captura e fallback manual.
+Bootstrap leve: claim, keep-alive, wiring e handlers.
+
+### gemini/
+
+Módulos de seletores/DOM, Observer V2, editor, Temporary Chat, attachment,
+extração de resultado, deletion/recovery e Job Runner.
 
 ## A.5 Persistência
 
@@ -2205,7 +2310,7 @@ explicitamente este arquivo como fonte canônica.
 
 ## Encerramento
 
-A v6.0 consolida uma arquitetura já modularizada e estabilizada:
+Esta documentação consolida a arquitetura modularizada e estabilizada do PR 13 e o marco v6.5:
 
 - Service Worker MV3 com estado durável;
 - lifecycle separado;

@@ -286,7 +286,8 @@ describe('content_gemini.js - RPA real do Gemini', () => {
             require(GEMINI_RESULT_EXTRACTOR_PATH);
             require(GEMINI_DELETION_PATH);
             require(GEMINI_JOB_RUNNER_PATH);
-            require(CONTENT_GEMINI_PATH);
+            const contentGemini = require(CONTENT_GEMINI_PATH);
+            contentGemini.processGeminiJob();
         });
 
         await advance(0);

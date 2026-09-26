@@ -1,9 +1,9 @@
 # 📖 Manga Translator
 
-> **Versão atual: 6.0** — extensão para navegadores Chromium (Manifest V3) para tradução automática, contínua e em alta resolução de mangás e quadrinhos na web utilizando o Google Gemini.
+> Extensão para navegadores Chromium (Manifest V3) para tradução automática, contínua e em alta resolução de mangás e quadrinhos na web utilizando o Google Gemini. A versão do produto tem uma única fonte de verdade em `package.json` e é sincronizada automaticamente com o Manifest e os metadados de teste.
 
 [![Manifest V3](https://img.shields.io/badge/Chrome_Extension-Manifest_V3-4285F4?logo=googlechrome&logoColor=white)](https://developer.chrome.com/docs/extensions/mv3/intro/)
-[![CI](https://github.com/Diesper/MangaTranslator-v5/actions/workflows/ci.yml/badge.svg)](https://github.com/Diesper/MangaTranslator-v5/actions/workflows/ci.yml)
+[![CI](https://github.com/Diesper/Manga_Translator/actions/workflows/ci.yml/badge.svg)](https://github.com/Diesper/Manga_Translator/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![Tests: 100% Passed](https://img.shields.io/badge/Tests-Passing-brightgreen.svg)](tests/)
 
@@ -11,7 +11,7 @@
 
 ## ✨ Principais Funcionalidades
 
-- **Automação Resiliente com Gemini:** Tradução de painéis e balões de diálogo com injeção segura de conteúdo no Gemini (`gemini.google.com`) sem necessidade de chaves de API pagas.
+- **Automação Resiliente com Gemini:** pipeline modular com claim de job, Observer V2 orientado a eventos, submit confirmado por transição observável, attachment verificado e extração com fallbacks controlados — sem necessidade de chaves de API pagas.
 - **Cache Perceptual Visual (GTC Fingerprint):** Identificação de imagens por assinatura perceptual dHash/aHash, impedindo retraduções de imagens já processadas mesmo com URLs dinâmicas ou CDN com tokens expiráveis.
 - **Armazenamento Transacional (StorageManager + IndexedDB):** Persistência atômica com eliminação automática de assets órfãos e sem o problema de *read-modify-write* em acessos concorrentes.
 - **Ciclo de Vida Durável (Manifest V3):** Reconciliação automática de abas e estado persistente resistente ao descarregamento (*unload*) do Service Worker do Chrome.
@@ -45,7 +45,8 @@ Como a extensão está em formato de código aberto, você pode carregá-la dire
 │   ├── background.js          # Bootstrap do Service Worker + wiring dos módulos
 │   ├── background/            # Router, estado, lifecycle, watchdog, reconciliação e actions
 │   ├── content_manga.js       # Content script injetado nas páginas de mangá
-│   ├── content_gemini.js      # Content script para automação na interface Gemini
+│   ├── content_gemini.js      # Bootstrap/claim/keepalive/handlers do worker Gemini
+│   ├── gemini/                 # DOM, Observer V2, editor, attachment, result, deletion e job-runner
 │   ├── gtc-fingerprint.js     # Hashing perceptual e extração de assinaturas
 │   ├── gtc-indexeddb.js       # Camada de banco de dados visual IndexedDB
 │   ├── storage-manager.js     # Gerenciamento atômico de blobs e transações
@@ -59,9 +60,31 @@ Como a extensão está em formato de código aberto, você pode carregá-la dire
 │   ├── visual-v3/             # Testes visuais de consistência e fingerprint
 │   └── e2e/                   # Testes de ponta a ponta com Playwright
 ├── docs/                      # Documentação técnica de arquitetura
-├── .github/workflows/         # Pipeline de Integração Contínua (CI)
-└── package.json               # Configurações de scripts
+├── scripts/                   # Automação de versionamento e manutenção
+├── .github/workflows/         # CI e publicação de releases
+└── package.json               # Fonte única da versão do produto + scripts
 ```
+
+---
+
+## 🔢 Versionamento
+
+A versão do produto é definida **uma única vez** no `package.json` raiz. Os demais metadados são derivados dela:
+
+- `extension/manifest.json` recebe a versão Chromium correspondente;
+- `tests/package.json` e os metadados raiz de `tests/package-lock.json` recebem a versão SemVer completa;
+- a UI de opções lê `chrome.runtime.getManifest().version`, sem número hardcoded;
+- o workflow de publicação deriva tag, pasta, ZIP e nome da documentação automaticamente;
+- a documentação canônica no repositório usa o caminho estável `docs/Documentação.md`.
+
+Depois de alterar apenas `package.json`, execute:
+
+```bash
+npm run version:sync
+npm run version:check
+```
+
+O CI também executa `version:check` e falha se os metadados divergirem.
 
 ---
 
@@ -73,7 +96,7 @@ Os testes de popup e content script também cobrem o filtro dimensional: valores
 personalizados, atualização imediata após alteração no armazenamento,
 sincronização entre campos/sliders/prévia e o reset para o padrão.
 
-> **Baseline validado em 20/09/2026:** **81/81 suítes Jest (574/574 testes)** e **8/8 testes E2E Playwright**, sem flaky na execução final de referência. A pipeline também valida sintaxe recursiva dos scripts, Manifest V3, smoke/visual e cobertura.
+> A pipeline atual trata Jest, smoke/visual, validação de sintaxe/Manifest V3, cobertura e Playwright E2E como gates reais. Os cenários E2E incluem o fluxo padrão e os modos `minimized_window` e `background_delete`.
 
 ### Testes de Fumaça (Smoke Tests)
 Validação ultrarrápida do ciclo de vida, transações IndexedDB e isolamento de lote:
@@ -109,9 +132,9 @@ Também existe um teste específico de carregamento em modo estrito (`tests/unit
 
 ## 📚 Documentação Técnica
 
-A arquitetura vigente, contratos IPC/storage, lifecycle MV3, cache perceptual, Gemini RPA, Reader, compatibilidade e critérios de manutenção da release 6.0 estão consolidados em:
+A arquitetura vigente, contratos IPC/storage, lifecycle MV3, cache perceptual, Gemini RPA, Reader, compatibilidade, versionamento e critérios de manutenção estão consolidados na documentação canônica de caminho estável:
 
-- [`docs/Documentação_V6.0.md`](docs/Documentação_V6.0.md)
+- [`docs/Documentação.md`](docs/Documentação.md)
 
 ---
 

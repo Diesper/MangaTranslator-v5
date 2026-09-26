@@ -99,9 +99,8 @@ describe('gemini/temporary-chat.js — estados verificáveis', () => {
     })).resolves.toEqual({ status: 'unavailable' });
   });
 
-  test('TEMP-05: fallback geométrico rejeita botão sem semântica temporária', () => {
+  test('TEMP-05: sem fallback geométrico, botão genérico permanece unavailable', async () => {
     const api = loadTempChat();
-    Object.defineProperty(window, 'innerWidth', { value: 1200, configurable: true });
 
     const generic = document.createElement('button');
     generic.textContent = 'Menu';
@@ -111,7 +110,13 @@ describe('gemini/temporary-chat.js — estados verificáveis', () => {
     });
     document.body.appendChild(generic);
 
-    expect(api.findButtonByPosition(document)).toBeNull();
+    expect(api.findButtonByPosition).toBeUndefined();
+
+    await expect(api.ensureActive({
+      root: document,
+      timeoutMs: 0,
+      sleep: async () => {},
+    })).resolves.toEqual({ status: 'unavailable' });
   });
 
   test('não alterna o toggle repetidamente após um clique não confirmado', async () => {

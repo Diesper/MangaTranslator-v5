@@ -1,0 +1,131 @@
+name: Publish Manga Translator
+
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  publish:
+    name: GitHub Release
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Configurar Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20.x
+
+      - name: Validar metadados de versão
+        run: npm run version:check
+
+      - name: Derivar metadados da release
+        shell: bash
+        run: node scripts/sync-version.js --print-env >> "$GITHUB_ENV"
+
+      - name: Validar tag quando disparado por tag
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ "${GITHUB_REF_TYPE}" == "tag" && "${GITHUB_REF_NAME}" != "${RELEASE_TAG}" ]]; then
+            echo "Tag recebida: ${GITHUB_REF_NAME}"
+            echo "Tag esperada pelo package.json: ${RELEASE_TAG}"
+            exit 1
+          fi
+
+      - name: Montar artefatos
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf dist
+          mkdir -p "dist/${RELEASE_BASENAME}"
+          cp -R extension/. "dist/${RELEASE_BASENAME}/"
+
+          (
+            cd dist
+            zip -qr "${RELEASE_BASENAME}.zip" "${RELEASE_BASENAME}"
+          )
+
+          cp "docs/Documentação.md" "dist/${DOC_ARTIFACT}"
+
+          (
+            cd dist
+            sha256sum "${RELEASE_BASENAME}.zip" "${DOC_ARTIFACT}" > SHA256SUMS.txt
+          )
+
+          cat > dist/RELEASE_NOTES.md <<EOF
+          # Manga Translator v${DISPLAY_VERSION}
+
+          Release da extensão Chromium gerada a partir da versão canônica ${PACKAGE_VERSION}.
+
+          ## Destaques
+
+          - Service Worker Manifest V3 modularizado com estado durável, reconciliação e watchdog.
+          - Persistência transacional de páginas e assets em IndexedDB.
+          - Cache perceptual GTC com consultas correlacionadas.
+          - Automação do Google Gemini isolada por job, com Observer V2 e ACK real.
+          - Versionamento centralizado sem caminhos de release hardcoded.
+          - Documentação técnica canônica mantida em docs/Documentação.md.
+
+          ## Arquivos
+
+          - ${RELEASE_BASENAME}.zip — extensão pronta para extrair e carregar sem compactação.
+          - ${DOC_ARTIFACT} — documentação técnica correspondente à release.
+          - SHA256SUMS.txt — checksums SHA-256 dos artefatos.
+
+          ## Instalação
+
+          1. Baixe ${RELEASE_BASENAME}.zip.
+          2. Extraia o arquivo.
+          3. Abra chrome://extensions ou edge://extensions.
+          4. Ative o modo do desenvolvedor.
+          5. Escolha Carregar sem compactação.
+          6. Selecione a pasta ${RELEASE_BASENAME} extraída.
+          EOF
+
+      - name: Criar ou atualizar GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          if gh release view "${RELEASE_TAG}" >/dev/null 2>&1; then
+            gh release edit "${RELEASE_TAG}" \
+              --title "Manga Translator v${DISPLAY_VERSION}" \
+              --notes-file dist/RELEASE_NOTES.md \
+              --latest
+
+            gh release upload "${RELEASE_TAG}" \
+              "dist/${RELEASE_BASENAME}.zip" \
+              "dist/${DOC_ARTIFACT}" \
+              dist/SHA256SUMS.txt \
+              --clobber
+          elif git rev-parse "refs/tags/${RELEASE_TAG}" >/dev/null 2>&1; then
+            gh release create "${RELEASE_TAG}" \
+              "dist/${RELEASE_BASENAME}.zip" \
+              "dist/${DOC_ARTIFACT}" \
+              dist/SHA256SUMS.txt \
+              --verify-tag \
+              --title "Manga Translator v${DISPLAY_VERSION}" \
+              --notes-file dist/RELEASE_NOTES.md \
+              --latest
+          else
+            gh release create "${RELEASE_TAG}" \
+              "dist/${RELEASE_BASENAME}.zip" \
+              "dist/${DOC_ARTIFACT}" \
+              dist/SHA256SUMS.txt \
+              --target "${GITHUB_SHA}" \
+              --title "Manga Translator v${DISPLAY_VERSION}" \
+              --notes-file dist/RELEASE_NOTES.md \
+              --latest
+          fi

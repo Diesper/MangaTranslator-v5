@@ -1,4 +1,4 @@
-// inject.js — Manga Translator v6.0 (Anti-Hibernation, Foco Contínuo & Flush RAF)
+// inject.js — Manga Translator (Anti-throttling progressivo)
 (function() {
     if (window.__anti_hibernation_injected) return;
     window.__anti_hibernation_injected = true;

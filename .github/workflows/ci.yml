@@ -9,6 +9,23 @@ on:
   pull_request:
 
 jobs:
+  # ── Gate 0: versão única e metadados sincronizados ─────────────────────────
+  version-integrity:
+    name: Version Integrity
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout código
+        uses: actions/checkout@v4
+
+      - name: Configurar Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20.x
+
+      - name: Verificar fonte única de versão
+        run: npm run version:check
+
   # ── Job 1: Verificação de Sintaxe dos Arquivos JS ──────────────────────────
   syntax-check:
     name: JS Syntax Check
@@ -26,6 +43,7 @@ jobs:
       - name: Verificar sintaxe de todos os arquivos JS da extensão
         run: |
           echo "Verificando sintaxe dos arquivos da extensão..."
+          node --check scripts/sync-version.js
           find extension -name "*.js" -type f | sort | while read f; do
             node --check "$f" && echo "✅ $f" || (echo "❌ $f" && exit 1)
           done
@@ -91,7 +109,7 @@ jobs:
       - name: Criar imagens de teste
         run: npm run test:images
 
-      - name: Rodar Testes de Fumaça (v6.0 Smoke Tests)
+      - name: Rodar Testes de Fumaça
         run: npm run test:smoke
 
       - name: Rodar Testes Visuais Perceptuais (v3 e v4)

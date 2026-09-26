@@ -8,7 +8,7 @@
 const { loadExtensionPage, flushAsyncTasks } = require('../../helpers/load-extension-page.js');
 const { getStorageMock, getTabsMock } = require('../../mocks/chrome-api.mock.js');
 
-describe('v6.0 Popup 2D Resizing e Agrupamento de Banidas — popup.js', () => {
+describe('Popup 2D Resizing e Agrupamento de Banidas — popup.js', () => {
     let storageMock;
     let tabsMock;
 

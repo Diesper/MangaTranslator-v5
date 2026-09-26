@@ -129,7 +129,7 @@ function mountGeminiEditor({ onSubmit } = {}) {
     return { editor, sendButton };
 }
 
-describe('v6.0 Elevação de Resolução CDN (=s0) — content_gemini.js', () => {
+describe('Elevação de Resolução CDN (=s0) — content_gemini.js', () => {
     let runtimeMock;
     let storageMock;
     let sentMessages = [];
@@ -241,7 +241,8 @@ describe('v6.0 Elevação de Resolução CDN (=s0) — content_gemini.js', () =>
             require(GEMINI_RESULT_EXTRACTOR_PATH);
             require(GEMINI_DELETION_PATH);
             require(GEMINI_JOB_RUNNER_PATH);
-            require(CONTENT_GEMINI_PATH);
+            const contentGemini = require(CONTENT_GEMINI_PATH);
+            contentGemini.processGeminiJob();
         });
 
         await waitFor(() => sentMessages.find(m => m.action === 'FETCH_IMAGE_AS_BASE64'));

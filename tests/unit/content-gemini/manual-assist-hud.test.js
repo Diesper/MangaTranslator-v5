@@ -7,7 +7,7 @@
 
 const { loadContentGeminiModule } = require('../../helpers/load-content-gemini-module.js');
 
-describe('v6.0 Manual Assist HUD (#mt-gemini-assist) — content_gemini.js', () => {
+describe('Manual Assist HUD (#mt-gemini-assist) — content_gemini.js', () => {
     let geminiMod;
 
     beforeEach(() => {

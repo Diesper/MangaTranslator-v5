@@ -687,14 +687,6 @@
               root,
               timeoutMs: 12_000,
               sleep,
-              onLegacyFallback: () => {
-                sendLog(
-                  'warn',
-                  'GEMINI_TEMP_CHAT_POSITIONAL_FALLBACK',
-                  'Fallback posicional semântico utilizado',
-                  {}
-                );
-              },
             });
 
             tempChatResult = {
@@ -950,7 +942,6 @@
         }
 
         setAntiThrottleMode(steadyAntiThrottleMode);
-        pageWindow.__mangaTranslatorJobSent = true;
         sendLog(
           'success',
           'GEMINI_SEND_SUCCESS',
