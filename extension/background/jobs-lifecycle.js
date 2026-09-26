@@ -179,9 +179,14 @@
           updatedAt: Date.now(),
         };
         await chrome.storage.local.set({ [`gemini_job_${canonicalTabId}`]: record });
+        indexAddJob({ geminiTabId: canonicalTabId, jobId, batchId, mangaTabId, index });
+        await syncState();
 
-        // Fecha a corrida em que onReplaced ocorre entre a primeira resolução
-        // canônica e a persistência do registro.
+        // Fecha a corrida nas duas ordens:
+        // 1) replacement antes da persistência -> alias já existe e migramos;
+        // 2) replacement depois da persistência -> listener migra os registros.
+        // O recheck só ocorre DEPOIS de job + índice existirem, de modo que um
+        // listener concorrente sempre veja tudo ou o recheck repare o que faltou.
         const latestCanonicalTabId = await resolveCanonicalTabId(openedTabId);
         if (latestCanonicalTabId !== canonicalTabId) {
           canonicalTabId = await migrateTabIdentity(canonicalTabId, latestCanonicalTabId, { jobId });
@@ -189,15 +194,14 @@
           record = migrated[`gemini_job_${canonicalTabId}`] || { ...record, geminiTabId: canonicalTabId, canonicalTabId };
         }
 
-        indexAddJob({ geminiTabId: canonicalTabId, jobId, batchId, mangaTabId, index });
-        await syncState();
+        canonicalTabId = await resolveCanonicalTabId(openedTabId);
         log('info', 'bg', 'TAB_CREATED_FOR_JOB', 'Aba Gemini associada ao job', {
           oldTabId: openedTabId,
           newTabId: canonicalTabId,
           jobIdPrefix: String(jobId).slice(0, 8),
           index,
         });
-        armWatchdog(mangaTabId, index, canonicalTabId, jobId);
+        await armWatchdog(mangaTabId, index, canonicalTabId, jobId);
         return processNextJob();
       } catch (error) {
         state.activeJobsCount = Math.max(0, state.activeJobsCount - 1);
