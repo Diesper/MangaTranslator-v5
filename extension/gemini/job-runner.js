@@ -42,6 +42,30 @@
 
     let activeObserver = null;
 
+    function getAntiThrottleModeForExecutionMode(executionMode) {
+      return executionMode === 'minimized_window' || executionMode === 'background_delete'
+        ? 'balanced'
+        : 'minimal';
+    }
+
+    function setAntiThrottleMode(mode) {
+      const normalized = ['minimal', 'balanced', 'legacy'].includes(mode)
+        ? mode
+        : 'minimal';
+      const CustomEventImpl = scope.CustomEvent || pageWindow.CustomEvent;
+      if (typeof CustomEventImpl !== 'function' || typeof pageWindow.dispatchEvent !== 'function') {
+        return normalized;
+      }
+
+      try {
+        pageWindow.dispatchEvent(new CustomEventImpl(
+          'MANGA_TRANSLATOR_ANTI_THROTTLE_SET_MODE',
+          { detail: { mode: normalized } }
+        ));
+      } catch (_e) {}
+      return normalized;
+    }
+
     function storageGet(keys) {
       return new Promise(resolve => {
         try {
@@ -512,6 +536,7 @@
     async function run(job) {
       if (!job) throw new Error('Job Gemini é obrigatório');
 
+      setAntiThrottleMode('minimal');
       const myTabId = job.geminiTabId;
       const recoveryResult = await deletionController.recoverPending({
         tabId: myTabId,
@@ -642,6 +667,9 @@
           const data = await storageGet(['geminiExecutionMode']);
           executionMode = data.geminiExecutionMode || 'temp_chat';
         }
+
+        const steadyAntiThrottleMode = getAntiThrottleModeForExecutionMode(executionMode);
+        setAntiThrottleMode(steadyAntiThrottleMode);
 
         let tempChatResult = { success: false };
         if (executionMode === 'temp_chat') {
@@ -881,6 +909,7 @@
               );
 
               if (attempt === 2) {
+                setAntiThrottleMode('legacy');
                 runtime.sendMessage({
                   action: 'FORCE_SEND_ACTIVATION',
                   geminiTabId: myTabId,
@@ -920,6 +949,7 @@
           throw submitError;
         }
 
+        setAntiThrottleMode(steadyAntiThrottleMode);
         pageWindow.__mangaTranslatorJobSent = true;
         sendLog(
           'success',
@@ -1093,6 +1123,8 @@
         });
         return { status: 'error', error };
       } finally {
+        setAntiThrottleMode('minimal');
+
         if (activeObserver) {
           try { activeObserver.stop(); } catch (_e) {}
           activeObserver = null;
@@ -1142,6 +1174,8 @@
       setPromptInEditor,
       shouldKeepConversationForDebug,
       requestImageData,
+      getAntiThrottleModeForExecutionMode,
+      setAntiThrottleMode,
       getActiveObserver,
     };
   }
