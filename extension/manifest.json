@@ -58,6 +58,7 @@
       "js": [
         "gemini/selectors.js",
         "gemini/dom.js",
+        "gemini/observer.js",
         "content_gemini.js"
       ],
       "run_at": "document_idle"
