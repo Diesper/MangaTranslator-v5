@@ -184,7 +184,10 @@ function buildGeminiMockHtml() {
       const status = document.getElementById('mock-status');
       const resultZone = document.getElementById('result-zone');
       const sendButton = document.getElementById('send-button');
-      const jobIndex = new URL(window.location.href).searchParams.get('jobIndex') || '0';
+      const currentUrl = new URL(window.location.href);
+      const jobIndex = currentUrl.searchParams.get('jobIndex') || '0';
+      const fastResult = currentUrl.searchParams.get('fastResult') === '1';
+      const ignoreSubmit = currentUrl.searchParams.get('ignoreSubmit') === '1';
       const chatOptionsButton = document.querySelector('[data-chat-id="mock-chat"] [data-test-id="chat-options"]');
 
       let attachmentSeen = false;
@@ -215,14 +218,46 @@ function buildGeminiMockHtml() {
         }
       }
 
+      function appendResultImage() {
+        const response = document.createElement('model-response');
+        response.setAttribute('data-message-author', 'model');
+
+        const img = document.createElement('img');
+        img.alt = 'Imagem traduzida do mock';
+        img.src =
+          '/gemini-result-image?jobIndex=' +
+          encodeURIComponent(jobIndex) +
+          '&t=' +
+          Date.now();
+
+        response.appendChild(img);
+        resultZone.appendChild(response);
+        status.textContent = 'Imagem traduzida pronta';
+      }
+
       async function runTranslation() {
+        if (ignoreSubmit) {
+          status.textContent = 'Submit ignorado pelo mock';
+          return;
+        }
         if (running) return;
+
         running = true;
         status.textContent = 'Processando mock...';
         sendButton.disabled = true;
         if (editor) {
           editor.textContent = '';
           editor.innerText = '';
+        }
+
+        if (fastResult) {
+          // A resposta aparece no mesmo task lógico do submit. O Observer V2
+          // precisa ter sido instalado antes do click para capturá-la.
+          appendResultImage();
+          setTimeout(() => {
+            sendButton.disabled = false;
+          }, 0);
+          return;
         }
 
         const stopBtn = document.createElement('button');
@@ -235,21 +270,7 @@ function buildGeminiMockHtml() {
 
         stopBtn.remove();
         sendButton.disabled = false;
-
-        const img = document.createElement('img');
-        img.alt = 'Imagem traduzida do mock';
-        // Mantém o resultado no mesmo origin da página Gemini mock.
-        // Usar localhost aqui enquanto a página roda em 127.0.0.1 tornava a
-        // imagem cross-origin e desviava artificialmente o E2E para o fallback
-        // auxiliar, em vez de testar a cadeia direta de background_delete.
-        img.src =
-          '/gemini-result-image?jobIndex=' +
-          encodeURIComponent(jobIndex) +
-          '&t=' +
-          Date.now();
-        resultZone.appendChild(img);
-
-        status.textContent = 'Imagem traduzida pronta';
+        appendResultImage();
       }
 
       if (chatOptionsButton) {
