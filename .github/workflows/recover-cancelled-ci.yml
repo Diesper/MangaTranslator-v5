@@ -1,0 +1,293 @@
+name: Recover cancelled MangaTranslator CI
+
+on:
+  workflow_run:
+    workflows: ["MangaTranslator CI"]
+    types: [completed]
+
+# workflow_run can receive a privileged GITHUB_TOKEN. Keep the scope minimal:
+# this workflow never checks out or executes code from the triggering branch.
+permissions:
+  actions: write
+  contents: read
+  pull-requests: read
+
+# More than one successful CI can finish almost together (push + pull_request).
+# Serialize recovery per source branch and let the newest trigger do the work.
+concurrency:
+  group: recover-cancelled-ci-${{ github.event.workflow_run.head_branch || github.event.workflow_run.head_sha }}
+  cancel-in-progress: false
+
+jobs:
+  recover:
+    name: Auto-rerun cancelled CI
+    if: ${{ github.event.workflow_run.conclusion == 'success' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+
+    steps:
+      - name: Re-run cancelled CI attempts that still affect open PRs
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const trigger = context.payload.workflow_run;
+            const { owner, repo } = context.repo;
+            const fullRepo = `${owner}/${repo}`;
+            const branch = trigger.head_branch;
+            const sourceWorkflowId = trigger.workflow_id;
+
+            const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+            if (!branch) {
+              core.notice('Run concluído sem head_branch; nada para recuperar.');
+              return;
+            }
+
+            // workflow_run can be privileged. Never act on a fork/untrusted repo.
+            if (trigger.head_repository?.full_name !== fullRepo) {
+              core.notice(
+                `Ignorando run de ${trigger.head_repository?.full_name || 'repositório desconhecido'}; ` +
+                'o auto-rerun só atua em branches do próprio repositório.'
+              );
+              return;
+            }
+
+            const listBranchRuns = async () => github.paginate(
+              github.rest.actions.listWorkflowRuns,
+              {
+                owner,
+                repo,
+                workflow_id: sourceWorkflowId,
+                branch,
+                per_page: 100
+              }
+            );
+
+            const listOpenPullRequests = async () => github.paginate(
+              github.rest.pulls.list,
+              {
+                owner,
+                repo,
+                state: 'open',
+                per_page: 100
+              }
+            );
+
+            const initialRuns = await listBranchRuns();
+
+            // Only the newest run on the branch may start recovery.
+            // Example: push #304 and pull_request #305 finish close together:
+            // #304 exits and #305 (the newest one) becomes authoritative.
+            const newerRuns = initialRuns.filter(
+              (run) => run.run_number > trigger.run_number
+            );
+
+            if (newerRuns.length > 0) {
+              core.notice(
+                `Há ${newerRuns.length} run(s) mais novo(s) que #${trigger.run_number} ` +
+                `na branch ${branch}; recovery adiado para o run mais recente.`
+              );
+              return;
+            }
+
+            const openPullRequests = await listOpenPullRequests();
+            const openHeadShas = new Map();
+
+            for (const pr of openPullRequests) {
+              if (pr.head?.repo?.full_name !== fullRepo) continue;
+
+              const list = openHeadShas.get(pr.head.sha) || [];
+              list.push(pr.number);
+              openHeadShas.set(pr.head.sha, list);
+            }
+
+            if (openHeadShas.size === 0) {
+              core.notice('Não há PRs abertos do próprio repositório; nada para recuperar.');
+              return;
+            }
+
+            // GitHub allows workflow re-runs for up to 30 days.
+            // Keep one day of safety margin to avoid boundary/API timing errors.
+            const rerunCutoff = Date.now() - (29 * 24 * 60 * 60 * 1000);
+
+            // Critical filter:
+            // - cancelled;
+            // - older than the successful trigger;
+            // - same source branch/workflow (listBranchRuns already enforces this);
+            // - SHA is STILL the current HEAD of an open PR.
+            //
+            // The last condition prevents spending Actions minutes on obsolete
+            // intermediate commits while still catching stacked-PR pollution:
+            // a cancelled run on PR 1's branch can have the exact HEAD SHA of PR 0.
+            const candidates = initialRuns
+              .filter((run) => (
+                run.id !== trigger.id &&
+                run.run_number < trigger.run_number &&
+                run.status === 'completed' &&
+                run.conclusion === 'cancelled' &&
+                openHeadShas.has(run.head_sha) &&
+                new Date(run.created_at).getTime() >= rerunCutoff
+              ))
+              .sort((a, b) => a.run_number - b.run_number);
+
+            if (candidates.length === 0) {
+              core.notice(
+                `Nenhum run cancelado recuperável encontrado para ${branch}.`
+              );
+              return;
+            }
+
+            core.info(
+              `Encontrados ${candidates.length} run(s) cancelado(s) que ainda ` +
+              'correspondem ao HEAD de PRs abertos.'
+            );
+
+            const results = [];
+
+            for (const candidate of candidates) {
+              // Race guard: if a new commit/run appeared after the green trigger,
+              // stop. Its future successful completion will trigger recovery again.
+              const branchRunsNow = await listBranchRuns();
+              const newerRunNow = branchRunsNow.find(
+                (run) => run.run_number > trigger.run_number
+              );
+
+              if (newerRunNow) {
+                core.warning(
+                  `Run mais novo #${newerRunNow.run_number} apareceu em ${branch}; ` +
+                  'interrompendo recovery para não disputar a concurrency do CI.'
+                );
+                results.push({
+                  run: `#${candidate.run_number}`,
+                  sha: candidate.head_sha.slice(0, 12),
+                  prs: (openHeadShas.get(candidate.head_sha) || [])
+                    .map((n) => `#${n}`)
+                    .join(', '),
+                  result: 'adiado: surgiu run mais novo'
+                });
+                break;
+              }
+
+              // Idempotency/race guard: another recovery may already have rerun it.
+              const current = await github.rest.actions.getWorkflowRun({
+                owner,
+                repo,
+                run_id: candidate.id
+              });
+
+              if (
+                current.data.status !== 'completed' ||
+                current.data.conclusion !== 'cancelled'
+              ) {
+                core.info(
+                  `Run #${candidate.run_number} já mudou para ` +
+                  `${current.data.status}/${current.data.conclusion}; ignorando.`
+                );
+                continue;
+              }
+
+              const previousAttempt = current.data.run_attempt || 1;
+              const prs = openHeadShas.get(candidate.head_sha) || [];
+
+              core.info(
+                `Reexecutando run #${candidate.run_number} (id ${candidate.id}, ` +
+                `attempt ${previousAttempt}) para SHA ${candidate.head_sha}, ` +
+                `visível em PR(s) ${prs.map((n) => `#${n}`).join(', ')}.`
+              );
+
+              // Full workflow rerun is intentional: the original run was cancelled,
+              // so re-running only "failed" jobs is not guaranteed to cover every
+              // cancelled/dependent job.
+              await github.request(
+                'POST /repos/{owner}/{repo}/actions/runs/{run_id}/rerun',
+                {
+                  owner,
+                  repo,
+                  run_id: candidate.id,
+                  headers: {
+                    'X-GitHub-Api-Version': '2022-11-28'
+                  }
+                }
+              );
+
+              // Re-run one candidate at a time. This is essential because the
+              // source CI intentionally has cancel-in-progress: true; parallel
+              // recovery attempts on the same branch would cancel each other.
+              const deadline = Date.now() + (30 * 60 * 1000);
+              let finalRun = null;
+
+              while (Date.now() < deadline) {
+                await sleep(15000);
+
+                const polled = await github.rest.actions.getWorkflowRun({
+                  owner,
+                  repo,
+                  run_id: candidate.id
+                });
+
+                const attempt = polled.data.run_attempt || 1;
+
+                if (
+                  attempt > previousAttempt &&
+                  polled.data.status === 'completed'
+                ) {
+                  finalRun = polled.data;
+                  break;
+                }
+              }
+
+              if (!finalRun) {
+                throw new Error(
+                  `Timeout aguardando o rerun de #${candidate.run_number} ` +
+                  `(id ${candidate.id}).`
+                );
+              }
+
+              const conclusion = finalRun.conclusion || 'unknown';
+              const resultText = `attempt ${finalRun.run_attempt}: ${conclusion}`;
+
+              results.push({
+                run: `#${candidate.run_number}`,
+                sha: candidate.head_sha.slice(0, 12),
+                prs: prs.map((n) => `#${n}`).join(', '),
+                result: resultText
+              });
+
+              if (conclusion === 'success') {
+                core.info(
+                  `Run #${candidate.run_number} recuperado com sucesso ` +
+                  `(attempt ${finalRun.run_attempt}).`
+                );
+              } else if (conclusion === 'cancelled') {
+                core.warning(
+                  `O rerun de #${candidate.run_number} foi cancelado novamente. ` +
+                  'Um success futuro da branch tentará a recuperação outra vez.'
+                );
+                break;
+              } else {
+                core.warning(
+                  `O rerun de #${candidate.run_number} terminou em ${conclusion}. ` +
+                  'Isso é mantido como resultado real; não haverá loop de rerun.'
+                );
+              }
+            }
+
+            if (results.length > 0) {
+              await core.summary
+                .addHeading('Auto-rerun de CI cancelado')
+                .addTable([
+                  [
+                    { data: 'Run', header: true },
+                    { data: 'SHA', header: true },
+                    { data: 'PR(s)', header: true },
+                    { data: 'Resultado', header: true }
+                  ],
+                  ...results.map((item) => [
+                    item.run,
+                    item.sha,
+                    item.prs || '-',
+                    item.result
+                  ])
+                ])
+                .write();
+            }
