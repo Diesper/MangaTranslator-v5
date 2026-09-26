@@ -284,13 +284,23 @@
 
     function inspectResult() {
       const container = acquireResponseContainer();
-      if (!container) return;
+      const images = container
+        ? safeQueryAll(container, 'img')
+        : domApi.findAllDeep(root.body || root.documentElement || root, element =>
+            String(element.tagName || '').toUpperCase() === 'IMG'
+          );
 
-      const images = safeQueryAll(container, 'img');
       for (let index = images.length - 1; index >= 0; index -= 1) {
         const image = images[index];
         if (!isCandidateImage(image)) continue;
+
+        // Sem response container, aceite apenas sinais fortes. O baseline de
+        // imagens elimina o anexo do próprio job; esta regra evita capturar
+        // thumbnails/UI genéricas quando o seletor de resposta mudou.
         const src = domApi.getImageSource(image);
+        if (!container && !strongImageUrl(src) && !domApi.isModelResponseImage(image)) {
+          continue;
+        }
         if (setResult(image, src)) return;
       }
     }
