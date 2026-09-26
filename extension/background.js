@@ -369,12 +369,10 @@ async function ensureInitialized() {
         state().jobIndex.length > 0 || Object.keys(state().extractionTabs).length > 0;
     if (!hasResidentWork) await restoreState();
 
-    // O journal de rekey pode conter uma mutação de jobIndex/extractionTabs.
-    // Reidratar mt_state ANTES de replay evita que uma state.mutate() aplique a
-    // migração sobre um snapshot vazio e sobrescreva trabalho durável.
+    // A reconciliação é canonical-aware e por isso é o gate síncrono
+    // necessário para mensagens. O replay de journals residuais não bloqueia
+    // ações normais; ele roda logo depois e continua crash-recoverable.
     const identity = initializeTabIdentity();
-    await identity.recoverPendingMigrations();
-    await identity.cleanupExpiredAliases();
     state()._initialized = true;
     try {
         const result = await reconcileJobs();
@@ -383,6 +381,13 @@ async function ensureInitialized() {
             if (result.dropped > 0 || result.recovered > 0) processNextJob();
         }
     } catch (_e) {}
+
+    identity.recoverPendingMigrations()
+        .then(() => identity.cleanupExpiredAliases())
+        .catch(error => log('warn', 'bg', 'TAB_REKEY_RECOVERY_DEFERRED_ERROR',
+            'Falha no replay assíncrono de migração de aba', {
+                errorName: error && error.name ? error.name : 'Error',
+            }));
 }
 
 let _logQueue = [];
