@@ -228,6 +228,7 @@ describe('content_gemini.js - RPA real do Gemini', () => {
 
     afterEach(async () => {
         delete window.__mt_gemini_started;
+        delete globalThis.__MT_GEMINI_GENERATION_TIMEOUT_MS__;
         runtimeMock.sendMessage = originalSendMessage;
         global.fetch = originalFetch;
         jest.restoreAllMocks();
@@ -517,6 +518,14 @@ describe('content_gemini.js - RPA real do Gemini', () => {
                 const alert = document.createElement('div');
                 alert.setAttribute('role', 'alert');
                 alert.innerText = 'Falha do Gemini';
+                // O Observer V2 exige visibilidade real. JSDOM não calcula
+                // layout, então a fixture precisa representar um alerta que
+                // ocuparia espaço na página em vez de enfraquecer a regra de produção.
+                alert.getBoundingClientRect = () => ({
+                    x: 0, y: 0, top: 0, left: 0,
+                    right: 320, bottom: 48, width: 320, height: 48,
+                    toJSON() { return this; },
+                });
                 document.body.appendChild(alert);
             },
         });
@@ -547,18 +556,12 @@ describe('content_gemini.js - RPA real do Gemini', () => {
         }));
     });
 
-    test('CG-36: encerra com GEMINI_ERROR quando o polling estoura o timeout de 4 minutos', async () => {
+    test('CG-36: encerra com GEMINI_ERROR quando o Observer V2 estoura o timeout de geração', async () => {
         mountGeminiEditor({
             sendMode: 'exact',
-            onSubmit: () => {
-                let now = 1000;
-                jest.spyOn(Date, 'now').mockImplementation(() => {
-                    const value = now;
-                    now += 121000;
-                    return value;
-                });
-            },
+            onSubmit: () => {},
         });
+        globalThis.__MT_GEMINI_GENERATION_TIMEOUT_MS__ = 80;
 
         await loadScript({
             storage: { debugMode: true },

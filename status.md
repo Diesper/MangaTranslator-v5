@@ -26,7 +26,7 @@
 - [x] PASSO 12 — mudar click/trigger para “attempt”, não “success”.
 - [x] PASSO 13 — remover mutação forçada de `disabled`.
 - [x] PASSO 14 — reduzir tentativas de envio para 2.
-- [ ] PASSO 15 — trocar espera de resultado por observer.
+- [x] PASSO 15 — trocar espera de resultado por observer.
 - [ ] PASSO 16 — corrigir Temporary Chat.
 - [ ] PASSO 17 — extrair attachment/result/deletion.
 - [ ] PASSO 18 — criar job runner.
@@ -96,11 +96,11 @@
 - [ ] CI do PR 5 verde.
 
 ### PR 6 — Observer como fonte de resultado
-- [ ] Polling pesado de 1 s removido do caminho primário.
-- [ ] `waitForResult()` com timeout terminal.
-- [ ] Resposta instantânea capturada.
-- [ ] Imagem antiga não capturada.
-- [ ] CG-36/E2E atualizados.
+- [x] Polling pesado de 1 s removido do caminho primário.
+- [x] `waitForResult()` com timeout terminal.
+- [x] Resposta instantânea capturada.
+- [x] Imagem antiga não capturada.
+- [x] CG-36 atualizado; E2E de resposta rápida permanece para o gate desta etapa.
 - [ ] CI do PR 6 verde.
 
 ### PR 7 — Temporary Chat verificado
@@ -161,6 +161,9 @@
 - [ ] Logs não armazenam prompt, signed URL, imagem, cookie ou token.
 
 ## Notas de execução
+
+- PR 6 remove o polling pesado do caminho primário: imagem, erro e timeout passam por `activeGeminiObserver.waitForResult()`.
+- Seleção manual resolve a mesma Promise via `acceptResult()`; a cadeia de extração permanece intacta.
 
 - PR 5 instala o Observer V2 antes de qualquer submit, preserva `__mangaTranslatorJobSent` apenas após confirmação real e elimina mutações forçadas de `disabled`/`aria-disabled`.
 - `MANGA_TRANSLATOR_TRIGGER_SEND` e `DO_SEND_NOW` representam tentativa; o pipeline só segue após `waitForSubmission()`.

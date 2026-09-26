@@ -608,6 +608,12 @@ function findGeneratedResultImages(ignoreImages = new Set()) {
 
 function setManualGeminiResultUrl(url, source = 'manual') {
     window.__mangaTranslatorManualGeminiResultUrl = url;
+    if (
+        window.__mangaTranslatorActiveGeminiObserver &&
+        typeof window.__mangaTranslatorActiveGeminiObserver.acceptResult === 'function'
+    ) {
+        window.__mangaTranslatorActiveGeminiObserver.acceptResult(null, url);
+    }
     const status = document.getElementById('mt-gemini-assist-status');
     if (status) status.textContent = 'Imagem marcada. A extensão vai usar esse resultado.';
     sendLog('info', 'GEMINI_MANUAL_RESULT', 'Imagem marcada manualmente no Gemini', { source, ...getUrlLogMetadata(url) });
@@ -1239,6 +1245,7 @@ async function processGeminiJob() {
                 }
             },
         }).start();
+        window.__mangaTranslatorActiveGeminiObserver = activeGeminiObserver;
 
         sendLog('info', 'GEMINI_OBSERVER_READY', 'Observer instalado antes do submit', {
             jobIdPrefix: String(job.jobId || '').slice(0, 8),
@@ -1301,73 +1308,64 @@ async function processGeminiJob() {
 
             reportProgress(`🧠 GEMINI PROCESSANDO...`, job.mangaTabId);
             createGeminiManualPanel(job, () => ignoreImages);
-            let resultUrl = null;
-            let resultImageElement = null;
-            let errorText = null;
 
-            const WAIT_TIMEOUT_MS = 4 * 60 * 1000;
-            const waitStart = Date.now();
-            let lastReportSec = -1;
-
-            while (!resultUrl) {
-                await sleep(1000);
-                window.scrollTo(0, 999999);
-                
-                document.querySelectorAll('infinite-scroller, message-list, main, [role="main"], [class*="conversation"], .chat-history, .zoom-container').forEach(el => {
-                    if (el.scrollHeight > el.clientHeight) el.scrollTop = el.scrollHeight;
-                });
-
-                const elapsedSec = Math.floor((Date.now() - waitStart) / 1000);
-                if (elapsedSec % 5 === 0 && elapsedSec !== lastReportSec) {
-                    lastReportSec = elapsedSec;
-                    reportProgress(`🧠 GEMINI PROCESSANDO (${elapsedSec}s)...`, job.mangaTabId);
-                }
-
-                // Tenta acionar card de imagem caso o Gemini exija clique para exibir/expandir
-                if (elapsedSec >= 5 && elapsedSec % 3 === 0) {
-                    tryClickModelImageCards();
-                }
-
-                if (window.__mangaTranslatorManualGeminiResultUrl) {
-                    resultUrl = window.__mangaTranslatorManualGeminiResultUrl;
-                    break;
-                }
-
-                const newImages = findGeneratedResultImages(ignoreImages);
-
-                if (newImages.length > 0) {
-                    const candidate = newImages[newImages.length - 1];
-                    const candSrc = getImageSource(candidate) || '';
-                    if (candSrc && (candidate.naturalHeight > 0 || candSrc.includes('googleusercontent.com/gg-dl/') || candSrc.startsWith('blob:'))) {
-                        resultUrl = candSrc;
-                        resultImageElement = candidate;
-                        break;
-                    }
-                }
-
-                const errorMsg = document.querySelector('.message-error, .error-text, [role="alert"]');
-                const errorMessageText = errorMsg
-                    ? String(errorMsg.innerText || errorMsg.textContent || '').trim()
-                    : '';
-                if (errorMessageText.length > 0) { errorText = errorMessageText; break; }
-                if (Date.now() - waitStart >= WAIT_TIMEOUT_MS) break;
-            }
-
-            if (errorText) {
-                sendLog('error', 'GEMINI_ERROR', `UI Error: ${errorText}`, {});
-                assert(!errorText, `Retornou erro interface: ${errorText}`, 5);
-            }
-            
             const shouldDeleteConversation = executionMode === 'minimized_window'
                 || executionMode === 'background_delete'
                 || (executionMode === 'temp_chat' && tempChatResult.notFound && !tempChatResult.alreadyActive);
 
-            if (!resultUrl) {
-                sendLog('error', 'GEMINI_TIMEOUT', `Timeout 4 min estourou`, {});
-                await deliverWithSecureDeletion({ action: 'GEMINI_ERROR', mangaTabId: job.mangaTabId, index: job.index, error: 'Tempo limite (4 min)', jobId: job.jobId, batchId: job.batchId }, executionMode, shouldDeleteConversation);
-                return;
+            const configuredGenerationTimeout = Number(globalThis.__MT_GEMINI_GENERATION_TIMEOUT_MS__);
+            const WAIT_TIMEOUT_MS = Number.isFinite(configuredGenerationTimeout) && configuredGenerationTimeout > 0
+                ? configuredGenerationTimeout
+                : 4 * 60 * 1000;
+            const waitStartedAt = Date.now();
+            const progressTimer = setInterval(() => {
+                const elapsedSec = Math.floor((Date.now() - waitStartedAt) / 1000);
+                reportProgress(`🧠 GEMINI PROCESSANDO (${elapsedSec}s)...`, job.mangaTabId);
+            }, 5000);
+            const cardNudgeTimer = setInterval(() => {
+                try { tryClickModelImageCards(); } catch (_e) {}
+            }, 3000);
+
+            let resultUrl = null;
+            let resultImageElement = null;
+            try {
+                const observedResult = await activeGeminiObserver.waitForResult(WAIT_TIMEOUT_MS);
+                resultUrl = observedResult && observedResult.url;
+                resultImageElement = observedResult && observedResult.image;
+            } catch (waitError) {
+                if (waitError && waitError.code === 'GEMINI_UI_ERROR') {
+                    sendLog('error', 'GEMINI_ERROR', 'Erro visível da UI detectado pelo Observer V2', {
+                        messageLength: String(waitError.message || '').length,
+                    });
+                    await deliverWithSecureDeletion({
+                        action: 'GEMINI_ERROR',
+                        mangaTabId: job.mangaTabId,
+                        index: job.index,
+                        error: `Retornou erro interface: ${String(waitError.message || 'Erro da interface do Gemini')}`,
+                        jobId: job.jobId,
+                        batchId: job.batchId,
+                    }, executionMode, shouldDeleteConversation);
+                    return;
+                }
+
+                if (waitError && waitError.code === 'GEMINI_RESULT_TIMEOUT') {
+                    sendLog('error', 'GEMINI_TIMEOUT', 'Timeout de geração aguardando Observer V2', {});
+                    await deliverWithSecureDeletion({
+                        action: 'GEMINI_ERROR',
+                        mangaTabId: job.mangaTabId,
+                        index: job.index,
+                        error: 'Tempo limite (4 min)',
+                        jobId: job.jobId,
+                        batchId: job.batchId,
+                    }, executionMode, shouldDeleteConversation);
+                    return;
+                }
+                throw waitError;
+            } finally {
+                clearInterval(progressTimer);
+                clearInterval(cardNudgeTimer);
             }
-            
+
             assert(resultUrl.startsWith('http') || resultUrl.startsWith('blob') || resultUrl.startsWith('data:image/'), 'URL Imagem inválida', 5, 'Mídia extraída blob');
             sendLog('success', 'GEMINI_IMG_FOUND', 'Imagem gerada!', getUrlLogMetadata(resultUrl));
             reportProgress(`📥 EXTRAINDO IMAGEM...`, job.mangaTabId);
@@ -1412,6 +1410,9 @@ async function processGeminiJob() {
             if (activeGeminiObserver) {
                 try { activeGeminiObserver.stop(); } catch (_e) {}
                 activeGeminiObserver = null;
+            }
+            if (window.__mangaTranslatorActiveGeminiObserver) {
+                delete window.__mangaTranslatorActiveGeminiObserver;
             }
             clearInterval(scrollInterval);
             closeKeepAlive();

@@ -300,4 +300,45 @@ describe('gemini/observer.js — Observer V2', () => {
     expect(observer.getState().inspectCount).toBeLessThanOrEqual(before + 2);
     observer.stop();
   });
+  test('PR6: fallback profundo orientado a mutation encontra imagem nova sem response conhecido', async () => {
+    const baseline = document.createElement('img');
+    baseline.src = 'https://cdn.example/input.png';
+    Object.defineProperty(baseline, 'naturalWidth', { value: 1000, configurable: true });
+    Object.defineProperty(baseline, 'naturalHeight', { value: 1400, configurable: true });
+    document.body.appendChild(baseline);
+
+    const { createGeminiObserver } = loadObserver();
+    const observer = createGeminiObserver({ jobId: 'result-fallback' }).start();
+    const pending = observer.waitForResult(1000);
+
+    const result = document.createElement('img');
+    result.src = 'https://cdn.example/generated.png';
+    Object.defineProperty(result, 'naturalWidth', { value: 1200, configurable: true });
+    Object.defineProperty(result, 'naturalHeight', { value: 1600, configurable: true });
+    Object.defineProperty(result, 'complete', { value: true, configurable: true });
+    document.body.appendChild(result);
+
+    await flushMutations();
+
+    await expect(pending).resolves.toEqual({
+      image: result,
+      url: 'https://cdn.example/generated.png',
+    });
+    observer.stop();
+  });
+
+  test('PR6: seleção manual resolve a mesma Promise de resultado', async () => {
+    const { createGeminiObserver } = loadObserver();
+    const observer = createGeminiObserver({ jobId: 'manual-result' }).start();
+    const pending = observer.waitForResult(1000);
+
+    expect(observer.acceptResult(null, 'blob:https://gemini.google.com/manual-picked')).toBe(true);
+
+    await expect(pending).resolves.toEqual({
+      image: null,
+      url: 'blob:https://gemini.google.com/manual-picked',
+    });
+    observer.stop();
+  });
+
 });

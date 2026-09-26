@@ -298,12 +298,19 @@
 
     function inspectResult() {
       const container = acquireResponseContainer();
-      if (!container) return;
+      const images = container
+        ? safeQueryAll(container, 'img')
+        : domApi.findAllDeep(root.body || root.documentElement || root, element =>
+            String(element.tagName || '').toUpperCase() === 'IMG'
+          );
 
-      const images = safeQueryAll(container, 'img');
       for (let index = images.length - 1; index >= 0; index -= 1) {
         const image = images[index];
         if (!isCandidateImage(image)) continue;
+
+        // Sem response container, o fallback profundo ainda exige imagem
+        // NOVA e heurísticas de tamanho/source. O baseline criado antes do
+        // submit elimina anexos e imagens antigas do job.
         const src = domApi.getImageSource(image);
         if (setResult(image, src)) return;
       }
@@ -443,6 +450,10 @@
       return state;
     }
 
+    function acceptResult(image, url) {
+      return setResult(image || null, url);
+    }
+
     const api = {
       start,
       stop,
@@ -450,6 +461,7 @@
       scheduleInspect,
       waitForSubmission,
       waitForResult,
+      acceptResult,
       getState,
     };
 
