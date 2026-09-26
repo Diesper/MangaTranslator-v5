@@ -29,7 +29,7 @@
 - [x] PASSO 15 — trocar espera de resultado por observer.
 - [x] PASSO 16 — corrigir Temporary Chat.
 - [x] PASSO 17 — extrair attachment/result/deletion.
-- [ ] PASSO 18 — criar job runner.
+- [x] PASSO 18 — criar job runner.
 - [ ] PASSO 19 — reduzir anti-throttling.
 - [ ] PASSO 20 — remover legado.
 - [ ] PASSO 21 — atualizar documentação/README.
@@ -125,13 +125,13 @@
 - [x] `gemini/deletion.js`.
 - [x] Menu/confirm/settle/recovery movidos.
 - [x] Idempotência preservada por controller único com lock interno.
-- [x] CI do PR 10 verde — run #469.
+- [ ] CI do PR 10 verde.
 
 ### PR 11 — Job runner e redução do monólito
-- [ ] `gemini/job-runner.js`.
-- [ ] `content_gemini.js` reduzido a bootstrap/claim/keepalive/runner/handlers.
-- [ ] Helper baseado em `new Function` aposentado para módulos novos.
-- [ ] CI do PR 11 verde.
+- [x] `gemini/job-runner.js`.
+- [x] `content_gemini.js` reduzido a bootstrap/claim/keepalive/runner/handlers.
+- [x] Helper baseado em `new Function` aposentado para módulos novos; testes novos usam módulos diretamente.
+- [x] CI do PR 11 verde — run #483.
 
 ### PR 12 — Anti-throttling progressivo
 - [ ] Mousemove aleatório removido.
@@ -162,7 +162,11 @@
 
 ## Notas de execução
 
-- PR 10: CI completo verde no run #469 (HEAD anterior ao commit documental de status).
+- PR 11: CI completo verde no run #483.
+
+- PR 11 extrai o pipeline de execução para `gemini/job-runner.js`: recovery, aquisição da imagem, Temporary Chat, attachment, prompt, Observer V2, submit, resultado, extração, entrega e cleanup.
+- `content_gemini.js` caiu de ~1.126 para ~515 linhas e ficou restrito a infraestrutura, claim, wiring, handlers e wrappers transitórios de compatibilidade.
+- RUN-01 a RUN-05 testam o runner diretamente, sem `new Function`. O helper textual continua apenas para consumidores legados e será removido no PR 13.
 
 - PR 10 extrai a exclusão para `gemini/deletion.js` com um controller único por content script.
 - O lock `deletionInProgress`, seleção da conversa pelo chatId, menu Excluir, confirmação, settle, scroll lock e logs de deleção ficam no módulo.
