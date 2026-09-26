@@ -66,7 +66,7 @@
 - [x] Full scan órfão removido.
 - [x] `openKeepAlive()` só após claim válido.
 - [x] KEEP-01 a KEEP-05.
-- [ ] CI do PR 2 verde.
+- [x] CI do PR 2 verde — run #323.
 
 ### PR 3 — Fundação modular Gemini
 - [x] `gemini/selectors.js`.
@@ -162,15 +162,20 @@
 
 ## Notas de execução
 
-- PR 7 substitui o antigo retorno `click -> success:true` por estados explícitos `already_active`, `activated_verified`, `unavailable` e `verification_failed`. Após um clique, o controle é apenas observado; não há loop de toggle que possa desfazer a ativação.
+- PR 7 substitui o antigo retorno `click -> success:true` por estados explícitos `already_active`, `activated_verified`, `unavailable` e `verification_failed`.
+- Após um clique, o controle é apenas observado; o código não alterna o toggle repetidamente.
 
-- PR 6 removeu o `while (!resultUrl) + sleep(1000)` do caminho primário. O Observer V2 agora resolve imagem/erro/timeout; timers restantes servem apenas a progresso e ao nudge opcional de cards, sem varredura profunda periódica.
-- Seleção manual passou a resolver a mesma Promise do observer por `acceptResult()`. O fallback profundo ocorre somente em inspeções disparadas por mutation quando o response container não pôde ser identificado.
+- PR 6 remove o polling pesado do caminho primário: imagem, erro e timeout passam por `activeGeminiObserver.waitForResult()`.
+- Seleção manual resolve a mesma Promise via `acceptResult()`; a cadeia de extração permanece intacta.
 
-- PR 5 instala o Observer V2 antes de qualquer submit, preserva `__mangaTranslatorJobSent` apenas como compatibilidade após confirmação real e elimina qualquer mutação de `disabled`/`aria-disabled` em `content_gemini.js` e `inject.js`.
-- A escalada final (`MANGA_TRANSLATOR_TRIGGER_SEND` / `DO_SEND_NOW`) passou a significar **tentativa**, e o pipeline só continua após `waitForSubmission()` confirmar uma transição de UI.
+- PR 5 instala o Observer V2 antes de qualquer submit, preserva `__mangaTranslatorJobSent` apenas após confirmação real e elimina mutações forçadas de `disabled`/`aria-disabled`.
+- `MANGA_TRANSLATOR_TRIGGER_SEND` e `DO_SEND_NOW` representam tentativa; o pipeline só segue após `waitForSubmission()`.
 
+- PR 3: CI completo verde no run #333 (HEAD `fe75c45a`).
 - PR 4 adiciona Observer V2 isolado e ainda não troca o polling do runtime. O observer instala ownership por response novo, baseline de imagens/erros, coalescing de mutations, confirmação de submit e cleanup idempotente.
+- Correção adicional: `send_busy` só confirma submit após transição observada de Send habilitado para busy/desabilitado; um controle já disabled no baseline não é evidência de envio.
+
+- PR 2: CI completo verde no run #323 (HEAD `570b029b`).
 
 - PR 3 extraiu seletores e helpers DOM sem alterar intencionalmente o pipeline. `content_gemini.js` delega `getImageSource`, blacklist de imagens, ownership por response, deep traversal, editable lookup e send-button lookup ao novo módulo.
 
