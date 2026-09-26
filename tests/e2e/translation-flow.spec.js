@@ -103,9 +103,12 @@ let browserContext;
 let backgroundWorker;
 
 test.describe('E2E-01/E2E-02/E2E-03/E2E-04/E2E-05/E2E-06/E2E-07/E2E-08/E2E-09/E2E-10/E2E-11/E2E-12/E2E-13/E2E-14/E2E-15/E2E-15b/E2E-16/E2E-16b/E2E-17/E2E-18: Automacao UI: Fluxo de Traducao em Massa (E2E)', () => {
-    test.beforeAll(async () => {
+    test.beforeEach(async () => {
         const pathToExtension = getExtensionPath(__dirname);
-        const userDataDir = path.join(os.tmpdir(), `pw-manga-${Date.now()}`);
+        const userDataDir = path.join(
+            os.tmpdir(),
+            `pw-manga-${Date.now()}-${Math.random().toString(36).slice(2)}`
+        );
         const browserMode = getBrowserModeConfig();
         const launchArgs = [
             `--disable-extensions-except=${pathToExtension}`,
@@ -125,15 +128,15 @@ test.describe('E2E-01/E2E-02/E2E-03/E2E-04/E2E-05/E2E-06/E2E-07/E2E-08/E2E-09/E2
         });
 
         backgroundWorker = await getBackgroundWorker(browserContext);
-    });
-
-    test.afterAll(async () => {
-        if (browserContext) await browserContext.close();
-    });
-
-    test.beforeEach(async () => {
-        backgroundWorker = await getBackgroundWorker(browserContext);
         await resetExtensionState(backgroundWorker);
+    });
+
+    test.afterEach(async () => {
+        if (browserContext) {
+            await browserContext.close();
+            browserContext = null;
+            backgroundWorker = null;
+        }
     });
 
     test('Deve traduzir as paginas validas de ponta a ponta e encerrar o lote corretamente', async () => {
