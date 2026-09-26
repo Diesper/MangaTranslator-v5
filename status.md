@@ -28,7 +28,7 @@
 - [x] PASSO 14 — reduzir tentativas de envio para 2.
 - [x] PASSO 15 — trocar espera de resultado por observer.
 - [x] PASSO 16 — corrigir Temporary Chat.
-- [ ] PASSO 17 — extrair attachment/result/deletion.
+- [ ] PASSO 17 — extrair attachment/result/deletion. *(attachment concluído; result/deletion pendentes)*
 - [ ] PASSO 18 — criar job runner.
 - [ ] PASSO 19 — reduzir anti-throttling.
 - [ ] PASSO 20 — remover legado.
@@ -111,10 +111,10 @@
 - [ ] CI do PR 7 verde.
 
 ### PR 8 — Attachment modular
-- [ ] `gemini/attachment.js`.
-- [ ] Paste/file input/drag-drop movidos.
-- [ ] Attachment confirmado por evidência observável.
-- [ ] CI do PR 8 verde.
+- [x] `gemini/attachment.js`.
+- [x] Paste/file input/drag-drop movidos.
+- [x] Attachment confirmado por baseline + MutationObserver; dispatch isolado não declara sucesso.
+- [x] CI do PR 8 verde — run #440.
 
 ### PR 9 — Result extractor modular
 - [ ] `gemini/result-extractor.js`.
@@ -161,6 +161,13 @@
 - [ ] Logs não armazenam prompt, signed URL, imagem, cookie ou token.
 
 ## Notas de execução
+
+- PR 8: CI completo verde no run #440 (HEAD anterior ao commit documental de status).
+
+- PR 8 extrai paste, file input, drag/drop e confirmação de thumbnail para `gemini/attachment.js`.
+- A confirmação captura um baseline antes da tentativa e só aceita evidência nova ou alterada; `attempted:true` nunca significa `confirmed:true`.
+- A primeira tentativa preserva paste + file input + drag/drop. Retries preservam paste + file input, em cadência equivalente ao fluxo anterior, dentro da janela terminal de 15 s.
+- O conteúdo herdado de PR 7 foi ressincronizado com os HEADs verdes após o primeiro CI do PR 8 detectar drift na pilha.
 
 - PR 7 substitui o antigo retorno `click -> success:true` por estados explícitos `already_active`, `activated_verified`, `unavailable` e `verification_failed`.
 - Após um clique, o controle é apenas observado; o código não alterna o toggle repetidamente.

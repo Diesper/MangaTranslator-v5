@@ -60,6 +60,7 @@
         "gemini/dom.js",
         "gemini/observer.js",
         "gemini/editor.js",
+        "gemini/attachment.js",
         "gemini/temporary-chat.js",
         "content_gemini.js"
       ],

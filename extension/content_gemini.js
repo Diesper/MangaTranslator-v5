@@ -5,9 +5,10 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
 const GeminiDom = globalThis.MangaTranslatorGeminiDom;
 const GeminiObserver = globalThis.MangaTranslatorGeminiObserver;
 const GeminiEditor = globalThis.MangaTranslatorGeminiEditor;
+const GeminiAttachment = globalThis.MangaTranslatorGeminiAttachment;
 const GeminiTemporaryChat = globalThis.MangaTranslatorGeminiTemporaryChat;
-if (!GeminiDom || !GeminiObserver || !GeminiEditor || !GeminiTemporaryChat) {
-    throw new Error('Módulos Gemini DOM/Observer/Editor/TemporaryChat não foram carregados antes de content_gemini.js');
+if (!GeminiDom || !GeminiObserver || !GeminiEditor || !GeminiAttachment || !GeminiTemporaryChat) {
+    throw new Error('Módulos Gemini obrigatórios não foram carregados antes de content_gemini.js');
 }
 
 // ── Keep-alive sob demanda ───────────────────────────────────────────────────
@@ -257,45 +258,11 @@ function findAllElementsDeep(root, matcher) {
 }
 
 function findFileInputsDeep(root = document.body) {
-    return findAllElementsDeep(root, el => el.tagName === 'INPUT' && (el.type === 'file' || el.getAttribute('type') === 'file'));
+    return GeminiAttachment.findFileInputsDeep(root);
 }
 
 function findAttachmentThumbnailDeep(root = document.body) {
-    const containers = findAllElementsDeep(root, el => {
-        const tag = (el.tagName || '').toLowerCase();
-        const tid = (el.getAttribute('data-test-id') || el.getAttribute('data-testid') || '').toLowerCase();
-        const cls = (typeof el.className === 'string' ? el.className : '').toLowerCase();
-        return tag === 'file-preview' || tag === 'attachment-card' ||
-               tid.includes('attachment') || tid.includes('preview') ||
-               cls.includes('file-preview') || cls.includes('attachment-preview') || cls.includes('image-preview') ||
-               cls.includes('attachment-container');
-    });
-
-    for (const c of containers) {
-        const rect = c.getBoundingClientRect();
-        if (rect.width > 20 && rect.height > 20) {
-            const img = c.querySelector ? c.querySelector('img') : null;
-            return { el: c, img, type: 'container', selector: c.tagName.toLowerCase() };
-        }
-    }
-
-    const allImgs = findAllElementsDeep(root, el => el.tagName === 'IMG');
-    for (const img of allImgs) {
-        const src = img.src || '';
-        if (src.startsWith('blob:') || (src.startsWith('data:image/') && src.length > 500)) {
-            return { el: img, img, type: 'blob-img', selector: 'img[src^="blob:"]' };
-        }
-        const parentArea = img.closest ? img.closest('rich-textarea, .input-area, .chat-input, input-area') : null;
-        if (parentArea && !isIgnoredGeminiImageSource(src)) {
-            const w = img.naturalWidth || img.width || 0;
-            const h = img.naturalHeight || img.height || 0;
-            if (w > 20 && h > 20) {
-                return { el: img, img, type: 'input-img', selector: 'input-area img' };
-            }
-        }
-    }
-
-    return null;
+    return GeminiAttachment.findAttachmentThumbnailDeep(root);
 }
 
 function findSendButtonDeep(root = document.body) {
@@ -909,67 +876,32 @@ async function processGeminiJob() {
         const file = dataURLtoFile(job.srcData, 'manga_page.png');
         assert(file.size > 0, 'Imagem gerada vazia.', 3, 'PNG verificado no buffer');
 
-        const clipboardData = new DataTransfer();
-        clipboardData.items.add(file);
+        const attachmentResult = await GeminiAttachment.attachFile({
+            file,
+            editor: liveEditable,
+            editorRoot: liveEditor,
+            root: document,
+            timeoutMs: 15000,
+            retryAfterMs: 2000,
+            maxDispatches: 8,
+            sleep,
+        });
 
-        if (typeof liveEditable.focus === 'function') liveEditable.focus({ preventScroll: true });
-        if (typeof liveEditor.focus === 'function' && liveEditor !== liveEditable) liveEditor.focus({ preventScroll: true });
-        liveEditable.dispatchEvent(new FocusEvent('focus', { bubbles: true, composed: true }));
-        liveEditable.dispatchEvent(new FocusEvent('focusin', { bubbles: true, composed: true }));
-        window.dispatchEvent(new Event('focus'));
-
-        // Método A: Disparo de evento paste com composed: true
-        const pasteEvt = new ClipboardEvent('paste', { bubbles: true, cancelable: true, composed: true, clipboardData });
-        liveEditable.dispatchEvent(pasteEvt);
-        if (liveEditor !== liveEditable) {
-            liveEditor.dispatchEvent(new ClipboardEvent('paste', { bubbles: true, cancelable: true, composed: true, clipboardData }));
-        }
-        document.dispatchEvent(new ClipboardEvent('paste', { bubbles: true, cancelable: true, composed: true, clipboardData }));
-
-        // Método B: Injeção direta em input[type="file"] em Light DOM e Shadow Roots
-        const fileInputs = findFileInputsDeep(document.body);
-        for (const fi of fileInputs) {
-            try {
-                fi.files = clipboardData.files;
-                fi.dispatchEvent(new Event('input', { bubbles: true, composed: true }));
-                fi.dispatchEvent(new Event('change', { bubbles: true, composed: true }));
-            } catch (e) {}
-        }
-
-        // Método C: Drag and Drop fallback
-        try {
-            const dragEvt = new DragEvent('drop', { bubbles: true, cancelable: true, composed: true, dataTransfer: clipboardData });
-            liveEditor.dispatchEvent(dragEvt);
-        } catch (e) {}
-
-        // Confirmação de Thumbnail sem falsos positivos (até 15s)
-        let thumbResult = null;
-        for (let i = 0; i < 30; i++) { 
-            await sleep(500);
-            thumbResult = findAttachmentThumbnailDeep(document.body);
-            if (thumbResult) break;
-
-            // A cada 4 tentativas (2s), repete o paste e atribuição de arquivo
-            if (i > 0 && i % 4 === 0) {
-                try {
-                    liveEditable.dispatchEvent(new ClipboardEvent('paste', { bubbles: true, cancelable: true, composed: true, clipboardData }));
-                    const currentFIs = findFileInputsDeep(document.body);
-                    for (const fi of currentFIs) {
-                        try {
-                            fi.files = clipboardData.files;
-                            fi.dispatchEvent(new Event('change', { bubbles: true, composed: true }));
-                        } catch (e) {}
-                    }
-                } catch (e) {}
-            }
-        }
-
-        if (!thumbResult) {
-            debugConsole('warn', '[MangaTranslator Gemini] Thumbnail não detectado após 15s, prosseguindo com envio...');
-            sendLog('warn', 'GEMINI_STEP_3_WARN', 'Thumb não detectado explicitamente, prosseguindo com envio', {});
+        if (!attachmentResult.confirmed) {
+            debugConsole('warn', '[MangaTranslator Gemini] Attachment não foi confirmado após 15s; prosseguindo sem declarar sucesso.');
+            sendLog('warn', 'GEMINI_STEP_3_WARN', 'Attachment não confirmado por evidência de DOM', {
+                attempted: attachmentResult.attempted,
+            });
         } else {
-            debugConsole('log', '[MangaTranslator Gemini] Thumbnail confirmado:', thumbResult && { type: thumbResult.type, selector: thumbResult.selector });
-            sendLog('success', 'GEMINI_STEP_3_OK', 'Thumbnail confirmado', { type: thumbResult.type, selector: thumbResult.selector });
+            const evidence = attachmentResult.evidence || {};
+            debugConsole('log', '[MangaTranslator Gemini] Attachment confirmado:', {
+                type: evidence.type,
+                selector: evidence.selector,
+            });
+            sendLog('success', 'GEMINI_STEP_3_OK', 'Attachment confirmado por evidência de DOM', {
+                type: evidence.type,
+                selector: evidence.selector,
+            });
         }
         await sleep(1000);
 
