@@ -1313,7 +1313,10 @@ async function processGeminiJob() {
                 || executionMode === 'background_delete'
                 || (executionMode === 'temp_chat' && tempChatResult.notFound && !tempChatResult.alreadyActive);
 
-            const WAIT_TIMEOUT_MS = 4 * 60 * 1000;
+            const configuredGenerationTimeout = Number(globalThis.__MT_GEMINI_GENERATION_TIMEOUT_MS__);
+            const WAIT_TIMEOUT_MS = Number.isFinite(configuredGenerationTimeout) && configuredGenerationTimeout > 0
+                ? configuredGenerationTimeout
+                : 4 * 60 * 1000;
             const waitStartedAt = Date.now();
             const progressTimer = setInterval(() => {
                 const elapsedSec = Math.floor((Date.now() - waitStartedAt) / 1000);
@@ -1338,7 +1341,7 @@ async function processGeminiJob() {
                         action: 'GEMINI_ERROR',
                         mangaTabId: job.mangaTabId,
                         index: job.index,
-                        error: String(waitError.message || 'Erro da interface do Gemini'),
+                        error: `Retornou erro interface: ${String(waitError.message || 'Erro da interface do Gemini')}`,
                         jobId: job.jobId,
                         batchId: job.batchId,
                     }, executionMode, shouldDeleteConversation);
