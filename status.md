@@ -111,9 +111,9 @@
 - [ ] CI do PR 7 verde.
 
 ### PR 8 — Attachment modular
-- [ ] `gemini/attachment.js`.
-- [ ] Paste/file input/drag-drop movidos.
-- [ ] Attachment confirmado por evidência observável.
+- [x] `gemini/attachment.js`.
+- [x] Paste/file input/drag-drop movidos.
+- [x] Attachment confirmado por MutationObserver/evidência observável; dispatch isolado não declara sucesso.
 - [ ] CI do PR 8 verde.
 
 ### PR 9 — Result extractor modular
@@ -161,6 +161,8 @@
 - [ ] Logs não armazenam prompt, signed URL, imagem, cookie ou token.
 
 ## Notas de execução
+
+- PR 8 move paste, file input, drag/drop e detecção de thumbnail para `gemini/attachment.js`. O observer é instalado antes da tentativa e `attempted:true` não implica `confirmed:true`.
 
 - PR 7 substitui o antigo retorno `click -> success:true` por estados explícitos `already_active`, `activated_verified`, `unavailable` e `verification_failed`. Após um clique, o controle é apenas observado; não há loop de toggle que possa desfazer a ativação.
 
