@@ -1,4 +1,4 @@
-// popup.js — Manga Translator v6.0
+// popup.js — Manga Translator
 
 document.addEventListener('DOMContentLoaded', async () => {
 
