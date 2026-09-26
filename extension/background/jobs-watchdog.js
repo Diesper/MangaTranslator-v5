@@ -12,13 +12,39 @@
   }) {
     const alarmNameFor = (geminiTabId, jobId) => `watchdog_${jobId || geminiTabId}`;
 
-    function arm(mangaTabId, index, geminiTabId, jobId) {
-      const alarmName = alarmNameFor(geminiTabId, jobId);
-      chrome.alarms.clear(alarmName, () => {
-        chrome.storage.local.set({ [`wd_data_${geminiTabId}`]: { mangaTabId, index, geminiTabId, jobId } }, () => {
-          chrome.alarms.create(alarmName, { delayInMinutes: timeoutMinutes });
-        });
+    async function arm(mangaTabId, index, geminiTabId, jobId) {
+      const requestedTabId = geminiTabId;
+      let canonicalTabId = await resolveCanonicalTabId(requestedTabId);
+      const alarmName = alarmNameFor(canonicalTabId, jobId);
+
+      await chrome.alarms.clear(alarmName);
+      await chrome.storage.local.set({
+        [`wd_data_${canonicalTabId}`]: {
+          mangaTabId,
+          index,
+          geminiTabId: canonicalTabId,
+          jobId,
+        },
       });
+      chrome.alarms.create(alarmName, { delayInMinutes: timeoutMinutes });
+
+      // Se onReplaced ocorreu depois da resolução inicial mas antes do write,
+      // o listener pode ter migrado cedo demais. Re-resolver após o write fecha
+      // essa janela sem reiniciar o deadline do watchdog.
+      const latestTabId = await resolveCanonicalTabId(requestedTabId);
+      if (latestTabId !== canonicalTabId) {
+        const oldKey = `wd_data_${canonicalTabId}`;
+        const newKey = `wd_data_${latestTabId}`;
+        const data = await chrome.storage.local.get([oldKey, newKey]);
+        if (data[oldKey] && !data[newKey]) {
+          await chrome.storage.local.set({
+            [newKey]: { ...data[oldKey], geminiTabId: latestTabId },
+          });
+        }
+        await chrome.storage.local.remove(oldKey);
+        canonicalTabId = latestTabId;
+      }
+      return canonicalTabId;
     }
 
     function clear(geminiTabId, jobId) {
