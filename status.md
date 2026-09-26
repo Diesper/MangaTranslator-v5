@@ -29,7 +29,7 @@
 - [x] PASSO 15 — trocar espera de resultado por observer.
 - [x] PASSO 16 — corrigir Temporary Chat.
 - [x] PASSO 17 — extrair attachment/result/deletion.
-- [ ] PASSO 18 — criar job runner.
+- [x] PASSO 18 — criar job runner.
 - [ ] PASSO 19 — reduzir anti-throttling.
 - [ ] PASSO 20 — remover legado.
 - [ ] PASSO 21 — atualizar documentação/README.
@@ -128,9 +128,9 @@
 - [ ] CI do PR 10 verde.
 
 ### PR 11 — Job runner e redução do monólito
-- [ ] `gemini/job-runner.js`.
-- [ ] `content_gemini.js` reduzido a bootstrap/claim/keepalive/runner/handlers.
-- [ ] Helper baseado em `new Function` aposentado para módulos novos.
+- [x] `gemini/job-runner.js`.
+- [x] `content_gemini.js` reduzido a bootstrap/claim/keepalive/runner/handlers.
+- [x] Helper baseado em `new Function` aposentado para módulos novos; testes novos usam módulos diretamente.
 - [ ] CI do PR 11 verde.
 
 ### PR 12 — Anti-throttling progressivo
@@ -161,6 +161,10 @@
 - [ ] Logs não armazenam prompt, signed URL, imagem, cookie ou token.
 
 ## Notas de execução
+
+- PR 11 extrai o pipeline de execução para `gemini/job-runner.js`: recovery, aquisição da imagem, Temporary Chat, attachment, prompt, Observer V2, submit, resultado, extração, entrega e cleanup.
+- `content_gemini.js` caiu de ~1.126 para ~515 linhas e ficou restrito a infraestrutura, claim, wiring, handlers e wrappers transitórios de compatibilidade.
+- RUN-01 a RUN-05 testam o runner diretamente, sem `new Function`. O helper textual continua apenas para consumidores legados e será removido no PR 13.
 
 - PR 10 extrai a exclusão para `gemini/deletion.js` com um controller único por content script.
 - O lock `deletionInProgress`, seleção da conversa pelo chatId, menu Excluir, confirmação, settle, scroll lock e logs de deleção ficam no módulo.
