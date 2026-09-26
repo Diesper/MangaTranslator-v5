@@ -73,7 +73,7 @@
 - [x] `gemini/dom.js`.
 - [x] Manifest com load order explícito.
 - [x] Funções puras testáveis por `require()`.
-- [ ] CI do PR 3 verde.
+- [x] CI do PR 3 verde — run #333.
 
 ### PR 4 — Observer V2
 - [x] `gemini/observer.js`.
@@ -82,7 +82,7 @@
 - [x] `generationActiveObserved`.
 - [x] Cleanup idempotente.
 - [x] OBS-01 a OBS-12.
-- [ ] CI do PR 4 verde.
+- [x] CI do PR 4 verde — run #396.
 
 ### PR 5 — Submit confirmado
 - [x] `gemini/editor.js`.
@@ -93,7 +93,7 @@
 - [x] Máximo de 2 tentativas.
 - [x] Falha curta `GEMINI_SUBMISSION_NOT_CONFIRMED`.
 - [x] SEND-01 a SEND-07.
-- [ ] CI do PR 5 verde.
+- [x] CI do PR 5 verde — run #398.
 
 ### PR 6 — Observer como fonte de resultado
 - [x] Polling pesado de 1 s removido do caminho primário.
@@ -101,14 +101,14 @@
 - [x] Resposta instantânea capturada.
 - [x] Imagem antiga não capturada.
 - [x] CG-36 atualizado; E2E de resposta rápida permanece para o gate desta etapa.
-- [ ] CI do PR 6 verde.
+- [x] CI do PR 6 verde — run #407.
 
 ### PR 7 — Temporary Chat verificado
 - [x] `gemini/temporary-chat.js`.
 - [x] Estado relido após clique controla o retorno; falso sucesso de `activeNow` removido.
 - [x] Fallback geométrico exige semântica.
 - [x] TEMP-01 a TEMP-05.
-- [ ] CI do PR 7 verde.
+- [x] CI do PR 7 verde — run #410.
 
 ### PR 8 — Attachment modular
 - [x] `gemini/attachment.js`.
@@ -162,7 +162,8 @@
 
 ## Notas de execução
 
-- PR 8 move paste, file input, drag/drop e detecção de thumbnail para `gemini/attachment.js`. O observer é instalado antes da tentativa e `attempted:true` não implica `confirmed:true`.
+- PR 8 move paste, file input, drag/drop e detecção de thumbnail para `gemini/attachment.js`. A confirmação captura um baseline antes do upload e só aceita evidência nova/alterada; `attempted:true` nunca implica `confirmed:true`.
+- A primeira tentativa preserva paste + file input + drag/drop; os retries preservam paste + file input em cadência equivalente ao fluxo anterior (até 8 dispatches dentro da janela de 15 s).
 
 - PR 7 substitui o antigo retorno `click -> success:true` por estados explícitos `already_active`, `activated_verified`, `unavailable` e `verification_failed`. Após um clique, o controle é apenas observado; não há loop de toggle que possa desfazer a ativação.
 
