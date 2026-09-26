@@ -203,6 +203,21 @@
 
       const oldJob = data[oldJobKey];
       const newJob = data[newJobKey];
+
+      if (
+        oldJob && newJob &&
+        oldJob.jobId && newJob.jobId &&
+        oldJob.jobId !== newJob.jobId
+      ) {
+        log('error', 'bg', 'TAB_REKEY_CONFLICT', 'Destino de rekey já pertence a outro job', {
+          oldTabId,
+          newTabId,
+          oldJobIdPrefix: String(oldJob.jobId).slice(0, 8),
+          newJobIdPrefix: String(newJob.jobId).slice(0, 8),
+        });
+        throw new Error('TAB_REKEY_CONFLICT');
+      }
+
       if (oldJob) {
         if (!newJob || !newJob.jobId || !oldJob.jobId || newJob.jobId === oldJob.jobId) {
           writes[newJobKey] = {
