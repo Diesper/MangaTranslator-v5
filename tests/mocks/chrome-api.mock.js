@@ -77,9 +77,10 @@ class ChromeTabsMock {
   constructor() {
     this._tabs               = new Map();
     this._nextTabId          = 1000;
-    this._messageHandlers    = new Map();
-    this._onRemovedListeners = [];
-    this._onUpdatedListeners = [];
+    this._messageHandlers     = new Map();
+    this._onRemovedListeners  = [];
+    this._onUpdatedListeners  = [];
+    this._onReplacedListeners = [];
   }
 
   create(options, callback) {
@@ -155,6 +156,30 @@ class ChromeTabsMock {
     if (!this._messageHandlers.has(tabId)) this._messageHandlers.set(tabId, []);
     this._messageHandlers.get(tabId).push(handler);
   }
+
+  _simulateReplacement(oldTabId, newTabId = this._nextTabId++) {
+    const oldTab = this._tabs.get(oldTabId);
+    if (!oldTab) throw new Error(`Cannot replace missing tab ${oldTabId}`);
+    if (oldTabId === newTabId) throw new Error('Replacement tab id must differ from old tab id');
+    if (this._tabs.has(newTabId)) throw new Error(`Replacement target already exists: ${newTabId}`);
+
+    const newTab = { ...oldTab, id: newTabId };
+    this._tabs.delete(oldTabId);
+    this._tabs.set(newTabId, newTab);
+
+    if (this._messageHandlers.has(oldTabId)) {
+      this._messageHandlers.set(newTabId, this._messageHandlers.get(oldTabId));
+      this._messageHandlers.delete(oldTabId);
+    }
+
+    this._onReplacedListeners.forEach(fn => fn(newTabId, oldTabId));
+    return newTab;
+  }
+
+  onReplaced = {
+    addListener:    (fn) => this._onReplacedListeners.push(fn),
+    removeListener: (fn) => { this._onReplacedListeners = this._onReplacedListeners.filter(l => l !== fn); },
+  };
 
   onRemoved = {
     addListener:    (fn) => this._onRemovedListeners.push(fn),
