@@ -2,7 +2,16 @@
 // background/jobs-reconciliation.js -- Rebuilds active job accounting after worker suspension.
 
 (function(scope) {
-  function createReconciler({ state, tabExists, log, syncState, processNextJob, recoverPendingFinalization }) {
+  function createReconciler({
+    state,
+    tabExists,
+    log,
+    syncState,
+    processNextJob,
+    recoverPendingFinalization,
+    resolveCanonicalTabId = async tabId => tabId,
+    migrateTabIdentity = async (_oldTabId, newTabId) => newTabId,
+  }) {
     async function reconcile() {
       if (!Array.isArray(state.jobIndex) || state.jobIndex.length === 0) {
         state.activeJobsCount = 0;
@@ -14,14 +23,25 @@
       let recovered = 0;
       for (const entry of state.jobIndex) {
         if (!entry) continue;
+        const originalTabId = entry.geminiTabId;
+        const canonicalTabId = await resolveCanonicalTabId(originalTabId);
+        let canonicalEntry = canonicalTabId === originalTabId
+          ? entry
+          : { ...entry, geminiTabId: canonicalTabId };
+
+        if (canonicalTabId !== originalTabId) {
+          await migrateTabIdentity(originalTabId, canonicalTabId, { jobId: entry.jobId || null });
+          canonicalEntry = { ...canonicalEntry, geminiTabId: canonicalTabId };
+        }
+
         // Uma marca de finalização significa que o resultado já foi aceito;
         // ela vence a verificação da aba para não ressuscitar um slot pendente.
-        if (typeof recoverPendingFinalization === 'function' && await recoverPendingFinalization(entry)) {
+        if (typeof recoverPendingFinalization === 'function' && await recoverPendingFinalization(canonicalEntry)) {
           recovered += 1;
           continue;
         }
-        if (await tabExists(entry.geminiTabId)) alive.push(entry);
-        else dropped.push(entry);
+        if (await tabExists(canonicalTabId)) alive.push(canonicalEntry);
+        else dropped.push(canonicalEntry);
       }
 
       if (dropped.length) {
