@@ -1,0 +1,316 @@
+name: Recover cancelled MangaTranslator CI
+
+on:
+  workflow_run:
+    workflows: ["MangaTranslator CI"]
+    types: [completed]
+
+# workflow_run can receive a privileged GITHUB_TOKEN. Keep the scope minimal:
+# this workflow never checks out or executes code from the triggering branch.
+permissions:
+  actions: write
+  contents: read
+  pull-requests: read
+
+# Recovery is global now: any successful MangaTranslator CI can reconcile
+# cancelled runs from any branch. Serialize every recovery in one repository-wide
+# queue so two successful source runs cannot start competing reruns.
+concurrency:
+  group: recover-cancelled-ci-global
+  cancel-in-progress: false
+
+jobs:
+  recover:
+    name: Auto-rerun cancelled CI
+    if: ${{ github.event.workflow_run.conclusion == 'success' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+
+    steps:
+      - name: Re-run cancelled CI attempts that still affect open PRs
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const trigger = context.payload.workflow_run;
+            const { owner, repo } = context.repo;
+            const fullRepo = `${owner}/${repo}`;
+            const sourceWorkflowId = trigger.workflow_id;
+
+            const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+            // workflow_run can be privileged. Never let a fork/untrusted repository
+            // cause Actions write operations. The recovery itself never checks out
+            // or executes code from the triggering branch.
+            if (trigger.head_repository?.full_name !== fullRepo) {
+              core.notice(
+                `Ignorando gatilho vindo de ${trigger.head_repository?.full_name || 'repositório desconhecido'}; ` +
+                'o auto-rerun global só aceita CIs originados no próprio repositório.'
+              );
+              return;
+            }
+
+            const listOpenPullRequests = async () => github.paginate(
+              github.rest.pulls.list,
+              {
+                owner,
+                repo,
+                state: 'open',
+                per_page: 100
+              }
+            );
+
+            const listCancelledRuns = async () => github.paginate(
+              github.rest.actions.listWorkflowRuns,
+              {
+                owner,
+                repo,
+                workflow_id: sourceWorkflowId,
+                status: 'cancelled',
+                per_page: 100
+              }
+            );
+
+            const listBranchRuns = async (branch) => github.paginate(
+              github.rest.actions.listWorkflowRuns,
+              {
+                owner,
+                repo,
+                workflow_id: sourceWorkflowId,
+                branch,
+                per_page: 100
+              }
+            );
+
+            const openPullRequests = await listOpenPullRequests();
+            const openHeadShas = new Map();
+
+            for (const pr of openPullRequests) {
+              // Only PRs whose head branch lives in this repository are eligible.
+              // This keeps the privileged recovery isolated from forks.
+              if (pr.head?.repo?.full_name !== fullRepo) continue;
+
+              const list = openHeadShas.get(pr.head.sha) || [];
+              list.push({
+                number: pr.number,
+                branch: pr.head.ref
+              });
+              openHeadShas.set(pr.head.sha, list);
+            }
+
+            if (openHeadShas.size === 0) {
+              core.notice('Não há PRs abertos do próprio repositório; nada para recuperar.');
+              return;
+            }
+
+            // GitHub allows workflow re-runs for up to 30 days.
+            // Keep one day of safety margin to avoid boundary/API timing errors.
+            const rerunCutoff = Date.now() - (29 * 24 * 60 * 60 * 1000);
+
+            // GLOBAL reconciliation:
+            // - scan cancelled runs from the entire MangaTranslator CI workflow;
+            // - keep only runs whose SHA is STILL the HEAD of an open PR;
+            // - ignore obsolete intermediate commits and old runs.
+            //
+            // This intentionally does NOT require the cancelled run to belong to
+            // the same branch as the successful trigger. Any green CI can clean up
+            // relevant cancelled checks anywhere in the repository.
+            const cancelledRuns = await listCancelledRuns();
+            const candidates = cancelledRuns
+              .filter((run) => (
+                run.status === 'completed' &&
+                run.conclusion === 'cancelled' &&
+                openHeadShas.has(run.head_sha) &&
+                new Date(run.created_at).getTime() >= rerunCutoff
+              ))
+              .sort((a, b) => a.run_number - b.run_number);
+
+            if (candidates.length === 0) {
+              core.notice(
+                `CI #${trigger.run_number} terminou verde, mas não há runs cancelados ` +
+                'que ainda correspondam ao HEAD de PRs abertos.'
+              );
+              return;
+            }
+
+            core.info(
+              `CI #${trigger.run_number} terminou verde. Varredura global encontrou ` +
+              `${candidates.length} run(s) cancelado(s) recuperável(is).`
+            );
+
+            const results = [];
+
+            for (const candidate of candidates) {
+              const prs = openHeadShas.get(candidate.head_sha) || [];
+              const prLabels = prs.map((pr) => `#${pr.number}`).join(', ');
+
+              // Idempotency/race guard: another queued recovery may already have
+              // rerun this workflow before this job reached the candidate.
+              const current = await github.rest.actions.getWorkflowRun({
+                owner,
+                repo,
+                run_id: candidate.id
+              });
+
+              if (
+                current.data.status !== 'completed' ||
+                current.data.conclusion !== 'cancelled'
+              ) {
+                core.info(
+                  `Run #${candidate.run_number} já mudou para ` +
+                  `${current.data.status}/${current.data.conclusion}; ignorando.`
+                );
+                continue;
+              }
+
+              const candidateBranch = current.data.head_branch;
+
+              if (!candidateBranch) {
+                core.warning(
+                  `Run #${candidate.run_number} não possui head_branch; ` +
+                  'não é seguro reexecutá-lo automaticamente.'
+                );
+                results.push({
+                  run: `#${candidate.run_number}`,
+                  branch: '-',
+                  sha: candidate.head_sha.slice(0, 12),
+                  prs: prLabels,
+                  result: 'ignorado: branch ausente'
+                });
+                continue;
+              }
+
+              // Avoid immediately re-cancelling the recovery attempt. The source CI
+              // uses cancel-in-progress: true, so if the candidate's own branch has
+              // any active CI, defer it. Any later successful CI (from any branch)
+              // will trigger another global reconciliation.
+              const branchRunsNow = await listBranchRuns(candidateBranch);
+              const competingRun = branchRunsNow.find((run) => (
+                run.id !== candidate.id &&
+                run.status !== 'completed'
+              ));
+
+              if (competingRun) {
+                core.warning(
+                  `Adiando #${candidate.run_number}: a branch ${candidateBranch} ` +
+                  `possui o run ativo #${competingRun.run_number} (${competingRun.status}).`
+                );
+                results.push({
+                  run: `#${candidate.run_number}`,
+                  branch: candidateBranch,
+                  sha: candidate.head_sha.slice(0, 12),
+                  prs: prLabels,
+                  result: `adiado: #${competingRun.run_number} ${competingRun.status}`
+                });
+                continue;
+              }
+
+              const previousAttempt = current.data.run_attempt || 1;
+
+              core.info(
+                `Reexecutando globalmente #${candidate.run_number} ` +
+                `(id ${candidate.id}, attempt ${previousAttempt}, branch ${candidateBranch}) ` +
+                `para SHA ${candidate.head_sha}, visível em PR(s) ${prLabels}.`
+              );
+
+              // Full workflow rerun is intentional: a cancelled workflow can contain
+              // successful, cancelled and dependency-blocked jobs. Re-running the
+              // whole workflow is the reliable way to replace the incomplete attempt.
+              await github.request(
+                'POST /repos/{owner}/{repo}/actions/runs/{run_id}/rerun',
+                {
+                  owner,
+                  repo,
+                  run_id: candidate.id,
+                  headers: {
+                    'X-GitHub-Api-Version': '2022-11-28'
+                  }
+                }
+              );
+
+              // Re-run one candidate at a time. The MangaTranslator CI itself still
+              // has cancel-in-progress: true; sequential recovery prevents recovery
+              // attempts on the same branch from cancelling one another.
+              const deadline = Date.now() + (30 * 60 * 1000);
+              let finalRun = null;
+
+              while (Date.now() < deadline) {
+                await sleep(15000);
+
+                const polled = await github.rest.actions.getWorkflowRun({
+                  owner,
+                  repo,
+                  run_id: candidate.id
+                });
+
+                const attempt = polled.data.run_attempt || 1;
+
+                if (
+                  attempt > previousAttempt &&
+                  polled.data.status === 'completed'
+                ) {
+                  finalRun = polled.data;
+                  break;
+                }
+              }
+
+              if (!finalRun) {
+                throw new Error(
+                  `Timeout aguardando o rerun de #${candidate.run_number} ` +
+                  `(id ${candidate.id}).`
+                );
+              }
+
+              const conclusion = finalRun.conclusion || 'unknown';
+              const resultText = `attempt ${finalRun.run_attempt}: ${conclusion}`;
+
+              results.push({
+                run: `#${candidate.run_number}`,
+                branch: candidateBranch,
+                sha: candidate.head_sha.slice(0, 12),
+                prs: prLabels,
+                result: resultText
+              });
+
+              if (conclusion === 'success') {
+                core.info(
+                  `Run #${candidate.run_number} recuperado com sucesso ` +
+                  `(attempt ${finalRun.run_attempt}).`
+                );
+              } else if (conclusion === 'cancelled') {
+                core.warning(
+                  `O rerun de #${candidate.run_number} foi cancelado novamente. ` +
+                  'Qualquer CI verde futuro fará uma nova varredura global.'
+                );
+              } else {
+                core.warning(
+                  `O rerun de #${candidate.run_number} terminou em ${conclusion}. ` +
+                  'Isso é uma falha/resultado real; o auto-rerun não entra em loop.'
+                );
+              }
+            }
+
+            if (results.length > 0) {
+              await core.summary
+                .addHeading('Auto-rerun global de CI cancelado')
+                .addRaw(
+                  `Gatilho: MangaTranslator CI #${trigger.run_number} ` +
+                  `(${trigger.head_branch || trigger.head_sha}) terminou com sucesso.\n\n`
+                )
+                .addTable([
+                  [
+                    { data: 'Run', header: true },
+                    { data: 'Branch', header: true },
+                    { data: 'SHA', header: true },
+                    { data: 'PR(s)', header: true },
+                    { data: 'Resultado', header: true }
+                  ],
+                  ...results.map((item) => [
+                    item.run,
+                    item.branch,
+                    item.sha,
+                    item.prs || '-',
+                    item.result
+                  ])
+                ])
+                .write();
+            }
