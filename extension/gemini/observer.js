@@ -82,6 +82,9 @@
 
     const initialEditor = typeof getEditor === 'function' ? getEditor() : editor;
     const initialEditorText = String(initialEditor?.textContent || '').trim();
+    const initialSendControls = safeQueryAll(root, SELECTORS.SEND)
+      .filter(domApi.isElementVisible);
+    const initialSendEnabled = initialSendControls.some(domApi.isControlEnabled);
 
     const state = {
       jobId,
@@ -94,6 +97,7 @@
       generationActiveObserved: false,
       generationStarted: false,
       generationFinished: false,
+      sendEnabledObserved: initialSendEnabled,
       resultImage: null,
       resultUrl: null,
       error: null,
@@ -245,7 +249,17 @@
 
       const sendControls = safeQueryAll(root, SELECTORS.SEND)
         .filter(domApi.isElementVisible);
-      if (sendControls.some(element => !domApi.isControlEnabled(element))) {
+      const hasEnabledSend = sendControls.some(domApi.isControlEnabled);
+      if (hasEnabledSend) state.sendEnabledObserved = true;
+
+      // "Send busy" só é evidência de submit quando houve transição real.
+      // Um botão que já nasceu disabled no baseline NÃO confirma envio.
+      const transitionedToBusy =
+        state.sendEnabledObserved &&
+        sendControls.length > 0 &&
+        sendControls.every(element => !domApi.isControlEnabled(element));
+
+      if (transitionedToBusy) {
         confirmSubmission('send_busy');
         markGenerationActive('send_busy');
       }
