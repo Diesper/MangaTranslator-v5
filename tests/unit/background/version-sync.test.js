@@ -32,4 +32,20 @@ describe('versionamento centralizado', () => {
       expect(() => parseNumericSemver(version)).toThrow();
     }
   );
+
+  test('workflow de release usa caminhos canônicos e nomes derivados', () => {
+    const fs = require('fs');
+    const path = require('path');
+    const workflow = fs.readFileSync(
+      path.resolve(__dirname, '../../../.github/workflows/publish.yml'),
+      'utf8'
+    );
+
+    expect(workflow).toContain('docs/Documentação.md');
+    expect(workflow).toContain('scripts/sync-version.js --print-env');
+    expect(workflow).toContain('${RELEASE_BASENAME}');
+    expect(workflow).toContain('${DOC_ARTIFACT}');
+    expect(workflow).not.toMatch(/Manga-Translator-v\d/);
+    expect(workflow).not.toMatch(/Documentação_V\d/);
+  });
 });

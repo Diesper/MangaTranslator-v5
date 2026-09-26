@@ -107,6 +107,11 @@ function syncWorkspace(root = DEFAULT_ROOT) {
   writeJson(state.paths.testsPackage, state.testsPackage);
   writeJson(state.paths.testsLock, state.testsLock);
 
+  const after = checkWorkspace(root).differences;
+  if (after.length) {
+    throw new Error(`Sincronização incompleta: ${after.join('; ')}`);
+  }
+
   return { info: state.info, changed: before };
 }
 

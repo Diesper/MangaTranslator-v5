@@ -16,6 +16,6 @@ describe('versionamento da UI', () => {
   test('options.js lê a versão do Manifest em runtime', () => {
     expect(optionsJs).toContain('chrome.runtime.getManifest');
     expect(optionsJs).toContain('Manga Translator v${runtimeVersion}');
-    expect(optionsJs).not.toContain('Manga Translator v6.0');
+    expect(optionsJs).not.toMatch(/Manga Translator v\d+(?:\.\d+)*/);
   });
 });
