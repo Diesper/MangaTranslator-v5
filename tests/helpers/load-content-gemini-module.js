@@ -10,6 +10,7 @@ const GEMINI_ATTACHMENT_PATH = path.resolve(__dirname, '../../extension/gemini/a
 const GEMINI_TEMP_CHAT_PATH = path.resolve(__dirname, '../../extension/gemini/temporary-chat.js');
 const GEMINI_RESULT_EXTRACTOR_PATH = path.resolve(__dirname, '../../extension/gemini/result-extractor.js');
 const GEMINI_DELETION_PATH = path.resolve(__dirname, '../../extension/gemini/deletion.js');
+const GEMINI_JOB_RUNNER_PATH = path.resolve(__dirname, '../../extension/gemini/job-runner.js');
 
 function loadContentGeminiModule({ skipAutoProcess = true } = {}) {
     require(GEMINI_SELECTORS_PATH);
@@ -20,6 +21,7 @@ function loadContentGeminiModule({ skipAutoProcess = true } = {}) {
     require(GEMINI_TEMP_CHAT_PATH);
     require(GEMINI_RESULT_EXTRACTOR_PATH);
     require(GEMINI_DELETION_PATH);
+    require(GEMINI_JOB_RUNNER_PATH);
     const source = fs.readFileSync(CONTENT_GEMINI_PATH, 'utf8');
     const instrumented = source.replace(
         'processGeminiJob();',
