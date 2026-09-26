@@ -8,7 +8,8 @@ const GeminiEditor = globalThis.MangaTranslatorGeminiEditor;
 const GeminiAttachment = globalThis.MangaTranslatorGeminiAttachment;
 const GeminiTemporaryChat = globalThis.MangaTranslatorGeminiTemporaryChat;
 const GeminiResultExtractor = globalThis.MangaTranslatorGeminiResultExtractor;
-if (!GeminiDom || !GeminiObserver || !GeminiEditor || !GeminiAttachment || !GeminiTemporaryChat || !GeminiResultExtractor) {
+const GeminiDeletion = globalThis.MangaTranslatorGeminiDeletion;
+if (!GeminiDom || !GeminiObserver || !GeminiEditor || !GeminiAttachment || !GeminiTemporaryChat || !GeminiResultExtractor || !GeminiDeletion) {
     throw new Error('Módulos Gemini obrigatórios não foram carregados antes de content_gemini.js');
 }
 
@@ -491,6 +492,14 @@ function extractResultImageWithRetry(resultImageElement, resultUrl, executionMod
     );
 }
 
+const deletionController = GeminiDeletion.createDeletionController({
+    root: document,
+    pageWindow: window,
+    storage: chrome.storage.local,
+    sleep,
+    sendLog,
+});
+
 async function shouldKeepConversationForDebug(delivery, executionMode) {
     if (executionMode !== 'background_delete' || !delivery || delivery.action !== 'GEMINI_ERROR') {
         return false;
@@ -611,18 +620,13 @@ async function processGeminiJob() {
     }
 
     const myTabId = job.geminiTabId;
-    const recoveryKey = `gemini_delete_recovery_${myTabId}`;
-    const recoveryData = await new Promise(resolve => chrome.storage.local.get([recoveryKey], resolve));
-    const recovery = recoveryData[recoveryKey];
-    if (recovery && recovery.delivery) {
-        const deleted = await deleteCurrentConversation({ lockScroll: true });
-        await chrome.storage.local.remove(recoveryKey);
-        sendLog(deleted ? 'success' : 'warn', 'DELETE_RECOVERY', deleted
-            ? 'Conversa excluída após recarregar a aba.'
-            : 'Exclusão continuou sem confirmação após a recuperação.', { chatId: recovery.chatId || null });
-        chrome.runtime.sendMessage(recovery.delivery);
-        return;
-    }
+    const recoveryResult = await deletionController.recoverPending({
+        tabId: myTabId,
+        sendDelivery: async delivery => {
+            chrome.runtime.sendMessage(delivery);
+        },
+    });
+    if (recoveryResult.handled) return;
 
     // Só um claim válido transforma esta aba em worker do MangaTranslator.
     openKeepAlive();
@@ -659,19 +663,14 @@ async function processGeminiJob() {
 
         // A lista automática deixa de se mover antes de procurar a conversa.
         clearInterval(scrollInterval);
-        if (await deleteCurrentConversation()) {
+        const deletion = await deletionController.deleteOrScheduleRecovery({
+            tabId: myTabId,
+            delivery,
+        });
+        if (deletion.deleted) {
             chrome.runtime.sendMessage(delivery);
             return true;
         }
-
-        // Preserva a entrega e refaz a página. Na nova injeção, o bloco de
-        // recuperação acima usa os métodos 1–3 com rolagem bloqueada.
-        await chrome.storage.local.set({ [recoveryKey]: {
-            chatId: window.location.pathname.match(/\/app\/([a-z0-9_-]+)/i)?.[1] || null,
-            delivery,
-            createdAt: Date.now(),
-        } });
-        window.location.reload();
         return false;
     }
 
@@ -1061,254 +1060,35 @@ if (!window.__mt_gemini_started) {
 }
 
 function getElementText(el) {
-    if (!el) return '';
-    return [
-        el.innerText,
-        el.textContent,
-        el.getAttribute && el.getAttribute('aria-label'),
-        el.getAttribute && el.getAttribute('mattooltip'),
-        el.getAttribute && el.getAttribute('title'),
-        el.getAttribute && el.getAttribute('data-test-id'),
-        el.getAttribute && el.getAttribute('data-testid'),
-    ].filter(Boolean).join(' ').toLowerCase().trim();
-}
-
-function hoverElement(el) {
-    if (!el) return;
-    el.dispatchEvent(new MouseEvent('mouseenter', { bubbles: true }));
-    el.dispatchEvent(new MouseEvent('mouseover', { bubbles: true }));
-}
-
-function clickElement(el) {
-    if (!el) return;
-    try {
-        if (typeof PointerEvent === 'function') {
-            el.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, pointerType: 'mouse' }));
-            el.dispatchEvent(new PointerEvent('pointerup', { bubbles: true, pointerType: 'mouse' }));
-        }
-        el.dispatchEvent(new MouseEvent('mousedown', { bubbles: true }));
-        el.dispatchEvent(new MouseEvent('mouseup', { bubbles: true }));
-    } catch (_e) {}
-    el.click();
+    return deletionController.getElementText(el);
 }
 
 function findDeleteMenuItemCandidate() {
-    const selectors = [
-        'menu-item',
-        'mat-menu-item',
-        '[role="menuitem"]',
-        'li[role="option"]',
-        'div[role="option"]',
-        'button[role="menuitem"]',
-        '[class*="menu-item"]',
-        '[class*="dropdown"] li',
-        '[class*="dropdown"] button',
-        '.mat-mdc-menu-item',
-        '.cdk-overlay-pane button',
-        '.cdk-overlay-pane [role="menuitem"]',
-    ].join(',');
-    const deleteWords = ['excluir', 'delete', 'apagar', 'remover', 'remove', 'deletar'];
-    const candidates = Array.from(document.querySelectorAll(selectors));
-    const item = candidates.find(el => {
-        const text = getElementText(el);
-        return deleteWords.some(word => text.includes(word));
-    });
-    return { item, candidateCount: candidates.length };
+    return deletionController.findDeleteMenuItemCandidate();
 }
 
-async function waitForDeleteMenuItem(timeout = 2600) {
-    const start = Date.now();
-    while (Date.now() - start < timeout) {
-        const result = findDeleteMenuItemCandidate();
-        if (result.item) return result.item;
-        await sleep(100);
-    }
-    return null;
+function waitForDeleteMenuItem(timeout = 2000) {
+    return deletionController.waitForDeleteMenuItem(timeout);
 }
 
 function findConfirmButtonCandidate(excludeEl = null) {
-    const confirmWords = ['excluir', 'delete', 'confirmar', 'confirm', 'apagar', 'sim', 'yes', 'ok', 'deletar'];
-    const cancelWords = ['cancel', 'cancelar', 'não', 'nao', 'no', 'back', 'voltar', 'dismiss'];
-    const dialogs = Array.from(document.querySelectorAll('[role="dialog"], mat-dialog-container, .mat-mdc-dialog-container, .cdk-overlay-pane'));
-    const scopes = dialogs.length > 0 ? dialogs : [document];
-    const buttons = scopes
-        .flatMap(scope => Array.from(scope.querySelectorAll('button, [role="button"]')))
-        .filter(el => el !== excludeEl && !(excludeEl && excludeEl.contains && excludeEl.contains(el)) && el.getAttribute('role') !== 'menuitem');
-    const item = buttons.find(el => {
-        const text = getElementText(el);
-        if (!text || cancelWords.some(word => text.includes(word))) return false;
-        return confirmWords.some(word => text === word || text.includes(word));
-    });
-    return { item, candidateCount: buttons.length };
+    return deletionController.findConfirmButtonCandidate(excludeEl);
 }
 
-async function waitForConfirmButton(excludeEl = null, timeout = 2600) {
-    const start = Date.now();
-    while (Date.now() - start < timeout) {
-        const result = findConfirmButtonCandidate(excludeEl);
-        if (result.item) return result.item;
-        await sleep(100);
-    }
-    return null;
+function waitForConfirmButton(excludeEl = null, timeout = 5000) {
+    return deletionController.waitForConfirmButton(excludeEl, timeout);
 }
 
 function escapeCssAttributeValue(value) {
-    const input = String(value || '');
-    if (typeof CSS !== 'undefined' && typeof CSS.escape === 'function') return CSS.escape(input);
-    // chatId usa [a-z0-9_-], mas o fallback mantém o seletor seguro em
-    // runtimes de teste ou navegadores sem CSS.escape.
-    return input.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
+    return deletionController.escapeCssAttributeValue(value);
 }
 
-let _deletionInProgress = false;
-
-async function waitForElementToSettle(element, samples = 3, interval = 300) {
-    if (!element || !element.isConnected) return false;
-    let previous = null;
-    for (let sample = 0; sample < samples; sample++) {
-        if (!element.isConnected) return false;
-        const rect = element.getBoundingClientRect();
-        const position = `${Math.round(rect.top)}:${Math.round(rect.left)}:${Math.round(rect.width)}:${Math.round(rect.height)}`;
-        if (previous !== null && position !== previous) {
-            sample = 0; // A lista se moveu; reinicia a janela de estabilidade.
-        }
-        previous = position;
-        await sleep(interval);
-    }
-    return element.isConnected;
+function waitForElementToSettle(element, samples = 3, interval = 300) {
+    return deletionController.waitForElementToSettle(element, samples, interval);
 }
 
-async function deleteCurrentConversation({ lockScroll = false } = {}) {
-    if (_deletionInProgress) return false;
-    _deletionInProgress = true;
-    let releaseScrollLock = () => {};
-
-    try {
-        const debugData = await new Promise(r => chrome.storage.local.get(['debugMode'], r));
-        if (debugData.debugMode === true) {
-            sendLog('info', 'DEBUG_MODE_SKIP', 'Modo debug ativo, pulando deleção da conversa');
-            return true;
-        }
-
-        const chatMatch = window.location.pathname.match(/\/app\/([a-z0-9_-]+)/i);
-        const chatId = chatMatch && chatMatch[1];
-        if (!chatId) throw new Error('A URL não possui o ID da conversa ativa.');
-
-        // A barra lateral pode estar fechada em abas ocultas. O clique nativo é
-        // deliberado: evita coordenadas sintéticas e funciona sem cursor físico.
-        const sidebarToggle = document.querySelector('button[data-test-id="side-nav-toggle"], button[aria-label*="menu" i], button[aria-label*="barra lateral" i]');
-        if (!document.querySelector(`a[href*="${escapeCssAttributeValue(chatId)}"]`) && sidebarToggle) {
-            sidebarToggle.click();
-            await sleep(700); // Tempo para a animação e os itens da barra lateral aparecerem.
-        }
-
-        let activeLink = null;
-        for (let attempt = 0; attempt < 16; attempt++) {
-            activeLink = document.querySelector(`a[href*="${escapeCssAttributeValue(chatId)}"]`);
-            if (activeLink) break;
-            await sleep(250);
-        }
-        if (!activeLink) throw new Error('A conversa ativa não foi localizada na barra lateral.');
-
-        // Método 2: estabiliza no viewport a linha que já foi validada pelo ID.
-        activeLink.scrollIntoView({ block: 'center', behavior: 'instant' });
-        await sleep(700);
-        if (!await waitForElementToSettle(activeLink)) {
-            throw new Error('A conversa alvo não estabilizou na barra lateral.');
-        }
-
-        // Para jamais abrir o menu de uma conversa vizinha, sobe somente até o
-        // primeiro pai que contém mais de um link /app/.
-        let rowContainer = activeLink;
-        while (rowContainer.parentElement) {
-            const parent = rowContainer.parentElement;
-            if (parent.querySelectorAll('a[href*="/app/"]').length > 1) break;
-            rowContainer = parent;
-        }
-
-        if (lockScroll) {
-            // Método 4 (fallback após reload): mantém a posição da página e do
-            // contêiner rolável da conversa enquanto o menu/modal é acionado.
-            const targets = [document.scrollingElement];
-            for (let parent = rowContainer.parentElement; parent && parent !== document.body; parent = parent.parentElement) {
-                const style = getComputedStyle(parent);
-                if (/(auto|scroll)/.test(style.overflowY)) targets.push(parent);
-            }
-            const cleanups = [...new Set(targets.filter(Boolean))].map(target => {
-                const top = target.scrollTop;
-                const left = target.scrollLeft;
-                const restore = () => { target.scrollTop = top; target.scrollLeft = left; };
-                target.addEventListener('scroll', restore, { passive: true });
-                return () => target.removeEventListener('scroll', restore);
-            });
-            const preventScrollInput = event => event.preventDefault();
-            window.addEventListener('wheel', preventScrollInput, { passive: false });
-            window.addEventListener('touchmove', preventScrollInput, { passive: false });
-            releaseScrollLock = () => {
-                cleanups.forEach(cleanup => cleanup());
-                window.removeEventListener('wheel', preventScrollInput);
-                window.removeEventListener('touchmove', preventScrollInput);
-            };
-        }
-        const rowButtons = Array.from(rowContainer.querySelectorAll('button, [role="button"]'))
-            .filter(button => button !== activeLink && !activeLink.contains(button));
-        const menuButton = rowButtons.find(button => button.hasAttribute('aria-haspopup') || button.hasAttribute('aria-expanded'))
-            || rowButtons[rowButtons.length - 1];
-        if (!menuButton) throw new Error('Menu de opções da conversa não encontrado.');
-
-        await sleep(400); // Evita abrir o menu durante um reflow tardio da lista.
-        menuButton.click();
-        await sleep(700); // Aguarda o Angular CDK terminar de montar o overlay.
-        // Método 3: após abrir o menu, confirma que a mesma linha ainda está
-        // conectada e ainda representa o chatId do job antes de clicar Excluir.
-        if (!rowContainer.isConnected || !rowContainer.querySelector(`a[href*="${escapeCssAttributeValue(chatId)}"]`)) {
-            throw new Error('A lista mudou enquanto o menu era aberto.');
-        }
-        let deleteItem = null;
-        for (let attempt = 0; attempt < 20; attempt++) {
-            const candidates = Array.from(document.querySelectorAll('div[role="menuitem"], [role="menu"] button, .mat-mdc-menu-item, button'));
-            deleteItem = candidates.find(element => /^(excluir|delete)$/i.test((element.textContent || '').trim()));
-            if (deleteItem) break;
-            await sleep(100);
-        }
-        if (!deleteItem) throw new Error('Opção Excluir não encontrada no menu.');
-        if (!await waitForElementToSettle(deleteItem, 2, 250)) {
-            throw new Error('A opção Excluir não permaneceu estável no menu.');
-        }
-
-        // Não use clickElement aqui: eventos MouseEvent sintéticos podem fazer o
-        // Angular CDK ativar o primeiro item do menu, e não o item Excluir.
-        (deleteItem.closest('div[role="menuitem"], li, button') || deleteItem).click();
-        await sleep(800); // Aguarda o diálogo de confirmação ser posicionado.
-
-        let confirmButton = null;
-        for (let attempt = 0; attempt < 25; attempt++) {
-            const deleteButtons = Array.from(document.querySelectorAll('button'))
-                .filter(button => /^(excluir|delete)$/i.test((button.textContent || '').trim()));
-            if (deleteButtons.length) {
-                // O diálogo é anexado por último no body; o último botão é a
-                // confirmação, não a opção recém-clicada do menu.
-                confirmButton = deleteButtons[deleteButtons.length - 1];
-                break;
-            }
-            await sleep(200);
-        }
-        if (!confirmButton) throw new Error('Confirmação da exclusão não encontrada.');
-        if (!await waitForElementToSettle(confirmButton, 2, 300)) {
-            throw new Error('O botão de confirmação não estabilizou no diálogo.');
-        }
-
-        confirmButton.click();
-        await sleep(1200); // Dá tempo de a requisição batchexecute persistir.
-        sendLog('success', 'DELETE_OK', 'Conversa excluída com segurança!', { chatId });
-        return true;
-    } catch (e) {
-        sendLog('warn', 'DELETE_ERROR', `Erro na deleção: ${e.message}`, {});
-        return false;
-    } finally {
-        releaseScrollLock();
-        _deletionInProgress = false;
-    }
+function deleteCurrentConversation(options = {}) {
+    return deletionController.deleteCurrentConversation(options);
 }
 
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
