@@ -5,9 +5,9 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
 const GeminiDom = globalThis.MangaTranslatorGeminiDom;
 const GeminiObserver = globalThis.MangaTranslatorGeminiObserver;
 const GeminiEditor = globalThis.MangaTranslatorGeminiEditor;
-const GeminiTemporaryChat = globalThis.MangaTranslatorGeminiTemporaryChat;
 const GeminiAttachment = globalThis.MangaTranslatorGeminiAttachment;
-if (!GeminiDom || !GeminiObserver || !GeminiEditor || !GeminiTemporaryChat || !GeminiAttachment) {
+const GeminiTemporaryChat = globalThis.MangaTranslatorGeminiTemporaryChat;
+if (!GeminiDom || !GeminiObserver || !GeminiEditor || !GeminiAttachment || !GeminiTemporaryChat) {
     throw new Error('Módulos Gemini obrigatórios não foram carregados antes de content_gemini.js');
 }
 
