@@ -28,7 +28,7 @@
 - [x] PASSO 14 — reduzir tentativas de envio para 2.
 - [x] PASSO 15 — trocar espera de resultado por observer.
 - [x] PASSO 16 — corrigir Temporary Chat.
-- [ ] PASSO 17 — extrair attachment/result/deletion. *(attachment + result concluídos; deletion pendente)*
+- [x] PASSO 17 — extrair attachment/result/deletion.
 - [ ] PASSO 18 — criar job runner.
 - [ ] PASSO 19 — reduzir anti-throttling.
 - [ ] PASSO 20 — remover legado.
@@ -119,12 +119,12 @@
 ### PR 9 — Result extractor modular
 - [x] `gemini/result-extractor.js`.
 - [x] Cadeia canvas → MAIN fetch → SW fetch → retry → auxiliar preservada por execution mode.
-- [ ] CI do PR 9 verde.
+- [x] CI do PR 9 verde — run #455.
 
 ### PR 10 — Deletion modular
-- [ ] `gemini/deletion.js`.
-- [ ] Menu/confirm/settle/recovery movidos.
-- [ ] Idempotência preservada.
+- [x] `gemini/deletion.js`.
+- [x] Menu/confirm/settle/recovery movidos.
+- [x] Idempotência preservada por controller único com lock interno.
 - [ ] CI do PR 10 verde.
 
 ### PR 11 — Job runner e redução do monólito
@@ -161,6 +161,13 @@
 - [ ] Logs não armazenam prompt, signed URL, imagem, cookie ou token.
 
 ## Notas de execução
+
+- PR 10 extrai a exclusão para `gemini/deletion.js` com um controller único por content script.
+- O lock `deletionInProgress`, seleção da conversa pelo chatId, menu Excluir, confirmação, settle, scroll lock e logs de deleção ficam no módulo.
+- Recovery também foi movido: persistência de `gemini_delete_recovery_<tabId>`, reload, retomada após reinjeção, limpeza do marker e entrega preservam o fluxo anterior.
+- DEL-01 a DEL-09 cobrem escape, settle, debug, fluxo completo, concorrência, save/read/clear, recovery e reload.
+
+- PR 9: CI completo verde no run #455 (HEAD anterior ao commit documental de status).
 
 - PR 9 extrai a cadeia de resultado para `gemini/result-extractor.js` sem unificar prematuramente os execution modes.
 - Em `background_delete`, a ordem continua canvas → bridge MAIN → SW com sessão; nos demais modos, o SW fetch legado continua direto.
