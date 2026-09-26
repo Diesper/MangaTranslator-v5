@@ -233,11 +233,7 @@ const jobRunner = GeminiJobRunner.createGeminiJobRunner({
     closeKeepAlive,
 });
 
-// Compatibilidade temporária com testes/chamadas existentes.
-// A implementação real dessas rotinas já vive nos módulos novos.
-const TemporaryChatActivator =
-    GeminiTemporaryChat.createLegacyAdapter({ root: document });
-
+// Fachadas finas preservam a API de teste sem duplicar implementação.
 function dataURLtoFile(dataurl, filename) {
     return jobRunner.dataURLtoFile(dataurl, filename);
 }
@@ -508,7 +504,42 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     }
 });
 
-if (!window.__mt_gemini_started) {
+const contentGeminiApi = {
+    sleep,
+    dataURLtoFile,
+    waitForElement,
+    getExpectedGeminiJobId,
+    claimGeminiJob,
+    openKeepAlive,
+    closeKeepAlive,
+    processGeminiJob,
+    deleteCurrentConversation,
+    createGeminiManualPanel,
+    removeGeminiManualPanel,
+    setManualGeminiResultUrl,
+    findGeneratedResultImages,
+    isManualSelectableImage,
+    imageElementToDataUrl,
+    fetchImageThroughGeminiPage,
+    fetchGeminiImageThroughExtension,
+    extractImageInGeminiTab,
+    extractResultImage,
+    extractResultImageWithRetry,
+    getExtractionFailureKind,
+    shouldKeepConversationForDebug,
+    waitForElementToSettle,
+    escapeCssAttributeValue,
+    __getDeletionInProgress: () => deletionController.isDeletionInProgress(),
+};
+
+const isCommonJsTest =
+    typeof module !== 'undefined' &&
+    module &&
+    module.exports;
+
+if (isCommonJsTest) {
+    module.exports = contentGeminiApi;
+} else if (!window.__mt_gemini_started) {
     window.__mt_gemini_started = true;
     processGeminiJob();
 }
