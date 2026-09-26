@@ -66,14 +66,14 @@
 - [x] Full scan órfão removido.
 - [x] `openKeepAlive()` só após claim válido.
 - [x] KEEP-01 a KEEP-05.
-- [ ] CI do PR 2 verde.
+- [x] CI do PR 2 verde — run #323.
 
 ### PR 3 — Fundação modular Gemini
 - [x] `gemini/selectors.js`.
 - [x] `gemini/dom.js`.
 - [x] Manifest com load order explícito.
 - [x] Funções puras testáveis por `require()`.
-- [x] CI do PR 3 verde — run #333.
+- [ ] CI do PR 3 verde.
 
 ### PR 4 — Observer V2
 - [x] `gemini/observer.js`.
@@ -163,8 +163,10 @@
 ## Notas de execução
 
 - PR 3: CI completo verde no run #333 (HEAD `fe75c45a`).
-
 - PR 4 adiciona Observer V2 isolado e ainda não troca o polling do runtime. O observer instala ownership por response novo, baseline de imagens/erros, coalescing de mutations, confirmação de submit e cleanup idempotente.
+- Correção adicional: `send_busy` só confirma submit após transição observada de Send habilitado para busy/desabilitado; um controle já disabled no baseline não é evidência de envio.
+
+- PR 2: CI completo verde no run #323 (HEAD `570b029b`).
 
 - PR 3 extraiu seletores e helpers DOM sem alterar intencionalmente o pipeline. `content_gemini.js` delega `getImageSource`, blacklist de imagens, ownership por response, deep traversal, editable lookup e send-button lookup ao novo módulo.
 
