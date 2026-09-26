@@ -234,8 +234,7 @@
   function focusForAttachment({ editor, editorRoot, windowRef = scope.window || scope }) {
     let attempted = false;
 
-    for (const element of [editor, editorRoot]) {
-      if (!element) continue;
+    for (const element of new Set([editor, editorRoot].filter(Boolean))) {
       try {
         element.focus?.({ preventScroll: true });
         attempted = true;
