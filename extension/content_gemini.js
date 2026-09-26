@@ -3,8 +3,10 @@
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 
 const GeminiDom = globalThis.MangaTranslatorGeminiDom;
-if (!GeminiDom) {
-    throw new Error('MangaTranslatorGeminiDom não foi carregado antes de content_gemini.js');
+const GeminiObserver = globalThis.MangaTranslatorGeminiObserver;
+const GeminiEditor = globalThis.MangaTranslatorGeminiEditor;
+if (!GeminiDom || !GeminiObserver || !GeminiEditor) {
+    throw new Error('Módulos Gemini DOM/Observer/Editor não foram carregados antes de content_gemini.js');
 }
 
 // ── Keep-alive sob demanda ───────────────────────────────────────────────────
@@ -539,23 +541,7 @@ function findSendButtonDeep(root = document.body) {
 }
 
 function clickSendButton(btn) {
-    if (!btn) return false;
-    try {
-        if (btn.hasAttribute('disabled')) btn.removeAttribute('disabled');
-        btn.disabled = false;
-        if (btn.getAttribute('aria-disabled') === 'true') btn.setAttribute('aria-disabled', 'false');
-        if (typeof btn.focus === 'function') btn.focus();
-
-        const opts = { bubbles: true, cancelable: true, composed: true, view: window };
-        btn.dispatchEvent(new PointerEvent('pointerdown', opts));
-        btn.dispatchEvent(new MouseEvent('mousedown', opts));
-        btn.dispatchEvent(new MouseEvent('mouseup', opts));
-        btn.dispatchEvent(new PointerEvent('pointerup', opts));
-        btn.click();
-        return true;
-    } catch (e) {
-        return false;
-    }
+    return GeminiEditor.clickSendButton(btn);
 }
 
 function setPromptInEditor(currentEditable, currentEditor, actualPrompt) {
@@ -1005,6 +991,8 @@ async function processGeminiJob() {
         geminiTabId: myTabId,
     });
 
+    let activeGeminiObserver = null;
+
     const scrollInterval = setInterval(() => {
         window.scrollTo(0, document.body.scrollHeight);
         const images = document.querySelectorAll('img');
@@ -1227,90 +1215,91 @@ async function processGeminiJob() {
         sendLog('success', 'PROMPT_INJECTED', 'Prompt confirmado no DOM', { promptLen });
         await sleep(1000);
 
-        let sendClicked = false;
-        const MAX_SEND_ATTEMPTS = 50;
-        for (let wait = 0; wait < MAX_SEND_ATTEMPTS; wait++) { 
-            window.dispatchEvent(new Event('focus'));
-            document.dispatchEvent(new Event('focus'));
+        // Baseline precisa existir ANTES do submit para que imagens/respostas
+        // antigas nunca sejam reivindicadas pelo job atual.
+        const ignoreImages = new Set(
+            Array.from(document.querySelectorAll('img'))
+                .map(img => getImageSource(img))
+                .filter(Boolean)
+        );
 
-            const currentText = (activeEditable ? activeEditable.textContent || '' : '').trim();
-            const stopBtn = document.querySelector('button[aria-label*="Interromper"], button[aria-label*="Stop"], button[aria-label*="Parar"], [data-test-id="stop-generating-button"]');
-
-            // Se o texto foi limpo pelo Gemini ou o botão de Stop já surgiu, o envio foi consumido com sucesso!
-            if (currentText.length === 0 || stopBtn) {
-                sendClicked = true;
-                window.__mangaTranslatorJobSent = true;
-                debugConsole('log', '[MangaTranslator Gemini] Envio verificado no DOM (campo limpo ou gerando)!');
-                sendLog('success', 'GEMINI_SEND_VERIFIED', 'Envio confirmado no DOM (campo limpo ou gerando)', { wait });
-                break;
-            }
-
-            const sendBtn = findSendButtonDeep(document.body);
-            if (sendBtn) {
-                const isDisabled = sendBtn.disabled || sendBtn.getAttribute('aria-disabled') === 'true';
-                if (!isDisabled) {
-                    clickSendButton(sendBtn);
-                    debugConsole('log', '[MangaTranslator Gemini] Botão de envio acionado. Aguardando confirmação no DOM...');
-                    await sleep(1000);
-                    const afterText = (activeEditable ? activeEditable.textContent || '' : '').trim();
-                    const afterStop = document.querySelector('button[aria-label*="Interromper"], button[aria-label*="Stop"], button[aria-label*="Parar"], [data-test-id="stop-generating-button"]');
-                    if (afterText.length === 0 || afterStop) {
-                        sendClicked = true;
-                        window.__mangaTranslatorJobSent = true;
-                        debugConsole('log', '[MangaTranslator Gemini] Envio confirmado após disparo do botão!');
-                        sendLog('success', 'GEMINI_SEND_SUCCESS', 'Botão de envio acionado com sucesso', { wait, label: sendBtn.getAttribute('aria-label') || 'send' });
-                        break;
-                    }
+        activeGeminiObserver = GeminiObserver.createGeminiObserver({
+            jobId: job.jobId,
+            root: document,
+            editor: activeEditable,
+            getEditor: () =>
+                document.querySelector('rich-textarea [contenteditable="true"], .ql-editor[contenteditable="true"], [contenteditable="true"]')
+                || activeEditable,
+            ignoreImages,
+            onStateChange: (type, detail) => {
+                if (type === 'generation_started') {
+                    sendLog('info', 'GEMINI_GENERATION_ACTIVE', 'Geração observada na UI', {
+                        reason: detail && detail.reason,
+                    });
                 }
-            }
+            },
+        }).start();
 
-            // Se o botão permanecer desabilitado após algumas tentativas,
-            // solicita ativação temporária (250ms) do background para destravar validação do Angular
-            if (wait === 5 || wait === 15 || wait === 25) {
-                debugConsole('log', '[MangaTranslator Gemini] Solicitando FORCE_SEND_ACTIVATION para segundo plano...', { wait });
-                chrome.runtime.sendMessage({
-                    action: 'FORCE_SEND_ACTIVATION',
-                    geminiTabId: myTabId,
-                    mangaTabId: job.mangaTabId,
-                    windowId: job.windowId,
-                    executionMode: job.executionMode
-                }, () => { if (chrome.runtime.lastError) {} });
-            }
+        sendLog('info', 'GEMINI_OBSERVER_READY', 'Observer instalado antes do submit', {
+            jobIdPrefix: String(job.jobId || '').slice(0, 8),
+        });
 
-            // Estimula foco e input a cada 4 tentativas sem disparar cliques prematuros
-            if (wait > 0 && wait % 4 === 0) {
-                try {
-                    if (typeof activeEditable.focus === 'function') activeEditable.focus({ preventScroll: true });
-                    activeEditable.dispatchEvent(new Event('input', { bubbles: true, composed: true }));
-                } catch(e) {}
+        let submission = null;
+        try {
+            submission = await GeminiEditor.submitWithConfirmation({
+                observer: activeGeminiObserver,
+                getEditor: () =>
+                    document.querySelector('rich-textarea [contenteditable="true"], .ql-editor[contenteditable="true"], [contenteditable="true"]')
+                    || activeEditable,
+                getSendButton: () => findSendButtonDeep(document.body),
+                maxAttempts: 2,
+                confirmationTimeoutMs: 5000,
+                sleep,
+                onAttempt: attempt => {
+                    sendLog('info', 'GEMINI_SUBMIT_ATTEMPT', 'Tentativa de submit iniciada', { attempt });
+                    if (attempt === 2) {
+                        // Escalada única: pede foco temporário ao background. O
+                        // DO_SEND_NOW continua sendo somente uma tentativa.
+                        chrome.runtime.sendMessage({
+                            action: 'FORCE_SEND_ACTIVATION',
+                            geminiTabId: myTabId,
+                            mangaTabId: job.mangaTabId,
+                            windowId: job.windowId,
+                            executionMode: job.executionMode,
+                        }, () => { if (chrome.runtime.lastError) {} });
+                    }
+                },
+                mainWorldFallback: async () => {
+                    window.dispatchEvent(new CustomEvent('MANGA_TRANSLATOR_TRIGGER_SEND'));
+                    sendLog('warn', 'GEMINI_SEND_FALLBACK', 'Fallback MAIN-world tentado; aguardando confirmação observável', {});
+                    return true;
+                },
+            });
+        } catch (submitError) {
+            if (submitError && submitError.code === 'GEMINI_SUBMISSION_NOT_CONFIRMED') {
+                sendLog('error', 'GEMINI_SUBMISSION_NOT_CONFIRMED', 'Nenhuma transição da UI confirmou o envio após duas tentativas', {});
+                const error = new Error('GEMINI_SUBMISSION_NOT_CONFIRMED');
+                error.code = 'GEMINI_SUBMISSION_NOT_CONFIRMED';
+                throw error;
             }
-
-            await sleep(500);
-
-            // Checagem imediata após sleep
-            const afterText = (activeEditable ? activeEditable.textContent || '' : '').trim();
-            const afterStop = document.querySelector('button[aria-label*="Interromper"], button[aria-label*="Stop"], button[aria-label*="Parar"], [data-test-id="stop-generating-button"]');
-            if (afterText.length === 0 || afterStop) {
-                sendClicked = true;
-                window.__mangaTranslatorJobSent = true;
-                debugConsole('log', '[MangaTranslator Gemini] Envio confirmado após disparo!');
-                sendLog('success', 'GEMINI_SEND_SUCCESS', 'Envio confirmado após disparo', { wait });
-                break;
-            }
+            throw submitError;
         }
 
-        if (!sendClicked) {
-            window.dispatchEvent(new CustomEvent('MANGA_TRANSLATOR_TRIGGER_SEND'));
-            sendClicked = true;
-            window.__mangaTranslatorJobSent = true;
-            debugConsole('log', '[MangaTranslator Gemini] Envio com fallback TRIGGER_SEND finalizado.');
-            sendLog('warn', 'GEMINI_SEND_FALLBACK', 'Envio com fallback TRIGGER_SEND finalizado', {});
-        }
+        // Esta flag permanece apenas para compatibilidade interna, mas agora é
+        // escrita SOMENTE após confirmação externa do Observer V2.
+        window.__mangaTranslatorJobSent = true;
+        sendLog('success', 'GEMINI_SEND_SUCCESS', 'Envio confirmado por transição observável da UI', {
+            attempt: submission.attempt,
+            reason: submission.reason,
+        });
+        debugConsole('log', '[MangaTranslator Gemini] Envio confirmado pelo Observer V2.', {
+            attempt: submission.attempt,
+            reason: submission.reason,
+        });
 
-        assert(sendClicked, 'Não possível clicar no enviar.', 4, 'Botão de enviar acionado');
+        assert(submission && submission.confirmed, 'Envio não foi confirmado pela interface.', 4, 'Submit confirmado pela UI');
 
             reportProgress(`🧠 GEMINI PROCESSANDO...`, job.mangaTabId);
-            const ignoreImages = new Set(Array.from(document.querySelectorAll('img')).map(img => getImageSource(img)).filter(Boolean));
             createGeminiManualPanel(job, () => ignoreImages);
             let resultUrl = null;
             let resultImageElement = null;
@@ -1420,6 +1409,10 @@ async function processGeminiJob() {
         } catch (error) {
             chrome.runtime.sendMessage({ action: 'GEMINI_ERROR', mangaTabId: job.mangaTabId, index: job.index, error: error.message, jobId: job.jobId, batchId: job.batchId });
         } finally {
+            if (activeGeminiObserver) {
+                try { activeGeminiObserver.stop(); } catch (_e) {}
+                activeGeminiObserver = null;
+            }
             clearInterval(scrollInterval);
             closeKeepAlive();
             removeGeminiManualPanel();
@@ -1698,24 +1691,26 @@ async function deleteCurrentConversation({ lockScroll = false } = {}) {
 
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     if (request.action === 'DO_SEND_NOW') {
-        const stopBtn = document.querySelector('button[aria-label*="Interromper"], button[aria-label*="Stop"], button[aria-label*="Parar"], [data-test-id="stop-generating-button"]');
-        const editor = document.querySelector('rich-textarea [contenteditable="true"], .ql-editor[contenteditable="true"], [contenteditable="true"]');
-        const text = (editor ? editor.textContent || '' : '').trim();
-
-        // Se já estiver gerando ou o texto já foi enviado / campo vazio, não re-envia
-        if (stopBtn || text.length === 0) {
-            sendResponse({ ok: true, alreadySent: true });
+        const stopBtn = GeminiDom.findVisibleStopButton(document);
+        if (stopBtn) {
+            sendResponse({ ok: true, alreadyGenerating: true });
             return false;
         }
 
+        const editor = document.querySelector('rich-textarea [contenteditable="true"], .ql-editor[contenteditable="true"], [contenteditable="true"]');
         const sendBtn = findSendButtonDeep(document.body);
-        if (sendBtn && !sendBtn.disabled && sendBtn.getAttribute('aria-disabled') !== 'true') {
-            clickSendButton(sendBtn);
-            window.__mangaTranslatorJobSent = true;
+        let attempted = false;
+
+        if (sendBtn && GeminiDom.isControlEnabled(sendBtn)) {
+            attempted = clickSendButton(sendBtn);
         } else {
+            GeminiEditor.nudgeEditor(editor);
             window.dispatchEvent(new CustomEvent('MANGA_TRANSLATOR_TRIGGER_SEND'));
+            attempted = true;
         }
-        sendResponse({ ok: true });
+
+        // attempted != submitted. O caller deve aguardar o Observer V2.
+        sendResponse({ ok: true, attempted });
         return false;
     }
 
