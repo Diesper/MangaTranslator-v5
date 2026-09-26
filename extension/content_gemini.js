@@ -7,7 +7,8 @@ const GeminiObserver = globalThis.MangaTranslatorGeminiObserver;
 const GeminiEditor = globalThis.MangaTranslatorGeminiEditor;
 const GeminiAttachment = globalThis.MangaTranslatorGeminiAttachment;
 const GeminiTemporaryChat = globalThis.MangaTranslatorGeminiTemporaryChat;
-if (!GeminiDom || !GeminiObserver || !GeminiEditor || !GeminiAttachment || !GeminiTemporaryChat) {
+const GeminiResultExtractor = globalThis.MangaTranslatorGeminiResultExtractor;
+if (!GeminiDom || !GeminiObserver || !GeminiEditor || !GeminiAttachment || !GeminiTemporaryChat || !GeminiResultExtractor) {
     throw new Error('Módulos Gemini obrigatórios não foram carregados antes de content_gemini.js');
 }
 
@@ -438,151 +439,56 @@ function getEditableElement(root) {
     return GeminiDom.getEditableElement(root);
 }
 
+const resultExtractor = GeminiResultExtractor.createResultExtractor({
+    sendLog,
+    getUrlLogMetadata,
+    sleep,
+    runtime: chrome.runtime,
+    pageWindow: window,
+    pageDocument: document,
+    fetchImpl: (...args) => fetch(...args),
+});
+
 function imageElementToDataUrl(image) {
-    if (!image || !image.complete || !image.naturalWidth || !image.naturalHeight) {
-        return Promise.reject(new Error('Imagem renderizada ainda não está pronta'));
-    }
-    const canvas = document.createElement('canvas');
-    canvas.width = image.naturalWidth;
-    canvas.height = image.naturalHeight;
-    const context = canvas.getContext('2d');
-    context.drawImage(image, 0, 0);
-    return Promise.resolve(canvas.toDataURL('image/png'));
+    return resultExtractor.imageElementToDataUrl(image);
 }
 
-function fetchImageThroughGeminiPage(url, timeoutMs = 20_000) {
-    return new Promise((resolve, reject) => {
-        const requestId = `mt-image-${Date.now()}-${Math.random().toString(36).slice(2)}`;
-        const timer = setTimeout(() => finish(new Error('Tempo limite ao extrair imagem na página Gemini')), timeoutMs);
-        const onResult = event => {
-            const detail = event.detail || {};
-            if (detail.requestId !== requestId) return;
-            finish(detail.dataUrl ? null : new Error(detail.error || 'Página Gemini não retornou a imagem'), detail.dataUrl);
-        };
-        const finish = (error, dataUrl) => {
-            clearTimeout(timer);
-            window.removeEventListener('MANGA_TRANSLATOR_FETCH_IMAGE_RESULT', onResult);
-            if (error) reject(error); else resolve(dataUrl);
-        };
-        window.addEventListener('MANGA_TRANSLATOR_FETCH_IMAGE_RESULT', onResult);
-        window.dispatchEvent(new CustomEvent('MANGA_TRANSLATOR_FETCH_IMAGE', { detail: { requestId, url } }));
-    });
+function fetchImageThroughGeminiPage(url, timeoutMs) {
+    return resultExtractor.fetchImageThroughGeminiPage(url, timeoutMs);
 }
 
 function fetchGeminiImageThroughExtension(url) {
-    return new Promise((resolve, reject) => {
-        chrome.runtime.sendMessage({
-            action: 'FETCH_IMAGE_AS_BASE64',
-            url,
-            // O Service Worker só envia cookies quando a requisição parte de
-            // uma aba Gemini e o host é um asset Google validado no router.
-            geminiSession: true,
-        }, response => {
-            if (chrome.runtime.lastError) {
-                reject(new Error(chrome.runtime.lastError.message || 'Falha no Service Worker'));
-                return;
-            }
-            if (response && response.dataUrl) {
-                resolve(response.dataUrl);
-                return;
-            }
-            reject(new Error((response && response.error) || 'Service Worker não retornou a imagem'));
-        });
-    });
+    return resultExtractor.fetchGeminiImageThroughExtension(url);
 }
 
 function getExtractionFailureKind(error) {
-    const message = String(error && error.message || '').toLowerCase();
-    if (/taint|cors|security|cross-origin/.test(message)) return 'canvas_or_cors';
-    if (/failed to fetch|network|load failed/.test(message)) return 'network';
-    if (/tempo limite|timeout|abort/.test(message)) return 'timeout';
-    if (/http \d{3}/.test(message)) return 'http';
-    return 'unknown';
+    return resultExtractor.getExtractionFailureKind(error);
 }
 
 function logExtractionStage(level, stage, url, attempt, error = null) {
-    const extra = { ...getUrlLogMetadata(url), stage, attempt };
-    if (error) {
-        extra.errorName = error.name || 'Error';
-        extra.failureKind = getExtractionFailureKind(error);
-        extra.messageLength = String(error.message || '').length;
-    }
-    sendLog(level, 'GEMINI_EXTRACT_STAGE', error
-        ? `Etapa ${stage} falhou durante a extração.`
-        : `Etapa ${stage} concluiu a extração.`, extra);
+    return resultExtractor.logExtractionStage(level, stage, url, attempt, error);
 }
 
 function blobToDataUrl(blob) {
-    return new Promise((resolve, reject) => {
-        const reader = new FileReader();
-        reader.onloadend = () => resolve(reader.result);
-        reader.onerror = reject;
-        reader.readAsDataURL(blob);
-    });
+    return resultExtractor.blobToDataUrl(blob);
 }
 
-async function extractImageInGeminiTab(image, url, attempt = 0) {
-    try {
-        const dataUrl = await imageElementToDataUrl(image);
-        logExtractionStage('info', 'canvas', url, attempt);
-        return dataUrl;
-    } catch (canvasError) {
-        logExtractionStage('warn', 'canvas', url, attempt, canvasError);
-        try {
-            const dataUrl = await fetchImageThroughGeminiPage(url);
-            logExtractionStage('info', 'gemini_page_fetch', url, attempt);
-            return dataUrl;
-        } catch (pageFetchError) {
-            logExtractionStage('warn', 'gemini_page_fetch', url, attempt, pageFetchError);
-            // Fallback privilegiado, ainda sem aba auxiliar: o Service Worker
-            // possui host permission e pode fazer a leitura com a sessão do
-            // Gemini, somente para assets googleusercontent validados.
-            try {
-                const dataUrl = await fetchGeminiImageThroughExtension(url);
-                logExtractionStage('info', 'service_worker_session', url, attempt);
-                return dataUrl;
-            } catch (serviceWorkerError) {
-                logExtractionStage('warn', 'service_worker_session', url, attempt, serviceWorkerError);
-                throw serviceWorkerError;
-            }
-        }
-    }
+function extractImageInGeminiTab(image, url, attempt = 0) {
+    return resultExtractor.extractImageInGeminiTab(image, url, attempt);
 }
 
-async function extractResultImage(resultImageElement, resultUrl, executionMode, attempt = 0) {
-    if (resultUrl.startsWith('data:image/')) return resultUrl;
-    if (resultUrl.startsWith('blob:')) {
-        const response = await fetch(resultUrl);
-        return blobToDataUrl(await response.blob());
-    }
-    if (executionMode === 'background_delete') {
-        return extractImageInGeminiTab(resultImageElement, resultUrl, attempt);
-    }
-    return new Promise((resolve, reject) => {
-        chrome.runtime.sendMessage({ action: 'FETCH_IMAGE_AS_BASE64', url: resultUrl }, response => {
-            if (response && response.dataUrl) resolve(response.dataUrl);
-            else reject(new Error('Falha base64 background'));
-        });
-    });
+function extractResultImage(resultImageElement, resultUrl, executionMode, attempt = 0) {
+    return resultExtractor.extractResultImage(resultImageElement, resultUrl, executionMode, attempt);
 }
 
-async function extractResultImageWithRetry(resultImageElement, resultUrl, executionMode, maxAttempts = 4, retryDelayMs = 1000) {
-    let lastError = null;
-    for (let attempt = 0; attempt < maxAttempts; attempt++) {
-        if (attempt > 0) {
-            sendLog('warn', 'GEMINI_EXTRACT_RETRY_ALL', 'Repetindo toda a cadeia de extração por possível instabilidade.', {
-                ...getUrlLogMetadata(resultUrl),
-                attempt,
-            });
-            await sleep(retryDelayMs);
-        }
-        try {
-            return await extractResultImage(resultImageElement, resultUrl, executionMode, attempt);
-        } catch (error) {
-            lastError = error;
-        }
-    }
-    throw lastError || new Error('Todas as tentativas de extração falharam');
+function extractResultImageWithRetry(resultImageElement, resultUrl, executionMode, maxAttempts = 4, retryDelayMs = 1000) {
+    return resultExtractor.extractResultImageWithRetry(
+        resultImageElement,
+        resultUrl,
+        executionMode,
+        maxAttempts,
+        retryDelayMs
+    );
 }
 
 async function shouldKeepConversationForDebug(delivery, executionMode) {
@@ -1090,35 +996,35 @@ async function processGeminiJob() {
                 resultUrl = resultUrl.replace(/=s\d+[^?#]*/, '=s0');
             }
 
-            let base64 = null;
-            let extractionError = null;
-            try {
-                // Preserva as quatro tentativas históricas da extensão. Cada
-                // passagem percorre a cadeia completa sem abrir uma aba.
-                base64 = await extractResultImageWithRetry(resultImageElement, resultUrl, executionMode);
-            } catch (error) {
-                extractionError = error;
-            }
-
-            if (base64) {
-                await deliverWithSecureDeletion({ action: 'GEMINI_IMAGE_EXTRACTED', mangaTabId: job.mangaTabId, index: job.index, src: base64, jobId: job.jobId, batchId: job.batchId }, executionMode, shouldDeleteConversation);
-                return;
-            }
-
-            // O diagnóstico é propositalmente apenas no log: a tradução ainda
-            // continua pela compatibilidade histórica da aba auxiliar.
-            sendLog('warn', 'GEMINI_EXTRACT_DIAGNOSTIC', 'Todas as rotas sem aba auxiliar falharam; diagnóstico registrado.', {
-                ...getUrlLogMetadata(resultUrl),
-                attempts: 4,
-                finalErrorName: extractionError && extractionError.name ? extractionError.name : 'Error',
-                finalFailureKind: getExtractionFailureKind(extractionError),
-                finalMessageLength: String(extractionError && extractionError.message || '').length,
+            const extraction = await resultExtractor.extractOrAuxiliaryFallback({
+                resultImageElement,
+                resultUrl,
+                executionMode,
+                maxAttempts: 4,
+                retryDelayMs: 1000,
+                onAuxiliaryFallback: async ({ url }) => {
+                    return deliverWithSecureDeletion({
+                        action: 'GEMINI_RESULT_URL',
+                        mangaTabId: job.mangaTabId,
+                        index: job.index,
+                        url,
+                        jobId: job.jobId,
+                        batchId: job.batchId,
+                    }, executionMode, shouldDeleteConversation);
+                },
             });
-            sendLog('warn', 'GEMINI_AUXILIARY_FALLBACK', 'Último recurso: usando aba auxiliar. Este não é o comportamento padrão e deve ser investigado.', {
-                ...getUrlLogMetadata(resultUrl),
-                reason: 'all_direct_paths_failed',
-            });
-            await deliverWithSecureDeletion({ action: 'GEMINI_RESULT_URL', mangaTabId: job.mangaTabId, index: job.index, url: resultUrl, jobId: job.jobId, batchId: job.batchId }, executionMode, shouldDeleteConversation);
+
+            if (extraction.kind === 'extracted' && extraction.dataUrl) {
+                await deliverWithSecureDeletion({
+                    action: 'GEMINI_IMAGE_EXTRACTED',
+                    mangaTabId: job.mangaTabId,
+                    index: job.index,
+                    src: extraction.dataUrl,
+                    jobId: job.jobId,
+                    batchId: job.batchId,
+                }, executionMode, shouldDeleteConversation);
+            }
+            return;
         } catch (error) {
             chrome.runtime.sendMessage({ action: 'GEMINI_ERROR', mangaTabId: job.mangaTabId, index: job.index, error: error.message, jobId: job.jobId, batchId: job.batchId });
         } finally {
