@@ -20,6 +20,7 @@
     deletionController = null,
     sleep = ms => new Promise(resolve => setTimeout(resolve, ms)),
     sendLog = function() {},
+    getUrlLogMetadata = () => ({}),
     debugConsole = function() {},
     reportProgress = function() {},
     openKeepAlive = function() {},
@@ -234,7 +235,7 @@
         'info',
         'GEMINI_MANUAL_RESULT',
         'Imagem marcada manualmente no Gemini',
-        { source }
+        { source, ...getUrlLogMetadata(url) }
       );
     }
 
@@ -1032,7 +1033,12 @@
           'Mídia extraída blob'
         );
 
-        sendLog('success', 'GEMINI_IMG_FOUND', 'Imagem gerada!', {});
+        sendLog(
+          'success',
+          'GEMINI_IMG_FOUND',
+          'Imagem gerada!',
+          getUrlLogMetadata(resultUrl)
+        );
         reportProgress('📥 EXTRAINDO IMAGEM...', job.mangaTabId);
 
         if (
