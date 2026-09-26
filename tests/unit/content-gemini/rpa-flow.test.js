@@ -7,8 +7,8 @@ const GEMINI_SELECTORS_PATH = path.resolve(__dirname, '../../../extension/gemini
 const GEMINI_DOM_PATH = path.resolve(__dirname, '../../../extension/gemini/dom.js');
 const GEMINI_OBSERVER_PATH = path.resolve(__dirname, '../../../extension/gemini/observer.js');
 const GEMINI_EDITOR_PATH = path.resolve(__dirname, '../../../extension/gemini/editor.js');
-const GEMINI_TEMP_CHAT_PATH = path.resolve(__dirname, '../../../extension/gemini/temporary-chat.js');
 const GEMINI_ATTACHMENT_PATH = path.resolve(__dirname, '../../../extension/gemini/attachment.js');
+const GEMINI_TEMP_CHAT_PATH = path.resolve(__dirname, '../../../extension/gemini/temporary-chat.js');
 
 function setWindowLocation(pathname = '/app/chat-1') {
     Object.defineProperty(window, 'location', {
