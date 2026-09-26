@@ -62,7 +62,7 @@ function loadContentGeminiModule({ skipAutoProcess = true } = {}) {
                 shouldKeepConversationForDebug,
                 waitForElementToSettle,
                 escapeCssAttributeValue,
-                __getDeletionInProgress: () => _deletionInProgress,
+                __getDeletionInProgress: () => deletionController.isDeletionInProgress(),
             };`
         );
 
