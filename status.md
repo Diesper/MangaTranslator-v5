@@ -138,7 +138,7 @@
 - [x] Focus interval removido do baseline e limitado à escalada balanced/legacy.
 - [x] Modos internos `minimal` / `balanced` / `legacy` implementados.
 - [x] E2E adicionados para `background_delete` e `minimized_window`.
-- [ ] CI do PR 12 verde.
+- [x] CI do PR 12 verde — run #529.
 
 ### PR 13 — Limpeza do legado
 - [x] Observer legado removido; Observer V2 é a única fonte de resultado/submit.
@@ -161,6 +161,9 @@
 - [x] Logs sanitizam prompt, signed URL, imagem/base64, cookie e token.
 
 ## Notas de execução
+
+- PR 12: CI completo verde no run #529.
+- Critérios E2E finais adicionados no PR 13: tradução completa, resposta instantânea, submit ignorado com falha curta e aba Gemini manual inerte/sem keepalive.
 
 - Runs históricos reconciliados no tracker: PR 3 #333, PR 4 #396, PR 5 #398, PR 6 #407, PR 7 #410, PR 10 #480 e PR 11 #490.
 - Invariantes finais foram reconferidos no código modular: ownership lógico por jobId, claim obrigatório, submit observável, finalização idempotente, ACK de DOM, cadeia de extração e sanitização de logs.
