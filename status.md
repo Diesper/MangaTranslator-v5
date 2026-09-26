@@ -131,7 +131,7 @@
 - [x] `gemini/job-runner.js`.
 - [x] `content_gemini.js` reduzido a bootstrap/claim/keepalive/runner/handlers.
 - [x] Helper baseado em `new Function` aposentado para módulos novos; testes novos usam módulos diretamente.
-- [ ] CI do PR 11 verde.
+- [x] CI do PR 11 verde — run #490.
 
 ### PR 12 — Anti-throttling progressivo
 - [x] Mousemove aleatório removido.
