@@ -5,6 +5,8 @@ const { getRuntimeMock, getStorageMock } = require('../../mocks/chrome-api.mock.
 const CONTENT_GEMINI_PATH = path.resolve(__dirname, '../../../extension/content_gemini.js');
 const GEMINI_SELECTORS_PATH = path.resolve(__dirname, '../../../extension/gemini/selectors.js');
 const GEMINI_DOM_PATH = path.resolve(__dirname, '../../../extension/gemini/dom.js');
+const GEMINI_OBSERVER_PATH = path.resolve(__dirname, '../../../extension/gemini/observer.js');
+const GEMINI_EDITOR_PATH = path.resolve(__dirname, '../../../extension/gemini/editor.js');
 
 function setWindowLocation(pathname = '/app/chat-1') {
     Object.defineProperty(window, 'location', {
@@ -271,6 +273,8 @@ describe('content_gemini.js - RPA real do Gemini', () => {
         jest.isolateModules(() => {
             require(GEMINI_SELECTORS_PATH);
             require(GEMINI_DOM_PATH);
+            require(GEMINI_OBSERVER_PATH);
+            require(GEMINI_EDITOR_PATH);
             require(CONTENT_GEMINI_PATH);
         });
 

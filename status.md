@@ -22,10 +22,10 @@
 - [x] PASSO 8 — remover keep-alive prematuro.
 - [x] PASSO 9 — extrair `gemini/selectors.js` e `gemini/dom.js`.
 - [x] PASSO 10 — criar `gemini/observer.js`.
-- [ ] PASSO 11 — instalar observer antes do submit.
-- [ ] PASSO 12 — mudar click/trigger para “attempt”, não “success”.
-- [ ] PASSO 13 — remover mutação forçada de `disabled`.
-- [ ] PASSO 14 — reduzir tentativas de envio para 2.
+- [x] PASSO 11 — instalar observer antes do submit.
+- [x] PASSO 12 — mudar click/trigger para “attempt”, não “success”.
+- [x] PASSO 13 — remover mutação forçada de `disabled`.
+- [x] PASSO 14 — reduzir tentativas de envio para 2.
 - [ ] PASSO 15 — trocar espera de resultado por observer.
 - [ ] PASSO 16 — corrigir Temporary Chat.
 - [ ] PASSO 17 — extrair attachment/result/deletion.
@@ -85,14 +85,14 @@
 - [ ] CI do PR 4 verde.
 
 ### PR 5 — Submit confirmado
-- [ ] `gemini/editor.js`.
-- [ ] Observer instalado antes do submit.
-- [ ] `MANGA_TRANSLATOR_TRIGGER_SEND` significa tentativa.
-- [ ] `DO_SEND_NOW` não declara `sent:true` sem evidência.
-- [ ] Mutação forçada de disabled removida.
-- [ ] Máximo de 2 tentativas.
-- [ ] Falha curta `GEMINI_SUBMISSION_NOT_CONFIRMED`.
-- [ ] SEND-01 a SEND-07.
+- [x] `gemini/editor.js`.
+- [x] Observer instalado antes do submit.
+- [x] `MANGA_TRANSLATOR_TRIGGER_SEND` significa tentativa.
+- [x] `DO_SEND_NOW` não declara `sent:true` sem evidência.
+- [x] Mutação forçada de disabled removida.
+- [x] Máximo de 2 tentativas.
+- [x] Falha curta `GEMINI_SUBMISSION_NOT_CONFIRMED`.
+- [x] SEND-01 a SEND-07.
 - [ ] CI do PR 5 verde.
 
 ### PR 6 — Observer como fonte de resultado
@@ -161,6 +161,9 @@
 - [ ] Logs não armazenam prompt, signed URL, imagem, cookie ou token.
 
 ## Notas de execução
+
+- PR 5 instala o Observer V2 antes de qualquer submit, preserva `__mangaTranslatorJobSent` apenas após confirmação real e elimina mutações forçadas de `disabled`/`aria-disabled`.
+- `MANGA_TRANSLATOR_TRIGGER_SEND` e `DO_SEND_NOW` representam tentativa; o pipeline só segue após `waitForSubmission()`.
 
 - PR 3: CI completo verde no run #333 (HEAD `fe75c45a`).
 - PR 4 adiciona Observer V2 isolado e ainda não troca o polling do runtime. O observer instala ownership por response novo, baseline de imagens/erros, coalescing de mutations, confirmação de submit e cleanup idempotente.

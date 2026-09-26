@@ -349,10 +349,11 @@
                                testId === 'send-button' || className.includes('send-button') ||
                                (hasSendIcon && (label.includes('enviar') || label.includes('send') || label === ''));
 
-                if (isSend) {
-                    btn.removeAttribute('disabled');
-                    btn.disabled = false;
-                    btn.setAttribute('aria-disabled', 'false');
+                const enabled = btn.disabled !== true &&
+                                !btn.hasAttribute('disabled') &&
+                                btn.getAttribute('aria-disabled') !== 'true';
+
+                if (isSend && enabled) {
                     if (typeof btn.focus === 'function') btn.focus();
 
                     const eventOpts = { bubbles: true, cancelable: true, composed: true, view: window };
