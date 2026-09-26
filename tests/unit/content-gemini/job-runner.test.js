@@ -201,4 +201,36 @@ describe('gemini/job-runner.js', () => {
       'https://cdn.example/result.png'
     );
   });
+
+  test('RUN-06: modos de execução escolhem anti-throttling progressivo', () => {
+    const { createGeminiJobRunner } = loadModule();
+    const { options } = baseDependencies();
+    const runner = createGeminiJobRunner(options);
+
+    expect(runner.getAntiThrottleModeForExecutionMode('temp_chat')).toBe('minimal');
+    expect(runner.getAntiThrottleModeForExecutionMode('background_delete')).toBe('balanced');
+    expect(runner.getAntiThrottleModeForExecutionMode('minimized_window')).toBe('balanced');
+    expect(runner.getAntiThrottleModeForExecutionMode('unknown')).toBe('minimal');
+  });
+
+  test('RUN-07: setAntiThrottleMode publica evento MAIN-world e normaliza inválidos', () => {
+    const { createGeminiJobRunner } = loadModule();
+    const { options } = baseDependencies();
+    const received = [];
+    const listener = event => received.push(event.detail && event.detail.mode);
+
+    window.addEventListener('MANGA_TRANSLATOR_ANTI_THROTTLE_SET_MODE', listener);
+    try {
+      const runner = createGeminiJobRunner(options);
+
+      expect(runner.setAntiThrottleMode('balanced')).toBe('balanced');
+      expect(runner.setAntiThrottleMode('legacy')).toBe('legacy');
+      expect(runner.setAntiThrottleMode('qualquer-coisa')).toBe('minimal');
+
+      expect(received).toEqual(['balanced', 'legacy', 'minimal']);
+    } finally {
+      window.removeEventListener('MANGA_TRANSLATOR_ANTI_THROTTLE_SET_MODE', listener);
+    }
+  });
+
 });
