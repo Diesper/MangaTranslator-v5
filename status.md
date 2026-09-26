@@ -141,13 +141,13 @@
 - [ ] CI do PR 12 verde.
 
 ### PR 13 — Limpeza do legado
-- [ ] Observer legado removido.
-- [ ] 50-attempt send removido.
-- [ ] Polling de resultado legado removido.
-- [ ] Fallback positional inseguro removido.
-- [ ] Flags temporárias removidas.
-- [ ] Helper textual/`new Function` removido quando não houver consumidores.
-- [ ] Docs V6/README atualizados.
+- [x] Observer legado removido; Observer V2 é a única fonte de resultado/submit.
+- [x] Loop legado de 50 tentativas de send removido.
+- [x] Polling de resultado legado removido; espera pertence ao Observer V2.
+- [x] Fallback posicional inseguro do Temporary Chat removido.
+- [x] Flags transitórias de migração/teste removidas (`__mangaTranslatorJobSent`, `__MT_SKIP_GEMINI_AUTO_PROCESS__`).
+- [x] Helper textual/`new Function` removido; testes importam o módulo real via CommonJS.
+- [x] Docs V6/README atualizados para arquitetura modular e anti-throttling progressivo.
 - [ ] CI final verde.
 
 ## Invariantes que serão preservados
@@ -161,6 +161,10 @@
 - [ ] Logs não armazenam prompt, signed URL, imagem, cookie ou token.
 
 ## Notas de execução
+
+- PR 13 remove o legado transitório: fallback posicional do Temporary Chat, adapter legado, flag de submit já confirmado e loader textual baseado em `new Function`.
+- `content_gemini.js` passa a exportar sua API somente em CommonJS de teste e não autoexecuta nesse ambiente; no navegador mantém o bootstrap normal. Após remover wrappers transitórios, o arquivo ficou com ~451 linhas.
+- README e Documentação V6 agora descrevem os módulos `gemini/*`, Observer V2, Job Runner, deletion/recovery, extração e anti-throttling progressivo.
 
 - PR 12 substitui o anti-throttling permanente por níveis progressivos: `minimal` (padrão), `balanced` (background/minimized) e `legacy` apenas na segunda tentativa de submit.
 - O loop de `mousemove` aleatório foi removido. O foco periódico deixou de existir em `minimal`; balanced usa 5 s e legacy usa 1 s somente durante escalada.
