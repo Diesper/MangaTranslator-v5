@@ -20,7 +20,7 @@
 - [x] PASSO 6 — trocar bootstrap de `content_gemini.js` para `CLAIM_GEMINI_JOB`.
 - [x] PASSO 7 — remover fallback de `storage.get(null)`.
 - [x] PASSO 8 — remover keep-alive prematuro.
-- [ ] PASSO 9 — extrair `gemini/selectors.js` e `gemini/dom.js`.
+- [x] PASSO 9 — extrair `gemini/selectors.js` e `gemini/dom.js`.
 - [ ] PASSO 10 — criar `gemini/observer.js`.
 - [ ] PASSO 11 — instalar observer antes do submit.
 - [ ] PASSO 12 — mudar click/trigger para “attempt”, não “success”.
@@ -69,10 +69,10 @@
 - [ ] CI do PR 2 verde.
 
 ### PR 3 — Fundação modular Gemini
-- [ ] `gemini/selectors.js`.
-- [ ] `gemini/dom.js`.
-- [ ] Manifest com load order explícito.
-- [ ] Funções puras testáveis por `require()`.
+- [x] `gemini/selectors.js`.
+- [x] `gemini/dom.js`.
+- [x] Manifest com load order explícito.
+- [x] Funções puras testáveis por `require()`.
 - [ ] CI do PR 3 verde.
 
 ### PR 4 — Observer V2
@@ -161,6 +161,8 @@
 - [ ] Logs não armazenam prompt, signed URL, imagem, cookie ou token.
 
 ## Notas de execução
+
+- PR 3 extraiu seletores e helpers DOM sem alterar intencionalmente o pipeline. `content_gemini.js` delega `getImageSource`, blacklist de imagens, ownership por response, deep traversal, editable lookup e send-button lookup ao novo módulo.
 
 - PR 0: CI completo verde no run #278.
 - PR 1: CI completo verde no run #305 (HEAD `97f154e9`).
