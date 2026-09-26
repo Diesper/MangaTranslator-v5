@@ -116,6 +116,25 @@
       return jobIndex.filter(j => j && j.batchId === batchId);
   }
 
+  function replaceGeminiTabReferences(oldTabId, newTabId) {
+      return mutate(snapshot => {
+          snapshot.jobIndex = (Array.isArray(snapshot.jobIndex) ? snapshot.jobIndex : []).map(entry =>
+              entry && entry.geminiTabId === oldTabId
+                  ? { ...entry, geminiTabId: newTabId }
+                  : entry
+          );
+          const nextExtractionTabs = { ...(snapshot.extractionTabs || {}) };
+          Object.keys(nextExtractionTabs).forEach(key => {
+              const info = nextExtractionTabs[key];
+              if (info && info.geminiTabId === oldTabId) {
+                  nextExtractionTabs[key] = { ...info, geminiTabId: newTabId };
+              }
+          });
+          snapshot.extractionTabs = nextExtractionTabs;
+          return snapshot;
+      });
+  }
+
   function tabExists(tabId) {
       return new Promise(resolve => {
           if (!tabId && tabId !== 0) { resolve(false); return; }
@@ -226,6 +245,7 @@
       indexAddJob, 
       indexRemoveJob, 
       indexJobsOfBatch,
+      replaceGeminiTabReferences,
       tabExists, 
       _markFinalized, 
       reconcileJobs

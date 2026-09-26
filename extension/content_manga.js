@@ -1,4 +1,4 @@
-// content_manga.js — Manga Translator v6.0 (fingerprint schema visual-v4)
+// content_manga.js — Manga Translator (fingerprint schema visual-v4)
 
 if (!window.__manga_translator_content_injected) {
     window.__manga_translator_content_injected = true;

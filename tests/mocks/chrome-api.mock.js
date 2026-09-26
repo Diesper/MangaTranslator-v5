@@ -199,10 +199,12 @@ class ChromeAlarmsMock {
     this._listeners = [];
   }
 
-  create(name, alarmInfo) {
+  create(name, alarmInfo = {}) {
     this.clear(name);
-    const delayMs       = (alarmInfo.delayInMinutes || 0) * 60 * 1000;
-    const scheduledTime = Date.now() + delayMs;
+    const scheduledTime = Number.isFinite(alarmInfo.when)
+      ? alarmInfo.when
+      : Date.now() + ((alarmInfo.delayInMinutes || 0) * 60 * 1000);
+    const delayMs = Math.max(0, scheduledTime - Date.now());
     const timerId = setTimeout(() => {
       const alarm = { name, scheduledTime };
       this._alarms.delete(name);

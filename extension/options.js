@@ -1,6 +1,20 @@
-// options.js — Manga Translator v6.0
+// options.js — Manga Translator
 
 document.addEventListener('DOMContentLoaded', () => {
+    const manifest = typeof chrome !== 'undefined'
+        && chrome.runtime
+        && typeof chrome.runtime.getManifest === 'function'
+        ? chrome.runtime.getManifest()
+        : null;
+    const runtimeVersion = manifest && manifest.version ? String(manifest.version) : '';
+    const appTitleEl = document.getElementById('app-title');
+
+    if (runtimeVersion) {
+        const versionedName = `Manga Translator v${runtimeVersion}`;
+        document.title = `Opções - ${versionedName}`;
+        if (appTitleEl) appTitleEl.textContent = versionedName;
+    }
+
     const promptEl = document.getElementById('prompt');
     const statusEl = document.getElementById('status');
     const sitesList = document.getElementById('sites-list');

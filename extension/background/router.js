@@ -25,6 +25,7 @@
     'SET_DEBUG_MODE': 'set-debug-mode',
     'LOG_ENTRY': 'log-entry',
     'GET_TAB_ID': 'get-tab-id',
+    'CLAIM_GEMINI_JOB': 'claim-gemini-job',
     'GEMINI_PROGRESS': 'relay-progress',
     'REQUEST_IMAGE_DATA': 'request-image-data',
     'CHECK_IF_EXTRACTION_TAB': 'check-extraction-tab',

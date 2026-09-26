@@ -47,12 +47,14 @@ if (typeof importScripts === 'function') {
     try {
         importScripts('background/router.js');
         importScripts('background/state.js');
+        importScripts('background/tab-identity.js');
         importScripts('background/jobs-watchdog.js');
         importScripts('background/jobs-reconciliation.js');
         importScripts('background/jobs-dom-ack.js');
         importScripts('background/jobs-lifecycle.js');
         importScripts('background/actions/log-entry.js');
         importScripts('background/actions/get-tab-id.js');
+        importScripts('background/actions/claim-gemini-job.js');
         importScripts('background/actions/relay-progress.js');
         importScripts('background/actions/check-extraction-tab.js');
         importScripts('background/actions/set-debug-mode.js');
@@ -102,12 +104,14 @@ if (typeof importScripts === 'function') {
     try {
         require('./background/router.js');
         require('./background/state.js');
+        require('./background/tab-identity.js');
         require('./background/jobs-watchdog.js');
         require('./background/jobs-reconciliation.js');
         require('./background/jobs-dom-ack.js');
         require('./background/jobs-lifecycle.js');
         require('./background/actions/log-entry.js');
         require('./background/actions/get-tab-id.js');
+        require('./background/actions/claim-gemini-job.js');
         require('./background/actions/relay-progress.js');
         require('./background/actions/check-extraction-tab.js');
         require('./background/actions/set-debug-mode.js');
@@ -279,25 +283,49 @@ function tabExists(tabId) {
     });
 }
 
+let tabIdentity = null;
 let jobsWatchdog = null;
 let jobsReconciler = null;
 let jobsDomAck = null;
 let jobsLifecycle = null;
 
+function moveFinalizedTabId(oldTabId, newTabId) {
+    if (_finalizedTabs.has(oldTabId)) {
+        _finalizedTabs.delete(oldTabId);
+        _finalizedTabs.add(newTabId);
+    }
+}
+
+function initializeTabIdentity() {
+    if (tabIdentity) return tabIdentity;
+    const scope = typeof self !== 'undefined' ? self : globalThis;
+    if (!scope.MangaTranslatorTabIdentity) throw new Error('MangaTranslatorTabIdentity indisponível');
+    tabIdentity = scope.MangaTranslatorTabIdentity.createTabIdentity({
+        state: state(),
+        log,
+        moveFinalizedTabId,
+    });
+    return tabIdentity;
+}
+
 function initializeJobsModules() {
     if (jobsWatchdog && jobsReconciler && jobsDomAck && jobsLifecycle) return;
     const scope = typeof self !== 'undefined' ? self : globalThis;
+    const identity = initializeTabIdentity();
     jobsWatchdog = scope.MangaTranslatorJobsWatchdog.createWatchdog({
         getJobIndex: () => state().jobIndex,
         getExtractionTabs: () => state().extractionTabs,
         finalizeJob: (...args) => finalizeJob(...args),
         log,
         timeoutMinutes: JOB_TIMEOUT_MINUTES,
+        resolveCanonicalTabId: tabId => identity.resolveCanonicalTabId(tabId),
     });
     jobsReconciler = scope.MangaTranslatorJobsReconciliation.createReconciler({
         state: state(),
         tabExists,
         log,
+        resolveCanonicalTabId: tabId => identity.resolveCanonicalTabId(tabId),
+        migrateTabIdentity: (oldTabId, newTabId, options) => identity.migrateTabIdentity(oldTabId, newTabId, options),
         syncState,
         processNextJob: () => processNextJob(),
         recoverPendingFinalization: entry => jobsLifecycle.recoverPendingFinalization(entry),
@@ -315,6 +343,8 @@ function initializeJobsModules() {
         markFinalized: _markFinalized,
         isFinalized: tabId => _finalizedTabs.has(tabId),
         finalizedMarkerTtlMinutes: FINALIZATION_MARKER_TTL_MINUTES,
+        resolveCanonicalTabId: tabId => identity.resolveCanonicalTabId(tabId),
+        migrateTabIdentity: (oldTabId, newTabId, options) => identity.migrateTabIdentity(oldTabId, newTabId, options),
     });
 }
 
@@ -338,6 +368,11 @@ async function ensureInitialized() {
     const hasResidentWork = state().jobQueue.length > 0 || state().activeJobsCount > 0 ||
         state().jobIndex.length > 0 || Object.keys(state().extractionTabs).length > 0;
     if (!hasResidentWork) await restoreState();
+
+    // A reconciliação é canonical-aware e por isso é o gate síncrono
+    // necessário para mensagens. O replay de journals residuais não bloqueia
+    // ações normais; ele roda logo depois e continua crash-recoverable.
+    const identity = initializeTabIdentity();
     state()._initialized = true;
     try {
         const result = await reconcileJobs();
@@ -346,6 +381,13 @@ async function ensureInitialized() {
             if (result.dropped > 0 || result.recovered > 0) processNextJob();
         }
     } catch (_e) {}
+
+    identity.recoverPendingMigrations()
+        .then(() => identity.cleanupExpiredAliases())
+        .catch(error => log('warn', 'bg', 'TAB_REKEY_RECOVERY_DEFERRED_ERROR',
+            'Falha no replay assíncrono de migração de aba', {
+                errorName: error && error.name ? error.name : 'Error',
+            }));
 }
 
 let _logQueue = [];
@@ -392,6 +434,7 @@ function routeRegisteredAction(request, sender, sendResponse) {
                 syncState,
                 assertJobOwnership,
                 ensureInitialized,
+                tabIdentity: initializeTabIdentity(),
                 deliverResultToManga,
                 finalizeJob,
                 startBatch,
@@ -471,6 +514,9 @@ chrome.runtime.onInstalled.addListener(() => {
 
 chrome.runtime.onStartup.addListener(async () => {
     await restoreState();
+    const identity = initializeTabIdentity();
+    await identity.recoverPendingMigrations();
+    await identity.cleanupExpiredAliases();
     state()._initialized = true;
     
     // FIX M-5
@@ -509,6 +555,20 @@ if (chrome.tabs && chrome.tabs.onReplaced) {
             oldTabId: removedTabId,
             newTabId: addedTabId,
         });
+        try {
+            initializeTabIdentity().recordReplacement(addedTabId, removedTabId)
+                .catch(error => log('error', 'bg', 'TAB_REKEY_ERROR', 'Falha ao migrar identidade de aba', {
+                    oldTabId: removedTabId,
+                    newTabId: addedTabId,
+                    errorName: error && error.name ? error.name : 'Error',
+                }));
+        } catch (error) {
+            log('error', 'bg', 'TAB_REKEY_ERROR', 'Falha ao iniciar migração de identidade de aba', {
+                oldTabId: removedTabId,
+                newTabId: addedTabId,
+                errorName: error && error.name ? error.name : 'Error',
+            });
+        }
     });
 }
 

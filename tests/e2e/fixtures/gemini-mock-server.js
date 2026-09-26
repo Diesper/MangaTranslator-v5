@@ -140,6 +140,18 @@ function buildGeminiMockHtml() {
   </style>
 </head>
 <body>
+  <nav id="mock-side-nav" aria-label="Conversas" style="padding:8px 16px;background:#0b1015;border-bottom:1px solid #27323d;">
+    <div id="mock-chat-list">
+      <div class="mock-chat-row" data-chat-id="mock-chat">
+        <a href="/app/mock-chat">Conversa do Manga Translator</a>
+        <button type="button" data-test-id="chat-options" aria-haspopup="menu">Opções</button>
+      </div>
+      <div class="mock-chat-row" data-chat-id="other-chat">
+        <a href="/app/other-chat">Outra conversa</a>
+        <button type="button" aria-haspopup="menu">Opções</button>
+      </div>
+    </div>
+  </nav>
   <main>
     <div class="shell">
       <div class="toolbar">
@@ -172,7 +184,11 @@ function buildGeminiMockHtml() {
       const status = document.getElementById('mock-status');
       const resultZone = document.getElementById('result-zone');
       const sendButton = document.getElementById('send-button');
-      const jobIndex = new URL(window.location.href).searchParams.get('jobIndex') || '0';
+      const currentUrl = new URL(window.location.href);
+      const jobIndex = currentUrl.searchParams.get('jobIndex') || '0';
+      const fastResult = currentUrl.searchParams.get('fastResult') === '1';
+      const ignoreSubmit = currentUrl.searchParams.get('ignoreSubmit') === '1';
+      const chatOptionsButton = document.querySelector('[data-chat-id="mock-chat"] [data-test-id="chat-options"]');
 
       let attachmentSeen = false;
       let running = false;
@@ -202,14 +218,46 @@ function buildGeminiMockHtml() {
         }
       }
 
+      function appendResultImage() {
+        const response = document.createElement('model-response');
+        response.setAttribute('data-message-author', 'model');
+
+        const img = document.createElement('img');
+        img.alt = 'Imagem traduzida do mock';
+        img.src =
+          '/gemini-result-image?jobIndex=' +
+          encodeURIComponent(jobIndex) +
+          '&t=' +
+          Date.now();
+
+        response.appendChild(img);
+        resultZone.appendChild(response);
+        status.textContent = 'Imagem traduzida pronta';
+      }
+
       async function runTranslation() {
+        if (ignoreSubmit) {
+          status.textContent = 'Submit ignorado pelo mock';
+          return;
+        }
         if (running) return;
+
         running = true;
         status.textContent = 'Processando mock...';
         sendButton.disabled = true;
         if (editor) {
           editor.textContent = '';
           editor.innerText = '';
+        }
+
+        if (fastResult) {
+          // A resposta aparece no mesmo task lógico do submit. O Observer V2
+          // precisa ter sido instalado antes do click para capturá-la.
+          appendResultImage();
+          setTimeout(() => {
+            sendButton.disabled = false;
+          }, 0);
+          return;
         }
 
         const stopBtn = document.createElement('button');
@@ -222,17 +270,47 @@ function buildGeminiMockHtml() {
 
         stopBtn.remove();
         sendButton.disabled = false;
+        appendResultImage();
+      }
 
-        const img = document.createElement('img');
-        img.alt = 'Imagem traduzida do mock';
-        img.src =
-          'http://localhost:3999/gemini-result-image?jobIndex=' +
-          encodeURIComponent(jobIndex) +
-          '&t=' +
-          Date.now();
-        resultZone.appendChild(img);
+      if (chatOptionsButton) {
+        chatOptionsButton.addEventListener('click', () => {
+          document.getElementById('mock-delete-menu')?.remove();
+          const menu = document.createElement('div');
+          menu.id = 'mock-delete-menu';
+          menu.setAttribute('role', 'menu');
 
-        status.textContent = 'Imagem traduzida pronta';
+          const deleteItem = document.createElement('div');
+          deleteItem.setAttribute('role', 'menuitem');
+          deleteItem.textContent = 'Excluir';
+          deleteItem.tabIndex = 0;
+          deleteItem.addEventListener('click', () => {
+            menu.remove();
+            document.getElementById('mock-delete-dialog')?.remove();
+
+            const dialog = document.createElement('div');
+            dialog.id = 'mock-delete-dialog';
+            dialog.setAttribute('role', 'dialog');
+
+            const confirm = document.createElement('button');
+            confirm.type = 'button';
+            confirm.textContent = 'Excluir';
+            confirm.addEventListener('click', () => {
+              dialog.dataset.confirmed = 'true';
+              status.textContent = 'Conversa excluída pelo mock';
+            });
+
+            const cancel = document.createElement('button');
+            cancel.type = 'button';
+            cancel.textContent = 'Cancelar';
+
+            dialog.append(confirm, cancel);
+            document.body.appendChild(dialog);
+          });
+
+          menu.appendChild(deleteItem);
+          document.body.appendChild(menu);
+        });
       }
 
       editor.addEventListener('paste', event => {
@@ -457,7 +535,11 @@ const server = http.createServer((req, res) => {
         return;
     }
 
-    if (url === '/gemini' || url === '/gemini/') {
+    if (
+        url === '/gemini' ||
+        url === '/gemini/' ||
+        url === '/app/mock-chat'
+    ) {
         res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
         res.end(buildGeminiMockHtml());
         return;

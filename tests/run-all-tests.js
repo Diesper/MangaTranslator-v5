@@ -78,6 +78,11 @@ async function runCommand(name, cmd, args) {
   });
 }
 
+const ROOT_PACKAGE_VERSION = require('../package.json').version;
+const PRODUCT_VERSION = ROOT_PACKAGE_VERSION.endsWith('.0')
+  ? ROOT_PACKAGE_VERSION.slice(0, -2)
+  : ROOT_PACKAGE_VERSION;
+
 async function runAll() {
   const nodeCmd = process.execPath;
   const jestBin = path.join(__dirname, 'node_modules', 'jest', 'bin', 'jest.js');
@@ -165,7 +170,7 @@ async function runAll() {
 
   console.log(`\n\n`);
   console.log(`================================================================`);
-  console.log(`📊 RESUMO GERAL DOS TESTES — MangaTranslator v6.0`);
+  console.log(`📊 RESUMO GERAL DOS TESTES — MangaTranslator v${PRODUCT_VERSION}`);
   console.log(`================================================================`);
   
   summaries.forEach(s => {

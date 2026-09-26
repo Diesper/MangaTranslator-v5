@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Manga Translator",
-  "version": "6.0",
+  "version": "6.5",
   "description": "Tradução de mangá usando Gemini com cache perceptual visual, armazenamento transacional em IndexedDB e controles de substituição automática.",
   "permissions": [
     "tabs",
@@ -56,6 +56,15 @@
         "http://127.0.0.1/*"
       ],
       "js": [
+        "gemini/selectors.js",
+        "gemini/dom.js",
+        "gemini/observer.js",
+        "gemini/editor.js",
+        "gemini/attachment.js",
+        "gemini/temporary-chat.js",
+        "gemini/result-extractor.js",
+        "gemini/deletion.js",
+        "gemini/job-runner.js",
         "content_gemini.js"
       ],
       "run_at": "document_idle"

@@ -9,6 +9,15 @@ const path = require('path');
 const { getRuntimeMock, getStorageMock } = require('../../mocks/chrome-api.mock.js');
 
 const CONTENT_GEMINI_PATH = path.resolve(__dirname, '../../../extension/content_gemini.js');
+const GEMINI_SELECTORS_PATH = path.resolve(__dirname, '../../../extension/gemini/selectors.js');
+const GEMINI_DOM_PATH = path.resolve(__dirname, '../../../extension/gemini/dom.js');
+const GEMINI_OBSERVER_PATH = path.resolve(__dirname, '../../../extension/gemini/observer.js');
+const GEMINI_EDITOR_PATH = path.resolve(__dirname, '../../../extension/gemini/editor.js');
+const GEMINI_ATTACHMENT_PATH = path.resolve(__dirname, '../../../extension/gemini/attachment.js');
+const GEMINI_TEMP_CHAT_PATH = path.resolve(__dirname, '../../../extension/gemini/temporary-chat.js');
+const GEMINI_RESULT_EXTRACTOR_PATH = path.resolve(__dirname, '../../../extension/gemini/result-extractor.js');
+const GEMINI_DELETION_PATH = path.resolve(__dirname, '../../../extension/gemini/deletion.js');
+const GEMINI_JOB_RUNNER_PATH = path.resolve(__dirname, '../../../extension/gemini/job-runner.js');
 
 function delay(ms = 0) {
     return new Promise(resolve => setTimeout(resolve, ms));
@@ -120,7 +129,7 @@ function mountGeminiEditor({ onSubmit } = {}) {
     return { editor, sendButton };
 }
 
-describe('v6.0 Elevação de Resolução CDN (=s0) — content_gemini.js', () => {
+describe('Elevação de Resolução CDN (=s0) — content_gemini.js', () => {
     let runtimeMock;
     let storageMock;
     let sentMessages = [];
@@ -223,7 +232,17 @@ describe('v6.0 Elevação de Resolução CDN (=s0) — content_gemini.js', () =>
         });
 
         jest.isolateModules(() => {
-            require(CONTENT_GEMINI_PATH);
+            require(GEMINI_SELECTORS_PATH);
+            require(GEMINI_DOM_PATH);
+            require(GEMINI_OBSERVER_PATH);
+            require(GEMINI_EDITOR_PATH);
+            require(GEMINI_ATTACHMENT_PATH);
+            require(GEMINI_TEMP_CHAT_PATH);
+            require(GEMINI_RESULT_EXTRACTOR_PATH);
+            require(GEMINI_DELETION_PATH);
+            require(GEMINI_JOB_RUNNER_PATH);
+            const contentGemini = require(CONTENT_GEMINI_PATH);
+            contentGemini.processGeminiJob();
         });
 
         await waitFor(() => sentMessages.find(m => m.action === 'FETCH_IMAGE_AS_BASE64'));

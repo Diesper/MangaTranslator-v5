@@ -1,24 +1,32 @@
 /**
  * temp-chat-activator.test.js
- * ─────────────────────────────────────────────────────────────────────────────
- * Testa o TemporaryChatActivator real de content_gemini.js na arquitetura atual.
- * Verifica detecção de botões, checagem de estado ativo, despacho de eventos
- * e fallback gracioso sem quebrar o pipeline RPA.
+ * Testa diretamente gemini/temporary-chat.js sem adapter legado.
  */
 
-const { loadContentGeminiModule } = require('../../helpers/load-content-gemini-module.js');
+const path = require('path');
 
-describe('v6.0 TemporaryChatActivator — content_gemini.js', () => {
-    let geminiMod;
-    let activator;
+const TEMP_CHAT_PATH = path.resolve(
+    __dirname,
+    '../../../extension/gemini/temporary-chat.js'
+);
+
+function loadTemporaryChat() {
+    let api;
+    jest.isolateModules(() => {
+        api = require(TEMP_CHAT_PATH);
+    });
+    return api;
+}
+
+describe('Temporary Chat — módulo semântico', () => {
+    let temporaryChat;
 
     beforeEach(() => {
         if (!window.PointerEvent) {
             window.PointerEvent = class PointerEvent extends MouseEvent {};
         }
         document.documentElement.innerHTML = '<head></head><body></body>';
-        geminiMod = loadContentGeminiModule({ skipAutoProcess: true });
-        activator = geminiMod.TemporaryChatActivator;
+        temporaryChat = loadTemporaryChat();
     });
 
     afterEach(() => {
@@ -32,8 +40,7 @@ describe('v6.0 TemporaryChatActivator — content_gemini.js', () => {
             btn.textContent = 'Ativar conversa momentânea';
             document.body.appendChild(btn);
 
-            const found = activator.findTempChatButton();
-            expect(found).toBe(btn);
+            expect(temporaryChat.findTempChatButton(document)).toBe(btn);
         });
 
         test('localiza botão pelo aria-label em inglês "temporary chat"', () => {
@@ -42,8 +49,7 @@ describe('v6.0 TemporaryChatActivator — content_gemini.js', () => {
             btn.setAttribute('aria-label', 'Toggle temporary chat');
             document.body.appendChild(btn);
 
-            const found = activator.findTempChatButton();
-            expect(found).toBe(btn);
+            expect(temporaryChat.findTempChatButton(document)).toBe(btn);
         });
 
         test('localiza pelo data-test-id "temp-chat-button"', () => {
@@ -52,13 +58,14 @@ describe('v6.0 TemporaryChatActivator — content_gemini.js', () => {
             btn.textContent = 'Modo privado';
             document.body.appendChild(btn);
 
-            const found = activator.findTempChatButton();
-            expect(found).toBe(btn);
+            expect(temporaryChat.findTempChatButton(document)).toBe(btn);
         });
 
-        test('retorna null quando nenhum botão correspondente existe', () => {
-            document.body.innerHTML = '<button>Enviar</button><button>Ajuda</button>';
-            expect(activator.findTempChatButton()).toBeNull();
+        test('retorna null quando nenhum controle semanticamente compatível existe', () => {
+            document.body.innerHTML =
+                '<button>Enviar</button><button>Ajuda</button>';
+
+            expect(temporaryChat.findTempChatButton(document)).toBeNull();
         });
     });
 
@@ -69,16 +76,20 @@ describe('v6.0 TemporaryChatActivator — content_gemini.js', () => {
             indicator.textContent = 'Conversa momentânea ativada';
             document.body.appendChild(indicator);
 
-            expect(activator.isAlreadyActive()).toBe(true);
+            expect(
+                temporaryChat.isAlreadyActive(null, document)
+            ).toBe(true);
         });
 
-        test('detecta ativo via atributo aria-checked="true" no botão', () => {
+        test('detecta ativo via atributo aria-checked="true"', () => {
             const btn = document.createElement('button');
             btn.setAttribute('aria-checked', 'true');
             btn.textContent = 'Conversa momentânea';
             document.body.appendChild(btn);
 
-            expect(activator.isAlreadyActive(btn)).toBe(true);
+            expect(
+                temporaryChat.isAlreadyActive(btn, document)
+            ).toBe(true);
         });
 
         test('detecta ativo via texto "desativar conversa momentânea"', () => {
@@ -86,142 +97,154 @@ describe('v6.0 TemporaryChatActivator — content_gemini.js', () => {
             btn.textContent = 'Desativar conversa momentânea';
             document.body.appendChild(btn);
 
-            expect(activator.isAlreadyActive(btn)).toBe(true);
+            expect(
+                temporaryChat.isAlreadyActive(btn, document)
+            ).toBe(true);
         });
 
-        test('retorna false quando o botão está desativado ("ativar conversa momentânea")', () => {
+        test('retorna false para controle que oferece ativação', () => {
             const btn = document.createElement('button');
             btn.textContent = 'Ativar conversa momentânea';
             document.body.appendChild(btn);
 
-            expect(activator.isAlreadyActive(btn)).toBe(false);
+            expect(
+                temporaryChat.isAlreadyActive(btn, document)
+            ).toBe(false);
+        });
+
+        test('detecta banner nativo em português', () => {
+            const banner = document.createElement('div');
+            banner.textContent =
+                'As conversas temporárias não aparecem no seu histórico nem são usadas para treinar modelos.';
+            document.body.appendChild(banner);
+
+            expect(
+                temporaryChat.isAlreadyActive(null, document)
+            ).toBe(true);
+        });
+
+        test('detecta tela nativa "Está só dando uma passadinha?"', () => {
+            const container = document.createElement('div');
+            container.innerHTML = `
+                <h2>Está só dando uma passadinha?</h2>
+                <p>As conversas momentâneas não aparecem nas conversas recentes e não são usadas para aprimorar a IA do Google.</p>
+            `;
+            document.body.appendChild(container);
+
+            expect(
+                temporaryChat.isAlreadyActive(null, document)
+            ).toBe(true);
+        });
+
+        test('detecta tela nativa em inglês', () => {
+            const container = document.createElement('div');
+            container.innerHTML = `
+                <h2>Just passing through?</h2>
+                <p>Temporary chats don’t appear in Recent chats and aren’t used to improve Google AI.</p>
+            `;
+            document.body.appendChild(container);
+
+            expect(
+                temporaryChat.isAlreadyActive(null, document)
+            ).toBe(true);
+        });
+
+        test('detecta botão de fechar conversa momentânea', () => {
+            const closeBtn = document.createElement('button');
+            closeBtn.setAttribute(
+                'aria-label',
+                'Fechar a conversa momentânea'
+            );
+            document.body.appendChild(closeBtn);
+
+            expect(
+                temporaryChat.isAlreadyActive(null, document)
+            ).toBe(true);
         });
     });
 
     describe('triggerClick()', () => {
-        test('dispara eventos de pointerdown, mousedown, pointerup, mouseup e click', () => {
+        test('dispara pointer/mouse e click uma única vez', () => {
             const btn = document.createElement('button');
             document.body.appendChild(btn);
 
-            const eventsFired = [];
-            ['pointerdown', 'mousedown', 'pointerup', 'mouseup', 'click'].forEach(evtType => {
-                btn.addEventListener(evtType, () => eventsFired.push(evtType));
+            const events = [];
+            [
+                'pointerdown',
+                'mousedown',
+                'pointerup',
+                'mouseup',
+                'click',
+            ].forEach(type => {
+                btn.addEventListener(type, () => events.push(type));
             });
 
-            const result = activator.triggerClick(btn);
-            expect(result).toBe(true);
-            expect(eventsFired).toEqual(['pointerdown', 'mousedown', 'pointerup', 'mouseup', 'click']);
+            expect(temporaryChat.triggerClick(btn)).toBe(true);
+            expect(events).toEqual([
+                'pointerdown',
+                'mousedown',
+                'pointerup',
+                'mouseup',
+                'click',
+            ]);
         });
     });
 
-    describe('ensureTemporaryChatActive()', () => {
-        test('retorna { success: true, alreadyActive: true } sem clicar se já estiver ativo', async () => {
-            const indicator = document.createElement('div');
-            indicator.className = 'momentary-indicator';
-            indicator.textContent = 'Conversa momentânea';
-            document.body.appendChild(indicator);
-
+    describe('ensureActive()', () => {
+        test('retorna already_active sem clicar', async () => {
             const btn = document.createElement('button');
             btn.textContent = 'Desativar conversa momentânea';
             document.body.appendChild(btn);
 
             const clickSpy = jest.spyOn(btn, 'click');
-            const result = await activator.ensureTemporaryChatActive(1);
+            const result = await temporaryChat.ensureActive({
+                root: document,
+                timeoutMs: 50,
+                sleep: async () => {},
+            });
 
-            expect(result.success).toBe(true);
-            expect(result.alreadyActive).toBe(true);
+            expect(result.status).toBe('already_active');
             expect(clickSpy).not.toHaveBeenCalled();
         });
 
-        test('clica no botão e ativa quando não estava ativo', async () => {
+        test('clica uma vez e exige verificação de estado', async () => {
             const btn = document.createElement('button');
             btn.textContent = 'Ativar conversa momentânea';
             document.body.appendChild(btn);
 
+            let clicks = 0;
             btn.addEventListener('click', () => {
+                clicks += 1;
                 btn.textContent = 'Desativar conversa momentânea';
                 btn.classList.add('active');
             });
 
-            // Reduz o tempo de sleep interno para o teste rodar instantaneamente
-            activator.sleep = () => Promise.resolve();
-
-            const result = await activator.ensureTemporaryChatActive(1);
-            expect(result.success).toBe(true);
-            expect(result.activated).toBe(true);
-        });
-
-        test('esgota timeout graciosamente retornando notFound sem quebrar o pipeline', async () => {
-            activator.sleep = () => Promise.resolve();
-            const result = await activator.ensureTemporaryChatActive(0.01);
-
-            expect(result.success).toBe(false);
-            expect(result.notFound).toBe(true);
-        });
-
-        test('detecta ativo via aria-label "Desativar o chat temporário" em botão de ícone sem texto', () => {
-            const btn = document.createElement('button');
-            btn.setAttribute('aria-label', 'Desativar o chat temporário');
-            document.body.appendChild(btn);
-
-            expect(activator.isAlreadyActive(btn)).toBe(true);
-        });
-
-        test('detecta ativo via aviso/banner "As conversas temporárias não aparecem no seu histórico"', () => {
-            const banner = document.createElement('div');
-            banner.textContent = 'As conversas temporárias não aparecem no seu histórico nem são usadas para treinar modelos.';
-            document.body.appendChild(banner);
-
-            expect(activator.isAlreadyActive()).toBe(true);
-        });
-
-        test('não clica repetidamente no botão em loop caso já tenha clicado uma vez (evita loop toggle)', async () => {
-            const btn = document.createElement('button');
-            btn.setAttribute('aria-label', 'Ativar conversa temporária');
-            document.body.appendChild(btn);
-
-            let clicks = 0;
-            btn.addEventListener('click', () => {
-                clicks++;
-                btn.setAttribute('aria-label', 'Desativar conversa temporária');
+            const result = await temporaryChat.ensureActive({
+                root: document,
+                timeoutMs: 100,
+                sleep: async () => {},
             });
 
-            activator.sleep = () => Promise.resolve();
-            const result = await activator.ensureTemporaryChatActive(1);
-
-            expect(result.success).toBe(true);
-            expect(result.activated).toBe(true);
-            expect(clicks).toBe(1); // Exatamente 1 clique, nunca repetido em loop!
+            expect(result.status).toBe('activated_verified');
+            expect(clicks).toBe(1);
         });
 
-        test('detecta ativo via tela nativa do Gemini "Está só dando uma passadinha?" e "não aparecem nas conversas recentes"', () => {
-            const container = document.createElement('div');
-            container.innerHTML = `
-                <h2>Está só dando uma passadinha?</h2>
-                <p>As conversas momentâneas não aparecem nas conversas recentes e não são usadas para aprimorar a IA do Google. Elas são armazenadas por 72 horas por motivos de segurança.</p>
-            `;
-            document.body.appendChild(container);
+        test('sem controle semântico retorna unavailable', async () => {
+            document.body.innerHTML =
+                '<button style="position:absolute;right:0;top:0">Enviar</button>';
 
-            expect(activator.isAlreadyActive()).toBe(true);
+            const result = await temporaryChat.ensureActive({
+                root: document,
+                timeoutMs: 1,
+                sleep: async () => {},
+            });
+
+            expect(result.status).toBe('unavailable');
         });
 
-        test('detecta ativo via tela nativa do Gemini em inglês "Just passing through?"', () => {
-            const container = document.createElement('div');
-            container.innerHTML = `
-                <h2>Just passing through?</h2>
-                <p>Temporary chats don’t appear in Recent chats and aren’t used to improve Google AI. They are stored for 72 hours for safety reasons.</p>
-            `;
-            document.body.appendChild(container);
-
-            expect(activator.isAlreadyActive()).toBe(true);
-        });
-
-        test('detecta ativo via botão X de fechar conversa momentânea', () => {
-            const closeBtn = document.createElement('button');
-            closeBtn.setAttribute('aria-label', 'Fechar a conversa momentânea');
-            document.body.appendChild(closeBtn);
-
-            expect(activator.isAlreadyActive()).toBe(true);
+        test('não existe mais fallback posicional', () => {
+            expect(temporaryChat.findButtonByPosition).toBeUndefined();
+            expect(temporaryChat.createLegacyAdapter).toBeUndefined();
         });
     });
 });

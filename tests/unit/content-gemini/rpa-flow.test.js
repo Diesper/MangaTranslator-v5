@@ -3,6 +3,15 @@ const path = require('path');
 const { getRuntimeMock, getStorageMock } = require('../../mocks/chrome-api.mock.js');
 
 const CONTENT_GEMINI_PATH = path.resolve(__dirname, '../../../extension/content_gemini.js');
+const GEMINI_SELECTORS_PATH = path.resolve(__dirname, '../../../extension/gemini/selectors.js');
+const GEMINI_DOM_PATH = path.resolve(__dirname, '../../../extension/gemini/dom.js');
+const GEMINI_OBSERVER_PATH = path.resolve(__dirname, '../../../extension/gemini/observer.js');
+const GEMINI_EDITOR_PATH = path.resolve(__dirname, '../../../extension/gemini/editor.js');
+const GEMINI_ATTACHMENT_PATH = path.resolve(__dirname, '../../../extension/gemini/attachment.js');
+const GEMINI_TEMP_CHAT_PATH = path.resolve(__dirname, '../../../extension/gemini/temporary-chat.js');
+const GEMINI_RESULT_EXTRACTOR_PATH = path.resolve(__dirname, '../../../extension/gemini/result-extractor.js');
+const GEMINI_DELETION_PATH = path.resolve(__dirname, '../../../extension/gemini/deletion.js');
+const GEMINI_JOB_RUNNER_PATH = path.resolve(__dirname, '../../../extension/gemini/job-runner.js');
 
 function setWindowLocation(pathname = '/app/chat-1') {
     Object.defineProperty(window, 'location', {
@@ -224,6 +233,7 @@ describe('content_gemini.js - RPA real do Gemini', () => {
 
     afterEach(async () => {
         delete window.__mt_gemini_started;
+        delete globalThis.__MT_GEMINI_GENERATION_TIMEOUT_MS__;
         runtimeMock.sendMessage = originalSendMessage;
         global.fetch = originalFetch;
         jest.restoreAllMocks();
@@ -267,7 +277,17 @@ describe('content_gemini.js - RPA real do Gemini', () => {
         });
 
         jest.isolateModules(() => {
-            require(CONTENT_GEMINI_PATH);
+            require(GEMINI_SELECTORS_PATH);
+            require(GEMINI_DOM_PATH);
+            require(GEMINI_OBSERVER_PATH);
+            require(GEMINI_EDITOR_PATH);
+            require(GEMINI_ATTACHMENT_PATH);
+            require(GEMINI_TEMP_CHAT_PATH);
+            require(GEMINI_RESULT_EXTRACTOR_PATH);
+            require(GEMINI_DELETION_PATH);
+            require(GEMINI_JOB_RUNNER_PATH);
+            const contentGemini = require(CONTENT_GEMINI_PATH);
+            contentGemini.processGeminiJob();
         });
 
         await advance(0);
@@ -509,6 +529,14 @@ describe('content_gemini.js - RPA real do Gemini', () => {
                 const alert = document.createElement('div');
                 alert.setAttribute('role', 'alert');
                 alert.innerText = 'Falha do Gemini';
+                // O Observer V2 exige visibilidade real. JSDOM não calcula
+                // layout, então a fixture precisa representar um alerta que
+                // ocuparia espaço na página em vez de enfraquecer a regra de produção.
+                alert.getBoundingClientRect = () => ({
+                    x: 0, y: 0, top: 0, left: 0,
+                    right: 320, bottom: 48, width: 320, height: 48,
+                    toJSON() { return this; },
+                });
                 document.body.appendChild(alert);
             },
         });
@@ -539,18 +567,12 @@ describe('content_gemini.js - RPA real do Gemini', () => {
         }));
     });
 
-    test('CG-36: encerra com GEMINI_ERROR quando o polling estoura o timeout de 4 minutos', async () => {
+    test('CG-36: encerra com GEMINI_ERROR quando o Observer V2 estoura o timeout de geração', async () => {
         mountGeminiEditor({
             sendMode: 'exact',
-            onSubmit: () => {
-                let now = 1000;
-                jest.spyOn(Date, 'now').mockImplementation(() => {
-                    const value = now;
-                    now += 121000;
-                    return value;
-                });
-            },
+            onSubmit: () => {},
         });
+        globalThis.__MT_GEMINI_GENERATION_TIMEOUT_MS__ = 80;
 
         await loadScript({
             storage: { debugMode: true },
