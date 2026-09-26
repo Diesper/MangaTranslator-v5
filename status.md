@@ -27,7 +27,7 @@
 - [x] PASSO 13 — remover mutação forçada de `disabled`.
 - [x] PASSO 14 — reduzir tentativas de envio para 2.
 - [x] PASSO 15 — trocar espera de resultado por observer.
-- [ ] PASSO 16 — corrigir Temporary Chat.
+- [x] PASSO 16 — corrigir Temporary Chat.
 - [ ] PASSO 17 — extrair attachment/result/deletion.
 - [ ] PASSO 18 — criar job runner.
 - [ ] PASSO 19 — reduzir anti-throttling.
@@ -104,10 +104,10 @@
 - [ ] CI do PR 6 verde.
 
 ### PR 7 — Temporary Chat verificado
-- [ ] `gemini/temporary-chat.js`.
-- [ ] `activeNow` controla o retorno.
-- [ ] Fallback geométrico exige semântica.
-- [ ] TEMP-01 a TEMP-05.
+- [x] `gemini/temporary-chat.js`.
+- [x] Estado relido após clique controla o retorno; falso sucesso de `activeNow` removido.
+- [x] Fallback geométrico exige semântica.
+- [x] TEMP-01 a TEMP-05.
 - [ ] CI do PR 7 verde.
 
 ### PR 8 — Attachment modular
@@ -161,6 +161,9 @@
 - [ ] Logs não armazenam prompt, signed URL, imagem, cookie ou token.
 
 ## Notas de execução
+
+- PR 7 substitui o antigo retorno `click -> success:true` por estados explícitos `already_active`, `activated_verified`, `unavailable` e `verification_failed`.
+- Após um clique, o controle é apenas observado; o código não alterna o toggle repetidamente.
 
 - PR 6 remove o polling pesado do caminho primário: imagem, erro e timeout passam por `activeGeminiObserver.waitForResult()`.
 - Seleção manual resolve a mesma Promise via `acceptResult()`; a cadeia de extração permanece intacta.

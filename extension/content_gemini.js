@@ -5,8 +5,9 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
 const GeminiDom = globalThis.MangaTranslatorGeminiDom;
 const GeminiObserver = globalThis.MangaTranslatorGeminiObserver;
 const GeminiEditor = globalThis.MangaTranslatorGeminiEditor;
-if (!GeminiDom || !GeminiObserver || !GeminiEditor) {
-    throw new Error('Módulos Gemini DOM/Observer/Editor não foram carregados antes de content_gemini.js');
+const GeminiTemporaryChat = globalThis.MangaTranslatorGeminiTemporaryChat;
+if (!GeminiDom || !GeminiObserver || !GeminiEditor || !GeminiTemporaryChat) {
+    throw new Error('Módulos Gemini DOM/Observer/Editor/TemporaryChat não foram carregados antes de content_gemini.js');
 }
 
 // ── Keep-alive sob demanda ───────────────────────────────────────────────────
@@ -170,248 +171,9 @@ function waitForElement(selector, timeout = 20000) {
     });
 }
 
-// ── TemporaryChatActivator (Conversa Momentânea / Modo Temporário do Gemini) ──
-const TemporaryChatActivator = {
-    sleep(ms) {
-        return new Promise((r) => setTimeout(r, ms));
-    },
-
-    triggerClick(el) {
-        if (!el) return false;
-        try { el.focus({ preventScroll: true }); } catch (e) {}
-        const rect = el.getBoundingClientRect();
-        const clientX = (rect && rect.width > 0) ? rect.left + rect.width / 2 : 0;
-        const clientY = (rect && rect.height > 0) ? rect.top + rect.height / 2 : 0;
-        const opts = { bubbles: true, cancelable: true, view: window, clientX, clientY };
-
-        try { el.dispatchEvent(new PointerEvent('pointerdown', opts)); } catch (e) {}
-        try { el.dispatchEvent(new MouseEvent('mousedown', opts)); } catch (e) {}
-        try { el.dispatchEvent(new PointerEvent('pointerup', opts)); } catch (e) {}
-        try { el.dispatchEvent(new MouseEvent('mouseup', opts)); } catch (e) {}
-        try { el.click(); } catch (e) {}
-        return true;
-    },
-
-    findInTree(root, predicate) {
-        if (!root) return null;
-        try {
-            if (predicate(root)) return root;
-        } catch (e) {}
-
-        try {
-            if (root.shadowRoot) {
-                const found = this.findInTree(root.shadowRoot, predicate);
-                if (found) return found;
-            }
-        } catch (e) {}
-
-        const children = root.children || [];
-        for (let i = 0; i < children.length; i++) {
-            const found = this.findInTree(children[i], predicate);
-            if (found) return found;
-        }
-        return null;
-    },
-
-    findTempChatButton() {
-        const keywords = [
-            'momentân',
-            'momentan',
-            'temporár',
-            'temporar',
-            'temporary'
-        ];
-
-        const allButtons = Array.from(document.querySelectorAll('button, [role="button"], [role="switch"], a, div[tabindex], span[tabindex]'));
-        for (const b of allButtons) {
-            const txt = (b.innerText || b.textContent || '').trim().toLowerCase();
-            const label = (b.getAttribute('aria-label') || '').toLowerCase();
-            const title = (b.getAttribute('title') || '').toLowerCase();
-
-            for (const kw of keywords) {
-                if (txt.includes(kw) || label.includes(kw) || title.includes(kw)) {
-                    return b.closest('button, [role="button"], a') || b;
-                }
-            }
-        }
-
-        const testIdSelectors = [
-            'button[data-test-id="temp-chat-button"]',
-            '[data-test-id="temp-chat-button"]',
-            'button[data-test-id*="temp-chat"]',
-            '[data-test-id*="temp-chat"]',
-            'button[data-test-id*="moment"]',
-            '[data-test-id*="moment"]'
-        ];
-        for (const sel of testIdSelectors) {
-            const el = document.querySelector(sel);
-            if (el) return el;
-        }
-
-        return this.findInTree(document.body, (node) => {
-            if (!node) return false;
-            const txt = (node.innerText || node.textContent || '').toLowerCase();
-            const label = (node.getAttribute ? node.getAttribute('aria-label') || '' : '').toLowerCase();
-            const title = (node.getAttribute ? node.getAttribute('title') || '' : '').toLowerCase();
-            const tid = (node.getAttribute ? node.getAttribute('data-test-id') || '' : '').toLowerCase();
-
-            if (keywords.some(kw => txt.includes(kw) || label.includes(kw) || title.includes(kw) || tid.includes(kw))) return true;
-            return false;
-        });
-    },
-
-    findButtonByPosition() {
-        const winW = window.innerWidth;
-        const candidates = [];
-
-        const allClickables = Array.from(document.querySelectorAll('button, [role="button"], a, div[tabindex], span[tabindex]'));
-        for (const el of allClickables) {
-            const rect = el.getBoundingClientRect();
-            if (rect.top >= 0 && rect.top <= 90 && rect.right >= (winW - 450) && rect.left <= winW) {
-                const txt = (el.innerText || el.textContent || '').trim().toLowerCase();
-                const isPill = rect.width >= 70 && rect.height >= 24;
-                const hasMomentKeyword = txt.includes('moment') || txt.includes('conversa') || txt.includes('ativar');
-
-                if (isPill || hasMomentKeyword) {
-                    candidates.push({
-                        el: el.closest('button, [role="button"]') || el,
-                        rect,
-                        priority: hasMomentKeyword ? 10 : (isPill ? 5 : 1)
-                    });
-                }
-            }
-        }
-
-        if (candidates.length > 0) {
-            candidates.sort((a, b) => b.priority - a.priority);
-            return candidates[0].el;
-        }
-
-        const testPoints = [
-            { x: winW - 140, y: 35 },
-            { x: winW - 180, y: 35 },
-            { x: winW - 100, y: 35 },
-            { x: winW - 220, y: 35 }
-        ];
-
-        for (const pt of testPoints) {
-            try {
-                const elAtPt = document.elementFromPoint(pt.x, pt.y);
-                if (elAtPt) {
-                    const btn = elAtPt.closest('button, [role="button"], a, div[tabindex]') || elAtPt;
-                    const txt = (btn.innerText || btn.textContent || '').toLowerCase();
-                    if (txt.includes('moment') || txt.includes('conversa') || txt.includes('ativar') || btn.tagName === 'BUTTON') {
-                        return btn;
-                    }
-                }
-            } catch (e) {}
-        }
-
-        return null;
-    },
-
-    isAlreadyActive(btn) {
-        if (btn) {
-            const txt = (
-                (btn.innerText || btn.textContent || '') + ' ' +
-                (btn.getAttribute ? (btn.getAttribute('aria-label') || '') + ' ' + (btn.getAttribute('title') || '') : '')
-            ).trim().toLowerCase();
-            // Se o texto é "Desativar conversa momentânea", então já está ATIVO!
-            if (txt.includes('desativar') && (txt.includes('moment') || txt.includes('conversa') || txt.includes('temporár') || txt.includes('temporary') || txt.includes('chat'))) {
-                return true;
-            }
-            // Se diz explicitamente "Ativar", está INATIVO
-            if (txt.includes('ativar') || txt.includes('turn on') || txt.includes('enable')) {
-                return false;
-            }
-
-            if (btn.getAttribute('aria-checked') === 'true') return true;
-            if (btn.getAttribute('aria-pressed') === 'true') return true;
-            if (btn.getAttribute('data-state') === 'active') return true;
-
-            const cls = (btn.className || '').toString().toLowerCase();
-            if (cls.includes('active') || cls.includes('selected') || cls.includes('checked')) {
-                return true;
-            }
-        }
-
-        // Checa indicadores ou chips específicos de conversa momentânea na página
-        const indicators = document.querySelectorAll('[data-test-id*="moment"], [data-test-id*="temp-chat"], .momentary-indicator, .temp-chat-indicator');
-        for (const ind of indicators) {
-            const txt = (ind.innerText || ind.textContent || '').toLowerCase();
-            if (txt.includes('momentân') || txt.includes('momentan') || txt.includes('temporár') || txt.includes('temporary')) {
-                return true;
-            }
-        }
-
-        // A UI atual do Gemini também sinaliza o modo temporário por uma tela/banner
-        // informativo e, em algumas variantes, apenas por um botão de fechar.
-        // Use frases específicas para evitar considerar qualquer menção genérica a
-        // "temporário" como prova de que o modo está ativo.
-        const closeControls = document.querySelectorAll('button[aria-label], [role="button"][aria-label]');
-        for (const control of closeControls) {
-            const label = (control.getAttribute('aria-label') || '').trim().toLowerCase();
-            const isClose = label.includes('fechar') || label.includes('close');
-            const isTemporary = label.includes('momentân') || label.includes('momentan') ||
-                label.includes('temporár') || label.includes('temporar') || label.includes('temporary');
-            if (isClose && isTemporary) return true;
-        }
-
-        const pageText = (document.body && (document.body.innerText || document.body.textContent) || '')
-            .replace(/\s+/g, ' ')
-            .trim()
-            .toLowerCase();
-
-        const portugueseActiveScreen =
-            (pageText.includes('só dando uma passadinha') || pageText.includes('so dando uma passadinha')) &&
-            (pageText.includes('não aparecem nas conversas recentes') || pageText.includes('nao aparecem nas conversas recentes'));
-
-        const portugueseHistoryBanner =
-            (pageText.includes('conversas temporárias') || pageText.includes('conversas temporarias') ||
-             pageText.includes('conversas momentâneas') || pageText.includes('conversas momentaneas')) &&
-            (pageText.includes('não aparecem no seu histórico') || pageText.includes('nao aparecem no seu historico'));
-
-        const englishActiveScreen =
-            pageText.includes('just passing through') &&
-            (pageText.includes("temporary chats don’t appear in recent chats") ||
-             pageText.includes("temporary chats don't appear in recent chats"));
-
-        if (portugueseActiveScreen || portugueseHistoryBanner || englishActiveScreen) return true;
-
-        return false;
-    },
-
-    async ensureTemporaryChatActive(maxSeconds = 12) {
-        debugConsole('log', '[MangaTranslator Gemini] Verificando status da "Conversa momentânea/temporária"...');
-        const startTime = Date.now();
-
-        while (Date.now() - startTime < maxSeconds * 1000) {
-            let btn = this.findTempChatButton() || this.findButtonByPosition();
-
-            if (btn) {
-                if (this.isAlreadyActive(btn)) {
-                    debugConsole('log', '[MangaTranslator Gemini] Conversa temporária já está ATIVADA na página.');
-                    return { success: true, alreadyActive: true };
-                }
-
-                const label = (btn.innerText || btn.textContent || btn.getAttribute('aria-label') || '').trim();
-                debugConsole('log', `[MangaTranslator Gemini] Botão de conversa temporária encontrado ("${label}"). Acionando clique...`);
-                this.triggerClick(btn);
-                await this.sleep(600);
-
-                const btnAfter = this.findTempChatButton() || this.findButtonByPosition();
-                const activeNow = this.isAlreadyActive(btnAfter) || !((btnAfter?.innerText || '').toLowerCase().includes('ativar'));
-                debugConsole('log', '[MangaTranslator Gemini] Conversa temporária acionada com sucesso.', { activeNow });
-                return { success: true, activated: true };
-            }
-
-            await this.sleep(500);
-        }
-
-        debugConsole('warn', '[MangaTranslator Gemini] Não foi possível localizar o botão de Conversa Momentânea após tentativas.');
-        return { success: false, notFound: true };
-    }
-};
+// Compatibilidade temporária com testes/chamadas existentes. A implementação
+// real vive em gemini/temporary-chat.js e retorna estados verificáveis.
+const TemporaryChatActivator = GeminiTemporaryChat.createLegacyAdapter({ root: document });
 
 function getImageSource(img) {
     return GeminiDom.getImageSource(img);
@@ -1096,10 +858,31 @@ async function processGeminiJob() {
             debugConsole('log', '[MangaTranslator Gemini] Ativando conversa temporária...');
             sendLog('info', 'GEMINI_STEP_TEMP_CHAT', 'Ativando conversa temporária no Gemini', {});
             try {
-                tempChatResult = await TemporaryChatActivator.ensureTemporaryChatActive(12);
-                sendLog('info', 'GEMINI_TEMP_CHAT_STATUS', 'Status da conversa temporária', tempChatResult);
-                if (tempChatResult && (tempChatResult.activated || tempChatResult.alreadyActive)) {
+                const tempStatus = await GeminiTemporaryChat.ensureActive({
+                    root: document,
+                    timeoutMs: 12000,
+                    sleep,
+                    onLegacyFallback: () => {
+                        sendLog('warn', 'GEMINI_TEMP_CHAT_POSITIONAL_FALLBACK', 'Fallback posicional semântico utilizado', {});
+                    },
+                });
+
+                tempChatResult = {
+                    success: tempStatus.status === 'already_active' || tempStatus.status === 'activated_verified',
+                    alreadyActive: tempStatus.status === 'already_active',
+                    activated: tempStatus.status === 'activated_verified',
+                    notFound: tempStatus.status === 'unavailable',
+                    verificationFailed: tempStatus.status === 'verification_failed',
+                    status: tempStatus.status,
+                };
+                sendLog('info', 'GEMINI_TEMP_CHAT_STATUS', 'Status da conversa temporária', {
+                    status: tempStatus.status,
+                });
+
+                if (tempStatus.status === 'activated_verified' || tempStatus.status === 'already_active') {
                     await sleep(1500);
+                } else if (tempStatus.status === 'verification_failed') {
+                    sendLog('warn', 'GEMINI_TEMP_CHAT_VERIFY_FAILED', 'Clique não confirmou ativação da conversa temporária', {});
                 }
             } catch (tempErr) {
                 debugConsole('warn', '[MangaTranslator Gemini] Aviso ao ativar conversa temporária:', tempErr && tempErr.message);
