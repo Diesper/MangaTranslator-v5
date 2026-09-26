@@ -9,6 +9,8 @@ const path = require('path');
 const { getRuntimeMock, getStorageMock } = require('../../mocks/chrome-api.mock.js');
 
 const CONTENT_GEMINI_PATH = path.resolve(__dirname, '../../../extension/content_gemini.js');
+const GEMINI_SELECTORS_PATH = path.resolve(__dirname, '../../../extension/gemini/selectors.js');
+const GEMINI_DOM_PATH = path.resolve(__dirname, '../../../extension/gemini/dom.js');
 
 function delay(ms = 0) {
     return new Promise(resolve => setTimeout(resolve, ms));
@@ -223,6 +225,8 @@ describe('v6.0 Elevação de Resolução CDN (=s0) — content_gemini.js', () =>
         });
 
         jest.isolateModules(() => {
+            require(GEMINI_SELECTORS_PATH);
+            require(GEMINI_DOM_PATH);
             require(CONTENT_GEMINI_PATH);
         });
 
