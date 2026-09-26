@@ -21,7 +21,7 @@
 - [x] PASSO 7 — remover fallback de `storage.get(null)`.
 - [x] PASSO 8 — remover keep-alive prematuro.
 - [x] PASSO 9 — extrair `gemini/selectors.js` e `gemini/dom.js`.
-- [ ] PASSO 10 — criar `gemini/observer.js`.
+- [x] PASSO 10 — criar `gemini/observer.js`.
 - [ ] PASSO 11 — instalar observer antes do submit.
 - [ ] PASSO 12 — mudar click/trigger para “attempt”, não “success”.
 - [ ] PASSO 13 — remover mutação forçada de `disabled`.
@@ -76,12 +76,12 @@
 - [ ] CI do PR 3 verde.
 
 ### PR 4 — Observer V2
-- [ ] `gemini/observer.js`.
-- [ ] Ownership por response container.
-- [ ] Stop/Error exigem visibilidade real.
-- [ ] `generationActiveObserved`.
-- [ ] Cleanup idempotente.
-- [ ] OBS-01 a OBS-12.
+- [x] `gemini/observer.js`.
+- [x] Ownership por response container.
+- [x] Stop/Error exigem visibilidade real.
+- [x] `generationActiveObserved`.
+- [x] Cleanup idempotente.
+- [x] OBS-01 a OBS-12.
 - [ ] CI do PR 4 verde.
 
 ### PR 5 — Submit confirmado
@@ -161,6 +161,8 @@
 - [ ] Logs não armazenam prompt, signed URL, imagem, cookie ou token.
 
 ## Notas de execução
+
+- PR 4 adiciona Observer V2 isolado e ainda não troca o polling do runtime. O observer instala ownership por response novo, baseline de imagens/erros, coalescing de mutations, confirmação de submit e cleanup idempotente.
 
 - PR 3 extraiu seletores e helpers DOM sem alterar intencionalmente o pipeline. `content_gemini.js` delega `getImageSource`, blacklist de imagens, ownership por response, deep traversal, editable lookup e send-button lookup ao novo módulo.
 
