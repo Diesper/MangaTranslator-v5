@@ -7,7 +7,7 @@
 > série v5.x. O arquivo anterior permanece apenas como registro histórico das
 > etapas de refatoração.
 >
-> **Data da consolidação:** 20/09/2026.
+> **Data da consolidação:** 26/09/2026.
 >
 > **Escopo da auditoria:** manifesto, Service Worker, módulos de background,
 > content scripts, cache perceptual, IndexedDB, persistência de capítulos,
@@ -29,7 +29,7 @@
 10. [Cache Global de Traduções — GTC](#10-cache-global-de-traduções--gtc)
 11. [Pipeline do content_manga](#11-pipeline-do-content_manga)
 12. [Automação do Gemini](#12-automação-do-gemini)
-13. [Anti-hibernação e script MAIN](#13-anti-hibernação-e-script-main)
+13. [Anti-throttling e script MAIN](#13-anti-throttling-e-script-main)
 14. [Popup, opções, UI compartilhada e Reader](#14-popup-opções-ui-compartilhada-e-reader)
 15. [Compatibilidade e legado que ainda existem](#15-compatibilidade-e-legado-que-ainda-existem)
 16. [Segurança, origem e limites de confiança](#16-segurança-origem-e-limites-de-confiança)
@@ -137,7 +137,7 @@ MangaTranslator/
 │       └── ci.yml
 ├── docs/
 │   ├── DOCUMENTACAO_v5.1.1_ATUALIZACAO.md   # histórico
-│   └── v6.0.md                                # fonte técnica atual
+│   └── Documentação_V6.0.md                  # fonte técnica atual
 ├── extension/
 │   ├── manifest.json
 │   ├── background.js
