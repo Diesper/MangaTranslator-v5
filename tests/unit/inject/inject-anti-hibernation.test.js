@@ -8,10 +8,11 @@ const path = require('path');
  *
  * Cobre os 5 sistemas implementados em inject.js:
  * 1. Falsificação de visibilidade (visibilityState, hidden, hasFocus)
- * 2. Substituição de requestAnimationFrame com setInterval 100ms
+ * 2. requestAnimationFrame/requestIdleCallback com cadência progressiva
  * 3. Supressão de eventos de blur/pagehide
- * 4. Ghost interactions (mousemove a cada 1.5s)
- * 5. Guard de idempotência (__anti_hibernation_injected)
+ * 4. Modos minimal/balanced/legacy com foco apenas em escalada
+ * 5. Ausência de ghost mousemove aleatório
+ * 6. Guard de idempotência (__anti_hibernation_injected)
  *
  * ABORDAGEM: Testa a lógica de cada sistema isoladamente, sem carregar o inject.js
  * (que requer world:MAIN do Chrome). Usa implementações espelho verificáveis.
@@ -137,9 +138,9 @@ describe('INJ-01/INJ-02/INJ-03/INJ-04/INJ-05/INJ-06/INJ-07/INJ-08/INJ-09/INJ-10/
         });
     });
 
-    // ── 4. Substituição de requestAnimationFrame ─────────────────────────────
+    // ── 4. Fila requestAnimationFrame ────────────────────────────────────────
 
-    describe('Substituição de requestAnimationFrame por setInterval 100ms', () => {
+    describe('Fila requestAnimationFrame drenável pelo anti-throttling', () => {
         beforeEach(() => jest.useFakeTimers());
         afterEach(() => jest.useRealTimers());
 
@@ -202,50 +203,53 @@ describe('INJ-01/INJ-02/INJ-03/INJ-04/INJ-05/INJ-06/INJ-07/INJ-08/INJ-09/INJ-10/
         });
     });
 
-    // ── 5. Ghost Interactions ─────────────────────────────────────────────────
+    // ── 5. Anti-throttling progressivo ────────────────────────────────────
 
-    describe('Ghost interactions — mousemove a cada 1.5s', () => {
-        beforeEach(() => jest.useFakeTimers());
-        afterEach(() => jest.useRealTimers());
+    describe('Política progressiva minimal/balanced/legacy', () => {
+        test('source define os três níveis e inicia em minimal', () => {
+            const source = fs.readFileSync(
+                path.resolve(__dirname, '../../../extension/inject.js'),
+                'utf8'
+            );
 
-        test('dispara mousemove com coordenadas do centro da janela', () => {
-            const receivedEvents = [];
-            document.addEventListener('mousemove', (e) => {
-                receivedEvents.push({ x: e.clientX, y: e.clientY });
-            });
-
-            // Simula o setInterval do inject.js
-            const ghostInterval = setInterval(() => {
-                document.dispatchEvent(new MouseEvent('mousemove', {
-                    bubbles: true,
-                    cancelable: true,
-                    clientX: window.innerWidth / 2,
-                    clientY: window.innerHeight / 2,
-                }));
-            }, 1500);
-
-            jest.advanceTimersByTime(1500);
-            expect(receivedEvents).toHaveLength(1);
-            expect(receivedEvents[0].x).toBe(window.innerWidth / 2);
-
-            jest.advanceTimersByTime(1500);
-            expect(receivedEvents).toHaveLength(2);
-
-            clearInterval(ghostInterval);
+            expect(source).toContain("new Set(['minimal', 'balanced', 'legacy'])");
+            expect(source).toContain("let antiThrottleMode = 'minimal'");
+            expect(source).toContain('MANGA_TRANSLATOR_ANTI_THROTTLE_SET_MODE');
         });
 
-        test('apenas mousemove (sem wheel nem keydown que causavam bugs)', () => {
-            const eventTypes = [];
-            ['mousemove', 'keydown', 'wheel'].forEach(type => {
-                document.addEventListener(type, () => eventTypes.push(type));
-            });
+        test('minimal não mantém intervalo periódico de foco', () => {
+            const source = fs.readFileSync(
+                path.resolve(__dirname, '../../../extension/inject.js'),
+                'utf8'
+            );
 
-            // Somente mousemove deve ser disparado
-            document.dispatchEvent(new MouseEvent('mousemove', { bubbles: true }));
+            expect(source).toContain('minimal: 0');
+            expect(source).toContain('balanced: 5000');
+            expect(source).toContain('legacy: 1000');
+            expect(source).not.toContain('setInterval(dispatchFocusEvents, 1000)');
+        });
 
-            expect(eventTypes).toContain('mousemove');
-            expect(eventTypes).not.toContain('keydown');
-            expect(eventTypes).not.toContain('wheel');
+        test('mousemove aleatório foi removido do anti-throttling', () => {
+            const source = fs.readFileSync(
+                path.resolve(__dirname, '../../../extension/inject.js'),
+                'utf8'
+            );
+
+            expect(source).not.toContain("new MouseEvent('mousemove'");
+            expect(source).not.toContain('Math.random() * (window.innerWidth');
+            expect(source).toContain('Ghost mousemove removido');
+        });
+
+        test('cadência do rAF diminui no baseline e escala progressivamente', () => {
+            const source = fs.readFileSync(
+                path.resolve(__dirname, '../../../extension/inject.js'),
+                'utf8'
+            );
+
+            expect(source).toContain('minimal: 250');
+            expect(source).toContain('balanced: 100');
+            expect(source).toContain('legacy: 50');
+            expect(source).toContain('scheduleRafFlush');
         });
     });
 
