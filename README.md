@@ -3,7 +3,7 @@
 > **Versão atual: 6.0** — extensão para navegadores Chromium (Manifest V3) para tradução automática, contínua e em alta resolução de mangás e quadrinhos na web utilizando o Google Gemini.
 
 [![Manifest V3](https://img.shields.io/badge/Chrome_Extension-Manifest_V3-4285F4?logo=googlechrome&logoColor=white)](https://developer.chrome.com/docs/extensions/mv3/intro/)
-[![CI](https://github.com/Diesper/MangaTranslator-v5/actions/workflows/ci.yml/badge.svg)](https://github.com/Diesper/MangaTranslator-v5/actions/workflows/ci.yml)
+[![CI](https://github.com/Diesper/Manga_Translator/actions/workflows/ci.yml/badge.svg)](https://github.com/Diesper/Manga_Translator/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![Tests: 100% Passed](https://img.shields.io/badge/Tests-Passing-brightgreen.svg)](tests/)
 
@@ -11,7 +11,7 @@
 
 ## ✨ Principais Funcionalidades
 
-- **Automação Resiliente com Gemini:** Tradução de painéis e balões de diálogo com injeção segura de conteúdo no Gemini (`gemini.google.com`) sem necessidade de chaves de API pagas.
+- **Automação Resiliente com Gemini:** pipeline modular com claim de job, Observer V2 orientado a eventos, submit confirmado por transição observável, attachment verificado e extração com fallbacks controlados — sem necessidade de chaves de API pagas.
 - **Cache Perceptual Visual (GTC Fingerprint):** Identificação de imagens por assinatura perceptual dHash/aHash, impedindo retraduções de imagens já processadas mesmo com URLs dinâmicas ou CDN com tokens expiráveis.
 - **Armazenamento Transacional (StorageManager + IndexedDB):** Persistência atômica com eliminação automática de assets órfãos e sem o problema de *read-modify-write* em acessos concorrentes.
 - **Ciclo de Vida Durável (Manifest V3):** Reconciliação automática de abas e estado persistente resistente ao descarregamento (*unload*) do Service Worker do Chrome.
@@ -45,7 +45,8 @@ Como a extensão está em formato de código aberto, você pode carregá-la dire
 │   ├── background.js          # Bootstrap do Service Worker + wiring dos módulos
 │   ├── background/            # Router, estado, lifecycle, watchdog, reconciliação e actions
 │   ├── content_manga.js       # Content script injetado nas páginas de mangá
-│   ├── content_gemini.js      # Content script para automação na interface Gemini
+│   ├── content_gemini.js      # Bootstrap/claim/keepalive/handlers do worker Gemini
+│   ├── gemini/                 # DOM, Observer V2, editor, attachment, result, deletion e job-runner
 │   ├── gtc-fingerprint.js     # Hashing perceptual e extração de assinaturas
 │   ├── gtc-indexeddb.js       # Camada de banco de dados visual IndexedDB
 │   ├── storage-manager.js     # Gerenciamento atômico de blobs e transações
@@ -73,7 +74,7 @@ Os testes de popup e content script também cobrem o filtro dimensional: valores
 personalizados, atualização imediata após alteração no armazenamento,
 sincronização entre campos/sliders/prévia e o reset para o padrão.
 
-> **Baseline validado em 20/09/2026:** **81/81 suítes Jest (574/574 testes)** e **8/8 testes E2E Playwright**, sem flaky na execução final de referência. A pipeline também valida sintaxe recursiva dos scripts, Manifest V3, smoke/visual e cobertura.
+> A pipeline atual trata Jest, smoke/visual, validação de sintaxe/Manifest V3, cobertura e Playwright E2E como gates reais. Os cenários E2E incluem o fluxo padrão e os modos `minimized_window` e `background_delete`.
 
 ### Testes de Fumaça (Smoke Tests)
 Validação ultrarrápida do ciclo de vida, transações IndexedDB e isolamento de lote:
