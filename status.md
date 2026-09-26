@@ -125,7 +125,7 @@
 - [x] `gemini/deletion.js`.
 - [x] Menu/confirm/settle/recovery movidos.
 - [x] Idempotência preservada por controller único com lock interno.
-- [ ] CI do PR 10 verde.
+- [x] CI do PR 10 verde — run #469.
 
 ### PR 11 — Job runner e redução do monólito
 - [ ] `gemini/job-runner.js`.
@@ -161,6 +161,8 @@
 - [ ] Logs não armazenam prompt, signed URL, imagem, cookie ou token.
 
 ## Notas de execução
+
+- PR 10: CI completo verde no run #469 (HEAD anterior ao commit documental de status).
 
 - PR 10 extrai a exclusão para `gemini/deletion.js` com um controller único por content script.
 - O lock `deletionInProgress`, seleção da conversa pelo chatId, menu Excluir, confirmação, settle, scroll lock e logs de deleção ficam no módulo.
