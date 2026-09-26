@@ -138,7 +138,7 @@
 - [x] Focus interval removido do baseline e limitado à escalada balanced/legacy.
 - [x] Modos internos `minimal` / `balanced` / `legacy` implementados.
 - [x] E2E adicionados para `background_delete` e `minimized_window`.
-- [ ] CI do PR 12 verde.
+- [x] CI do PR 12 verde — run #529.
 
 ### PR 13 — Limpeza do legado
 - [ ] Observer legado removido.
@@ -161,6 +161,8 @@
 - [ ] Logs não armazenam prompt, signed URL, imagem, cookie ou token.
 
 ## Notas de execução
+
+- PR 12: CI completo verde no run #529.
 
 - PR 12 substitui o anti-throttling permanente por níveis progressivos: `minimal` (padrão), `balanced` (background/minimized) e `legacy` apenas na segunda tentativa de submit.
 - O loop de `mousemove` aleatório foi removido. O foco periódico deixou de existir em `minimal`; balanced usa 5 s e legacy usa 1 s somente durante escalada.
