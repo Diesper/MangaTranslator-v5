@@ -31,8 +31,8 @@
 - [x] PASSO 17 — extrair attachment/result/deletion.
 - [x] PASSO 18 — criar job runner.
 - [x] PASSO 19 — reduzir anti-throttling.
-- [ ] PASSO 20 — remover legado.
-- [ ] PASSO 21 — atualizar documentação/README.
+- [x] PASSO 20 — remover legado.
+- [x] PASSO 21 — atualizar documentação/README.
 
 ## PRs planejados
 
@@ -73,7 +73,7 @@
 - [x] `gemini/dom.js`.
 - [x] Manifest com load order explícito.
 - [x] Funções puras testáveis por `require()`.
-- [ ] CI do PR 3 verde.
+- [x] CI do PR 3 verde — run #333.
 
 ### PR 4 — Observer V2
 - [x] `gemini/observer.js`.
@@ -82,7 +82,7 @@
 - [x] `generationActiveObserved`.
 - [x] Cleanup idempotente.
 - [x] OBS-01 a OBS-12.
-- [ ] CI do PR 4 verde.
+- [x] CI do PR 4 verde — run #396.
 
 ### PR 5 — Submit confirmado
 - [x] `gemini/editor.js`.
@@ -93,7 +93,7 @@
 - [x] Máximo de 2 tentativas.
 - [x] Falha curta `GEMINI_SUBMISSION_NOT_CONFIRMED`.
 - [x] SEND-01 a SEND-07.
-- [ ] CI do PR 5 verde.
+- [x] CI do PR 5 verde — run #398.
 
 ### PR 6 — Observer como fonte de resultado
 - [x] Polling pesado de 1 s removido do caminho primário.
@@ -101,14 +101,14 @@
 - [x] Resposta instantânea capturada.
 - [x] Imagem antiga não capturada.
 - [x] CG-36 atualizado; E2E de resposta rápida permanece para o gate desta etapa.
-- [ ] CI do PR 6 verde.
+- [x] CI do PR 6 verde — run #407.
 
 ### PR 7 — Temporary Chat verificado
 - [x] `gemini/temporary-chat.js`.
 - [x] Estado relido após clique controla o retorno; falso sucesso de `activeNow` removido.
 - [x] Fallback geométrico exige semântica.
 - [x] TEMP-01 a TEMP-05.
-- [ ] CI do PR 7 verde.
+- [x] CI do PR 7 verde — run #410.
 
 ### PR 8 — Attachment modular
 - [x] `gemini/attachment.js`.
@@ -125,13 +125,13 @@
 - [x] `gemini/deletion.js`.
 - [x] Menu/confirm/settle/recovery movidos.
 - [x] Idempotência preservada por controller único com lock interno.
-- [ ] CI do PR 10 verde.
+- [x] CI do PR 10 verde — run #480.
 
 ### PR 11 — Job runner e redução do monólito
 - [x] `gemini/job-runner.js`.
 - [x] `content_gemini.js` reduzido a bootstrap/claim/keepalive/runner/handlers.
 - [x] Helper baseado em `new Function` aposentado para módulos novos; testes novos usam módulos diretamente.
-- [ ] CI do PR 11 verde.
+- [x] CI do PR 11 verde — run #490.
 
 ### PR 12 — Anti-throttling progressivo
 - [x] Mousemove aleatório removido.
@@ -152,15 +152,18 @@
 
 ## Invariantes que serão preservados
 
-- [ ] `jobId` lógico permanece independente de `tabId`.
-- [ ] Nenhuma aba manual do Gemini executa automação sem claim válido.
-- [ ] Nenhum submit é considerado sucesso apenas por click/Enter/CustomEvent.
-- [ ] Finalização continua idempotente.
-- [ ] DOM ACK continua sendo a barreira para liberar slot após entrega.
-- [ ] Cadeia de extração atual não é simplificada antes da estabilização de ownership/observer.
-- [ ] Logs não armazenam prompt, signed URL, imagem, cookie ou token.
+- [x] `jobId` lógico permanece independente de `tabId`.
+- [x] Nenhuma aba manual do Gemini executa automação sem claim válido.
+- [x] Nenhum submit é considerado sucesso apenas por click/Enter/CustomEvent.
+- [x] Finalização continua idempotente.
+- [x] DOM ACK continua sendo a barreira para liberar slot após entrega.
+- [x] Cadeia de extração atual foi preservada após estabilização de ownership/observer.
+- [x] Logs sanitizam prompt, signed URL, imagem/base64, cookie e token.
 
 ## Notas de execução
+
+- Runs históricos reconciliados no tracker: PR 3 #333, PR 4 #396, PR 5 #398, PR 6 #407, PR 7 #410, PR 10 #480 e PR 11 #490.
+- Invariantes finais foram reconferidos no código modular: ownership lógico por jobId, claim obrigatório, submit observável, finalização idempotente, ACK de DOM, cadeia de extração e sanitização de logs.
 
 - PR 13 remove o legado transitório: fallback posicional do Temporary Chat, adapter legado, flag de submit já confirmado e loader textual baseado em `new Function`.
 - `content_gemini.js` passa a exportar sua API somente em CommonJS de teste e não autoexecuta nesse ambiente; no navegador mantém o bootstrap normal. Após remover wrappers transitórios, o arquivo ficou com ~451 linhas.
