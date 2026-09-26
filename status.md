@@ -66,7 +66,7 @@
 - [x] Full scan órfão removido.
 - [x] `openKeepAlive()` só após claim válido.
 - [x] KEEP-01 a KEEP-05.
-- [ ] CI do PR 2 verde.
+- [x] CI do PR 2 verde — run #323.
 
 ### PR 3 — Fundação modular Gemini
 - [x] `gemini/selectors.js`.
@@ -161,6 +161,8 @@
 - [ ] Logs não armazenam prompt, signed URL, imagem, cookie ou token.
 
 ## Notas de execução
+
+- PR 2: CI completo verde no run #323 (HEAD `570b029b`).
 
 - PR 3 extraiu seletores e helpers DOM sem alterar intencionalmente o pipeline. `content_gemini.js` delega `getImageSource`, blacklist de imagens, ownership por response, deep traversal, editable lookup e send-button lookup ao novo módulo.
 
