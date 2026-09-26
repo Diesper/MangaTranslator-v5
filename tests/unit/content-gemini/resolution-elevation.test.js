@@ -237,7 +237,6 @@ describe('v6.0 Elevação de Resolução CDN (=s0) — content_gemini.js', () =>
             require(GEMINI_ATTACHMENT_PATH);
             require(GEMINI_TEMP_CHAT_PATH);
             require(GEMINI_RESULT_EXTRACTOR_PATH);
-    require(GEMINI_RESULT_EXTRACTOR_PATH);
             require(CONTENT_GEMINI_PATH);
         });
 
