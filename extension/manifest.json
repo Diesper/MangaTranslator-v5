@@ -61,6 +61,7 @@
         "gemini/observer.js",
         "gemini/editor.js",
         "gemini/temporary-chat.js",
+        "gemini/attachment.js",
         "content_gemini.js"
       ],
       "run_at": "document_idle"
