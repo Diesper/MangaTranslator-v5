@@ -9,6 +9,8 @@
       state, log, syncState, sendProgress, armWatchdog, clearWatchdog,
       indexAddJob, indexRemoveJob, indexJobsOfBatch, delay, generateId,
       markFinalized, isFinalized, finalizedMarkerTtlMinutes,
+      resolveCanonicalTabId = async tabId => tabId,
+      migrateTabIdentity = async (_oldTabId, newTabId) => newTabId,
     } = deps;
 
     const markerKey = tabId => `gemini_finalized_${tabId}`;
@@ -69,20 +71,22 @@
       return true;
     }
 
-    function updateJobState(geminiTabId, patch = {}) {
-      if (geminiTabId === null || geminiTabId === undefined) return Promise.resolve(null);
-      const jobKey = `gemini_job_${geminiTabId}`;
-      return chrome.storage.local.get([jobKey]).then(data => {
-        const job = data && data[jobKey];
-        if (!job) return null;
-        const next = { ...job, ...patch, updatedAt: Date.now() };
-        return chrome.storage.local.set({ [jobKey]: next }).then(() => next);
-      });
+    async function updateJobState(geminiTabId, patch = {}) {
+      if (geminiTabId === null || geminiTabId === undefined) return null;
+      const canonicalTabId = await resolveCanonicalTabId(geminiTabId);
+      const jobKey = `gemini_job_${canonicalTabId}`;
+      const data = await chrome.storage.local.get([jobKey]);
+      const job = data && data[jobKey];
+      if (!job) return null;
+      const next = { ...job, ...patch, geminiTabId: canonicalTabId, canonicalTabId, updatedAt: Date.now() };
+      await chrome.storage.local.set({ [jobKey]: next });
+      return next;
     }
 
     async function assertJobOwnership(sender, jobId) {
-      const tabId = sender && sender.tab ? sender.tab.id : null;
-      if (!jobId || tabId === null) return { owns: false, tabId };
+      const senderTabId = sender && sender.tab ? sender.tab.id : null;
+      if (!jobId || senderTabId === null) return { owns: false, tabId: senderTabId };
+      const tabId = await resolveCanonicalTabId(senderTabId);
       const data = await chrome.storage.local.get([`gemini_job_${tabId}`]);
       const job = data && data[`gemini_job_${tabId}`];
       return { owns: Boolean(job && job.jobId === jobId), tabId };
@@ -160,11 +164,40 @@
         const executionMode = settings.geminiExecutionMode || 'temp_chat';
         const opened = await openGeminiTab(buildGeminiJobUrl(baseUrl, index, jobId), executionMode);
         if (!opened.tab) throw new Error('Não foi possível obter a aba do Gemini');
-        const record = { jobId, batchId, mangaTabId, index, prompt, geminiTabId: opened.tab.id, windowId: opened.windowId, executionMode, state: 'opening', attempt: 1, createdAt: Date.now(), updatedAt: Date.now() };
-        await chrome.storage.local.set({ [`gemini_job_${opened.tab.id}`]: record });
-        indexAddJob({ geminiTabId: opened.tab.id, jobId, batchId, mangaTabId, index });
+        const openedTabId = opened.tab.id;
+        let canonicalTabId = await resolveCanonicalTabId(openedTabId);
+        let record = {
+          jobId, batchId, mangaTabId, index, prompt,
+          geminiTabId: canonicalTabId,
+          canonicalTabId,
+          replacementCount: canonicalTabId === openedTabId ? 0 : 1,
+          windowId: opened.windowId,
+          executionMode,
+          state: 'opening',
+          attempt: 1,
+          createdAt: Date.now(),
+          updatedAt: Date.now(),
+        };
+        await chrome.storage.local.set({ [`gemini_job_${canonicalTabId}`]: record });
+
+        // Fecha a corrida em que onReplaced ocorre entre a primeira resolução
+        // canônica e a persistência do registro.
+        const latestCanonicalTabId = await resolveCanonicalTabId(openedTabId);
+        if (latestCanonicalTabId !== canonicalTabId) {
+          canonicalTabId = await migrateTabIdentity(canonicalTabId, latestCanonicalTabId, { jobId });
+          const migrated = await chrome.storage.local.get([`gemini_job_${canonicalTabId}`]);
+          record = migrated[`gemini_job_${canonicalTabId}`] || { ...record, geminiTabId: canonicalTabId, canonicalTabId };
+        }
+
+        indexAddJob({ geminiTabId: canonicalTabId, jobId, batchId, mangaTabId, index });
         await syncState();
-        armWatchdog(mangaTabId, index, opened.tab.id, jobId);
+        log('info', 'bg', 'TAB_CREATED_FOR_JOB', 'Aba Gemini associada ao job', {
+          oldTabId: openedTabId,
+          newTabId: canonicalTabId,
+          jobIdPrefix: String(jobId).slice(0, 8),
+          index,
+        });
+        armWatchdog(mangaTabId, index, canonicalTabId, jobId);
         return processNextJob();
       } catch (error) {
         state.activeJobsCount = Math.max(0, state.activeJobsCount - 1);
@@ -177,6 +210,7 @@
     }
 
     async function finalizeJob(geminiTabId, mangaTabId, fromError = false) {
+      geminiTabId = await resolveCanonicalTabId(geminiTabId);
       if (isFinalized(geminiTabId)) return false;
       const jobKey = `gemini_job_${geminiTabId}`;
       const key = markerKey(geminiTabId);
