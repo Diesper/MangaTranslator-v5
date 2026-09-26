@@ -6,12 +6,14 @@ const GEMINI_SELECTORS_PATH = path.resolve(__dirname, '../../extension/gemini/se
 const GEMINI_DOM_PATH = path.resolve(__dirname, '../../extension/gemini/dom.js');
 const GEMINI_OBSERVER_PATH = path.resolve(__dirname, '../../extension/gemini/observer.js');
 const GEMINI_EDITOR_PATH = path.resolve(__dirname, '../../extension/gemini/editor.js');
+const GEMINI_TEMP_CHAT_PATH = path.resolve(__dirname, '../../extension/gemini/temporary-chat.js');
 
 function loadContentGeminiModule({ skipAutoProcess = true } = {}) {
     require(GEMINI_SELECTORS_PATH);
     require(GEMINI_DOM_PATH);
     require(GEMINI_OBSERVER_PATH);
     require(GEMINI_EDITOR_PATH);
+    require(GEMINI_TEMP_CHAT_PATH);
     const source = fs.readFileSync(CONTENT_GEMINI_PATH, 'utf8');
     const instrumented = source.replace(
         'processGeminiJob();',
