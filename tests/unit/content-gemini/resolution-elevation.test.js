@@ -13,6 +13,7 @@ const GEMINI_SELECTORS_PATH = path.resolve(__dirname, '../../../extension/gemini
 const GEMINI_DOM_PATH = path.resolve(__dirname, '../../../extension/gemini/dom.js');
 const GEMINI_OBSERVER_PATH = path.resolve(__dirname, '../../../extension/gemini/observer.js');
 const GEMINI_EDITOR_PATH = path.resolve(__dirname, '../../../extension/gemini/editor.js');
+const GEMINI_TEMP_CHAT_PATH = path.resolve(__dirname, '../../../extension/gemini/temporary-chat.js');
 
 function delay(ms = 0) {
     return new Promise(resolve => setTimeout(resolve, ms));
@@ -231,6 +232,7 @@ describe('v6.0 Elevação de Resolução CDN (=s0) — content_gemini.js', () =>
             require(GEMINI_DOM_PATH);
             require(GEMINI_OBSERVER_PATH);
             require(GEMINI_EDITOR_PATH);
+            require(GEMINI_TEMP_CHAT_PATH);
             require(CONTENT_GEMINI_PATH);
         });
 
