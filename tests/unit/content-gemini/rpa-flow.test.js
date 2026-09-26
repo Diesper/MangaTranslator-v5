@@ -278,6 +278,7 @@ describe('content_gemini.js - RPA real do Gemini', () => {
             require(GEMINI_DOM_PATH);
             require(GEMINI_OBSERVER_PATH);
             require(GEMINI_EDITOR_PATH);
+            require(GEMINI_ATTACHMENT_PATH);
             require(GEMINI_TEMP_CHAT_PATH);
             require(CONTENT_GEMINI_PATH);
         });
