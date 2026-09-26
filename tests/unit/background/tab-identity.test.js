@@ -10,6 +10,7 @@ const {
 const STATE_PATH = path.resolve(__dirname, '../../../extension/background/state.js');
 const TAB_IDENTITY_PATH = path.resolve(__dirname, '../../../extension/background/tab-identity.js');
 const RECONCILIATION_PATH = path.resolve(__dirname, '../../../extension/background/jobs-reconciliation.js');
+const LIFECYCLE_PATH = path.resolve(__dirname, '../../../extension/background/jobs-lifecycle.js');
 
 function loadState() {
   delete global.MangaTranslatorState;
@@ -274,4 +275,55 @@ describe('background/tab-identity.js', () => {
     expect((await storage.get('gemini_job_200')).gemini_job_200)
       .toEqual(expect.objectContaining({ geminiTabId: 200, jobId: 'job-r' }));
   });
+  test('TAB-02 lifecycle: alias existente antes da persistência grava somente na chave canônica', async () => {
+    tabs._nextTabId = 100;
+    const identity = createTabIdentity({ state, log });
+    await identity.recordReplacement(200, 100);
+
+    state.patch({
+      jobQueue: [{ mangaTabId: 9, index: 2, prompt: 'translate', batchId: 'batch-x' }],
+      jobIndex: [],
+      stopRequested: false,
+      activeJobsCount: 0,
+      totalJobs: 1,
+      completedJobs: 0,
+    });
+    state._cachedMaxCon = 1;
+
+    delete global.MangaTranslatorJobsLifecycle;
+    jest.isolateModules(() => require(LIFECYCLE_PATH));
+    const lifecycle = global.MangaTranslatorJobsLifecycle.createLifecycle({
+      state,
+      log,
+      syncState: () => state.syncState(),
+      sendProgress: jest.fn(),
+      armWatchdog: jest.fn(async (_mangaTabId, _index, geminiTabId) => geminiTabId),
+      clearWatchdog: jest.fn(),
+      indexAddJob: entry => state.indexAddJob(entry),
+      indexRemoveJob: tabId => state.indexRemoveJob(tabId),
+      indexJobsOfBatch: batchId => state.indexJobsOfBatch(batchId),
+      delay: async () => {},
+      generateId: () => 'job-before-persist',
+      markFinalized: jest.fn(),
+      isFinalized: () => false,
+      finalizedMarkerTtlMinutes: 10,
+      resolveCanonicalTabId: tabId => identity.resolveCanonicalTabId(tabId),
+      migrateTabIdentity: (oldTabId, newTabId, options) => identity.migrateTabIdentity(oldTabId, newTabId, options),
+    });
+
+    await lifecycle.processNextJob();
+
+    const data = await storage.get(['gemini_job_100', 'gemini_job_200']);
+    expect(data.gemini_job_100).toBeUndefined();
+    expect(data.gemini_job_200).toEqual(expect.objectContaining({
+      geminiTabId: 200,
+      canonicalTabId: 200,
+      jobId: 'job-before-persist',
+      index: 2,
+    }));
+    expect(state.jobIndex).toEqual([
+      expect.objectContaining({ geminiTabId: 200, jobId: 'job-before-persist' }),
+    ]);
+  });
+
 });
