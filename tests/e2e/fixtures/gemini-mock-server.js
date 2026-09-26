@@ -140,6 +140,18 @@ function buildGeminiMockHtml() {
   </style>
 </head>
 <body>
+  <nav id="mock-side-nav" aria-label="Conversas" style="padding:8px 16px;background:#0b1015;border-bottom:1px solid #27323d;">
+    <div id="mock-chat-list">
+      <div class="mock-chat-row" data-chat-id="mock-chat">
+        <a href="/app/mock-chat">Conversa do Manga Translator</a>
+        <button type="button" data-test-id="chat-options" aria-haspopup="menu">Opções</button>
+      </div>
+      <div class="mock-chat-row" data-chat-id="other-chat">
+        <a href="/app/other-chat">Outra conversa</a>
+        <button type="button" aria-haspopup="menu">Opções</button>
+      </div>
+    </div>
+  </nav>
   <main>
     <div class="shell">
       <div class="toolbar">
@@ -173,6 +185,7 @@ function buildGeminiMockHtml() {
       const resultZone = document.getElementById('result-zone');
       const sendButton = document.getElementById('send-button');
       const jobIndex = new URL(window.location.href).searchParams.get('jobIndex') || '0';
+      const chatOptionsButton = document.querySelector('[data-chat-id="mock-chat"] [data-test-id="chat-options"]');
 
       let attachmentSeen = false;
       let running = false;
@@ -225,14 +238,58 @@ function buildGeminiMockHtml() {
 
         const img = document.createElement('img');
         img.alt = 'Imagem traduzida do mock';
+        // Mantém o resultado no mesmo origin da página Gemini mock.
+        // Usar localhost aqui enquanto a página roda em 127.0.0.1 tornava a
+        // imagem cross-origin e desviava artificialmente o E2E para o fallback
+        // auxiliar, em vez de testar a cadeia direta de background_delete.
         img.src =
-          'http://localhost:3999/gemini-result-image?jobIndex=' +
+          '/gemini-result-image?jobIndex=' +
           encodeURIComponent(jobIndex) +
           '&t=' +
           Date.now();
         resultZone.appendChild(img);
 
         status.textContent = 'Imagem traduzida pronta';
+      }
+
+      if (chatOptionsButton) {
+        chatOptionsButton.addEventListener('click', () => {
+          document.getElementById('mock-delete-menu')?.remove();
+          const menu = document.createElement('div');
+          menu.id = 'mock-delete-menu';
+          menu.setAttribute('role', 'menu');
+
+          const deleteItem = document.createElement('div');
+          deleteItem.setAttribute('role', 'menuitem');
+          deleteItem.textContent = 'Excluir';
+          deleteItem.tabIndex = 0;
+          deleteItem.addEventListener('click', () => {
+            menu.remove();
+            document.getElementById('mock-delete-dialog')?.remove();
+
+            const dialog = document.createElement('div');
+            dialog.id = 'mock-delete-dialog';
+            dialog.setAttribute('role', 'dialog');
+
+            const confirm = document.createElement('button');
+            confirm.type = 'button';
+            confirm.textContent = 'Excluir';
+            confirm.addEventListener('click', () => {
+              dialog.dataset.confirmed = 'true';
+              status.textContent = 'Conversa excluída pelo mock';
+            });
+
+            const cancel = document.createElement('button');
+            cancel.type = 'button';
+            cancel.textContent = 'Cancelar';
+
+            dialog.append(confirm, cancel);
+            document.body.appendChild(dialog);
+          });
+
+          menu.appendChild(deleteItem);
+          document.body.appendChild(menu);
+        });
       }
 
       editor.addEventListener('paste', event => {
@@ -457,7 +514,11 @@ const server = http.createServer((req, res) => {
         return;
     }
 
-    if (url === '/gemini' || url === '/gemini/') {
+    if (
+        url === '/gemini' ||
+        url === '/gemini/' ||
+        url === '/app/mock-chat'
+    ) {
         res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
         res.end(buildGeminiMockHtml());
         return;

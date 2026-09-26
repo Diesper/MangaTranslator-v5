@@ -47,8 +47,8 @@ async function getBackgroundWorker(context) {
     return context.waitForEvent('serviceworker', { timeout: 15000 });
 }
 
-async function resetExtensionState(backgroundWorker) {
-    await backgroundWorker.evaluate(() => {
+async function resetExtensionState(backgroundWorker, overrides = {}) {
+    await backgroundWorker.evaluate((stateOverrides) => {
         return new Promise(resolve => {
             chrome.storage.local.clear(() => {
                 chrome.storage.local.set({
@@ -56,6 +56,7 @@ async function resetExtensionState(backgroundWorker) {
                     debugMode: false,
                     maxConcurrentJobs: 1,
                     geminiBaseUrl: 'http://127.0.0.1:3999/gemini/',
+                    geminiExecutionMode: 'temp_chat',
                     defaultPrompt: 'Teste E2E controlado do fluxo MV3.',
                     translatorLog: [],
                     deleting_urls: [],
@@ -70,10 +71,11 @@ async function resetExtensionState(backgroundWorker) {
                         completedJobs: 0,
                         activeJobsCount: 0,
                     },
+                    ...(stateOverrides || {}),
                 }, resolve);
             });
         });
-    });
+    }, overrides);
 }
 
 async function readStorage(backgroundWorker, keys) {
@@ -101,9 +103,12 @@ let browserContext;
 let backgroundWorker;
 
 test.describe('E2E-01/E2E-02/E2E-03/E2E-04/E2E-05/E2E-06/E2E-07/E2E-08/E2E-09/E2E-10/E2E-11/E2E-12/E2E-13/E2E-14/E2E-15/E2E-15b/E2E-16/E2E-16b/E2E-17/E2E-18: Automacao UI: Fluxo de Traducao em Massa (E2E)', () => {
-    test.beforeAll(async () => {
+    test.beforeEach(async () => {
         const pathToExtension = getExtensionPath(__dirname);
-        const userDataDir = path.join(os.tmpdir(), `pw-manga-${Date.now()}`);
+        const userDataDir = path.join(
+            os.tmpdir(),
+            `pw-manga-${Date.now()}-${Math.random().toString(36).slice(2)}`
+        );
         const browserMode = getBrowserModeConfig();
         const launchArgs = [
             `--disable-extensions-except=${pathToExtension}`,
@@ -123,15 +128,15 @@ test.describe('E2E-01/E2E-02/E2E-03/E2E-04/E2E-05/E2E-06/E2E-07/E2E-08/E2E-09/E2
         });
 
         backgroundWorker = await getBackgroundWorker(browserContext);
-    });
-
-    test.afterAll(async () => {
-        if (browserContext) await browserContext.close();
-    });
-
-    test.beforeEach(async () => {
-        backgroundWorker = await getBackgroundWorker(browserContext);
         await resetExtensionState(backgroundWorker);
+    });
+
+    test.afterEach(async () => {
+        if (browserContext) {
+            await browserContext.close();
+            browserContext = null;
+            backgroundWorker = null;
+        }
     });
 
     test('Deve traduzir as paginas validas de ponta a ponta e encerrar o lote corretamente', async () => {
@@ -220,4 +225,98 @@ test.describe('E2E-01/E2E-02/E2E-03/E2E-04/E2E-05/E2E-06/E2E-07/E2E-08/E2E-09/E2
 
         await page.close();
     });
+
+    for (const scenario of [
+        {
+            mode: 'minimized_window',
+            baseUrl: 'http://127.0.0.1:3999/gemini/',
+            label: 'janela minimizada',
+        },
+        {
+            mode: 'background_delete',
+            baseUrl: 'http://127.0.0.1:3999/app/mock-chat',
+            label: 'background com exclusão segura',
+        },
+    ]) {
+        test(`Executa o lote em ${scenario.label} sem depender de ghost mousemove`, async () => {
+            await resetExtensionState(backgroundWorker, {
+                geminiExecutionMode: scenario.mode,
+                geminiBaseUrl: scenario.baseUrl,
+            });
+
+            const page = await browserContext.newPage();
+            await page.goto('http://localhost:3999/manga-page.html');
+            await page.waitForLoadState('networkidle');
+
+            // Estes cenários validam o modo de execução/anti-throttling, não
+            // concorrência. Deixamos uma única página elegível para reduzir
+            // ruído de cleanup entre janelas e tornar o gate determinístico.
+            await page.evaluate(() => {
+                const second = document.querySelector('[data-testid="manga-image-1"]');
+                if (second) second.remove();
+            });
+
+            const mainContent = page.locator('#manga-main-content');
+            await expect(mainContent).toContainText('TRADUZIR', { timeout: 10000 });
+            await mainContent.click();
+
+            await expect.poll(async () => {
+                return page.evaluate(() =>
+                    document.querySelectorAll('img[data-translated="true"]').length
+                );
+            }, {
+                timeout: 60000,
+                message: `Esperava tradução completa no modo ${scenario.mode}`,
+            }).toBe(1);
+
+            await expect.poll(async () => {
+                backgroundWorker = await getBackgroundWorker(browserContext);
+                const storage = await readStorage(backgroundWorker, [
+                    'mt_state',
+                    'translatorLog',
+                ]);
+                const state = storage.mt_state || {};
+                const logs = Array.isArray(storage.translatorLog)
+                    ? storage.translatorLog
+                    : [];
+
+                return {
+                    activeJobsCount: state.activeJobsCount || 0,
+                    isProcessing: !!state.isProcessing,
+                    queueLength: Array.isArray(state.jobQueue)
+                        ? state.jobQueue.length
+                        : -1,
+                    batchDone: logs.some(entry =>
+                        entry && entry.action === 'BATCH_DONE'
+                    ),
+                };
+            }, {
+                timeout: 45000,
+                message: `Esperava lote finalizado no modo ${scenario.mode}`,
+            }).toEqual({
+                activeJobsCount: 0,
+                isProcessing: false,
+                queueLength: 0,
+                batchDone: true,
+            });
+
+            if (scenario.mode === 'background_delete') {
+                await expect.poll(async () => {
+                    const storage = await readStorage(backgroundWorker, ['translatorLog']);
+                    const logs = Array.isArray(storage.translatorLog)
+                        ? storage.translatorLog
+                        : [];
+                    return logs.some(entry =>
+                        entry && entry.action === 'DELETE_OK'
+                    );
+                }, {
+                    timeout: 15000,
+                    message: 'Esperava exclusão segura confirmada no log',
+                }).toBe(true);
+            }
+
+            await page.close();
+        });
+    }
+
 });

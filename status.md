@@ -30,7 +30,7 @@
 - [x] PASSO 16 — corrigir Temporary Chat.
 - [x] PASSO 17 — extrair attachment/result/deletion.
 - [x] PASSO 18 — criar job runner.
-- [ ] PASSO 19 — reduzir anti-throttling.
+- [x] PASSO 19 — reduzir anti-throttling.
 - [ ] PASSO 20 — remover legado.
 - [ ] PASSO 21 — atualizar documentação/README.
 
@@ -131,14 +131,14 @@
 - [x] `gemini/job-runner.js`.
 - [x] `content_gemini.js` reduzido a bootstrap/claim/keepalive/runner/handlers.
 - [x] Helper baseado em `new Function` aposentado para módulos novos; testes novos usam módulos diretamente.
-- [x] CI do PR 11 verde — run #483.
+- [x] CI do PR 11 verde — run #490.
 
 ### PR 12 — Anti-throttling progressivo
-- [ ] Mousemove aleatório removido.
-- [ ] Focus interval reduzido para escalada.
-- [ ] Modos internos legacy/balanced/minimal se ainda necessários.
-- [ ] E2E background/minimized.
-- [ ] CI do PR 12 verde.
+- [x] Mousemove aleatório removido.
+- [x] Focus interval removido do baseline e limitado à escalada balanced/legacy.
+- [x] Modos internos `minimal` / `balanced` / `legacy` implementados.
+- [x] E2E adicionados para `background_delete` e `minimized_window`.
+- [x] CI do PR 12 verde — run #529.
 
 ### PR 13 — Limpeza do legado
 - [ ] Observer legado removido.
@@ -162,7 +162,12 @@
 
 ## Notas de execução
 
-- PR 11: CI completo verde no run #483.
+- PR 12: CI completo verde no run #529.
+
+- PR 12 substitui o anti-throttling permanente por níveis progressivos: `minimal` (padrão), `balanced` (background/minimized) e `legacy` apenas na segunda tentativa de submit.
+- O loop de `mousemove` aleatório foi removido. O foco periódico deixou de existir em `minimal`; balanced usa 5 s e legacy usa 1 s somente durante escalada.
+- rAF/idle também passam a usar cadência progressiva (250/100/50 ms), mantendo o bypass sem acordar a página a cada 50 ms no baseline.
+- E2E foram ampliados para `minimized_window` e `background_delete`; o mock local ganhou rota `/app/mock-chat` com menu e confirmação de exclusão.
 
 - PR 11 extrai o pipeline de execução para `gemini/job-runner.js`: recovery, aquisição da imagem, Temporary Chat, attachment, prompt, Observer V2, submit, resultado, extração, entrega e cleanup.
 - `content_gemini.js` caiu de ~1.126 para ~515 linhas e ficou restrito a infraestrutura, claim, wiring, handlers e wrappers transitórios de compatibilidade.
