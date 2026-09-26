@@ -73,7 +73,7 @@
 - [x] `gemini/dom.js`.
 - [x] Manifest com load order explícito.
 - [x] Funções puras testáveis por `require()`.
-- [ ] CI do PR 3 verde.
+- [x] CI do PR 3 verde — run #333.
 
 ### PR 4 — Observer V2
 - [x] `gemini/observer.js`.
@@ -161,6 +161,8 @@
 - [ ] Logs não armazenam prompt, signed URL, imagem, cookie ou token.
 
 ## Notas de execução
+
+- PR 3: CI completo verde no run #333 (HEAD `fe75c45a`).
 
 - PR 4 adiciona Observer V2 isolado e ainda não troca o polling do runtime. O observer instala ownership por response novo, baseline de imagens/erros, coalescing de mutations, confirmação de submit e cleanup idempotente.
 
