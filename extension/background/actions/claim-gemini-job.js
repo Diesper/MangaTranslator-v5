@@ -23,6 +23,10 @@
     },
 
     async execute(request, context) {
+      if (context && typeof context.ensureInitialized === 'function') {
+        await context.ensureInitialized();
+      }
+
       const senderTabId = context && context.sender && context.sender.tab
         ? context.sender.tab.id
         : null;
