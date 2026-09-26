@@ -501,6 +501,17 @@ chrome.runtime.onConnect.addListener(port => {
     if (port.name === 'gemini-keep-alive') port.onDisconnect.addListener(() => {});
 });
 
+// Diagnóstico de identidade de aba. PR 0 apenas observa a transição; a
+// canonicalização/rekey durável é implementada no PR 1.
+if (chrome.tabs && chrome.tabs.onReplaced) {
+    chrome.tabs.onReplaced.addListener((addedTabId, removedTabId) => {
+        log('info', 'bg', 'TAB_REPLACED', 'Aba substituída pelo Chromium', {
+            oldTabId: removedTabId,
+            newTabId: addedTabId,
+        });
+    });
+}
+
 chrome.alarms.onAlarm.addListener(async (alarm) => {
     await ensureInitialized();
     if (alarm.name.startsWith('finalization_marker_')) {
@@ -772,6 +783,12 @@ const _refreshMaxCon = (...args) => {
 };
 
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
+
+    if (request && request.action === 'GET_TAB_ID') {
+        log('info', 'bg', 'TAB_ID_OBSERVED', 'tabId observado em GET_TAB_ID', {
+            tabId: sender && sender.tab ? sender.tab.id : null,
+        });
+    }
 
     const routedAction = routeRegisteredAction(request, sender, sendResponse);
     if (routedAction && routedAction.handled) {
