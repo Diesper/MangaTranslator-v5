@@ -363,14 +363,18 @@ async function reconcileJobs() {
 
 async function ensureInitialized() {
     if (state()._initialized) return;
-    const identity = initializeTabIdentity();
-    await identity.recoverPendingMigrations();
-    await identity.cleanupExpiredAliases();
     // Um alarme pode disparar enquanto este worker já detém um lote vivo. Não
     // sobrescreva essa fila/extractionTabs com um snapshot antigo ou vazio.
     const hasResidentWork = state().jobQueue.length > 0 || state().activeJobsCount > 0 ||
         state().jobIndex.length > 0 || Object.keys(state().extractionTabs).length > 0;
     if (!hasResidentWork) await restoreState();
+
+    // O journal de rekey pode conter uma mutação de jobIndex/extractionTabs.
+    // Reidratar mt_state ANTES de replay evita que uma state.mutate() aplique a
+    // migração sobre um snapshot vazio e sobrescreva trabalho durável.
+    const identity = initializeTabIdentity();
+    await identity.recoverPendingMigrations();
+    await identity.cleanupExpiredAliases();
     state()._initialized = true;
     try {
         const result = await reconcileJobs();
