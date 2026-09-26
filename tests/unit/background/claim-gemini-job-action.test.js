@@ -30,13 +30,19 @@ function loadModules() {
 function dispatch(listener, request, sender) {
   return new Promise(resolve => {
     let keepAlive;
-    let settled = false;
+    let delivered = false;
+    let deliveredResponse;
+
     const sendResponse = response => {
-      settled = true;
-      resolve({ keepAlive, response });
+      delivered = true;
+      deliveredResponse = response;
+      if (keepAlive !== undefined) resolve({ keepAlive, response });
     };
+
     keepAlive = listener(request, sender, sendResponse);
-    if (!settled && keepAlive === false) resolve({ keepAlive, response: undefined });
+    if (delivered || keepAlive === false) {
+      resolve({ keepAlive, response: delivered ? deliveredResponse : undefined });
+    }
   });
 }
 
