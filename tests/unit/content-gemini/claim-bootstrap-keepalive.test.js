@@ -175,7 +175,6 @@ describe('content_gemini.js - claim bootstrap e keep-alive', () => {
   });
 
   test('claim com jobId na URL faz retry limitado antes de desistir', async () => {
-    jest.useFakeTimers();
     setWindowLocation('/app', '?mangatranslator=true&jobId=late-job');
 
     let claimCalls = 0;
@@ -202,13 +201,10 @@ describe('content_gemini.js - claim bootstrap e keep-alive', () => {
     });
 
     const mod = loadContentGeminiModule();
-    const pending = mod.claimGeminiJob({ timeoutMs: 5000 });
-
-    await jest.advanceTimersByTimeAsync(1000);
-    await expect(pending).resolves.toEqual(expect.objectContaining({
+    await expect(mod.claimGeminiJob({ timeoutMs: 2500 })).resolves.toEqual(expect.objectContaining({
       jobId: 'late-job',
       geminiTabId: 456,
     }));
     expect(claimCalls).toBe(3);
-  });
+  }, 5000);
 });
