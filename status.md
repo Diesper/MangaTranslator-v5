@@ -17,9 +17,9 @@
 - [x] PASSO 3 — criar `actions/claim-gemini-job.js`.
 - [x] PASSO 4 — tornar lifecycle/reconciler canonical-tab-aware.
 - [x] PASSO 5 — adicionar testes de replacement/restart.
-- [ ] PASSO 6 — trocar bootstrap de `content_gemini.js` para `CLAIM_GEMINI_JOB`.
-- [ ] PASSO 7 — remover fallback de `storage.get(null)`.
-- [ ] PASSO 8 — remover keep-alive prematuro.
+- [x] PASSO 6 — trocar bootstrap de `content_gemini.js` para `CLAIM_GEMINI_JOB`.
+- [x] PASSO 7 — remover fallback de `storage.get(null)`.
+- [x] PASSO 8 — remover keep-alive prematuro.
 - [ ] PASSO 9 — extrair `gemini/selectors.js` e `gemini/dom.js`.
 - [ ] PASSO 10 — criar `gemini/observer.js`.
 - [ ] PASSO 11 — instalar observer antes do submit.
@@ -43,7 +43,7 @@
 - [x] Background registra `TAB_REPLACED`.
 - [x] Background registra `TAB_ID_OBSERVED` em `GET_TAB_ID`.
 - [x] Teste unitário do replacement adicionado.
-- [ ] CI do PR 0 verde.
+- [x] CI do PR 0 verde — run #278.
 
 ### PR 1 — Identidade canônica de aba + claim seguro
 - [x] Alias durável `oldTabId -> newTabId`.
@@ -59,13 +59,13 @@
 - [x] Watchdog alias-aware.
 - [x] `CLAIM_GEMINI_JOB` implementado e restrito à origem Gemini.
 - [x] TAB-01 a TAB-12.
-- [ ] CI do PR 1 verde.
+- [x] CI do PR 1 verde — run #305.
 
 ### PR 2 — Bootstrap por claim
-- [ ] `content_gemini.js` usa `CLAIM_GEMINI_JOB`.
-- [ ] Full scan órfão removido.
-- [ ] `openKeepAlive()` só após claim válido.
-- [ ] KEEP-01 a KEEP-05.
+- [x] `content_gemini.js` usa `CLAIM_GEMINI_JOB`.
+- [x] Full scan órfão removido.
+- [x] `openKeepAlive()` só após claim válido.
+- [x] KEEP-01 a KEEP-05.
 - [ ] CI do PR 2 verde.
 
 ### PR 3 — Fundação modular Gemini
@@ -161,6 +161,11 @@
 - [ ] Logs não armazenam prompt, signed URL, imagem, cookie ou token.
 
 ## Notas de execução
+
+- PR 0: CI completo verde no run #278.
+- PR 1: CI completo verde no run #305 (HEAD `97f154e9`).
+- PR 2 mantém um fallback transitório **somente por chave específica** (`GET_TAB_ID` + `gemini_job_<tabId>`) quando `CLAIM_GEMINI_JOB` não recebe resposta. O runtime atual usa claim; o fallback existe para compatibilidade de fixtures/background antigo e não faz `storage.get(null)`.
+- Keep-alive agora permite no máximo uma reconexão e somente enquanto o job estiver ativo.
 
 - PR 1 adicionou uma proteção extra não explícita no checklist: conflito de rekey entre dois `jobId` diferentes aborta a migração em vez de apagar ownership existente.
 - O lifecycle e o watchdog usam write → canonical recheck para fechar a corrida em que `onReplaced` acontece durante a própria persistência.

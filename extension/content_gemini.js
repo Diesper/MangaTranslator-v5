@@ -7,16 +7,53 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
 // Gemini que o usuário abrisse manualmente mantinha o Service Worker acordado.
 // Agora a porta só é aberta depois que esta aba reivindica um job real.
 let keepAlivePort = null;
+let keepAliveJobActive = false;
+let keepAliveClosing = false;
+let keepAliveReconnectAttempted = false;
+
+function connectKeepAlive({ reconnect = false } = {}) {
+    if (!keepAliveJobActive || keepAlivePort) return keepAlivePort;
+    try {
+        const port = chrome.runtime.connect({ name: 'gemini-keep-alive' });
+        keepAlivePort = port;
+        if (port && port.onDisconnect && typeof port.onDisconnect.addListener === 'function') {
+            port.onDisconnect.addListener(() => {
+                if (keepAlivePort === port) keepAlivePort = null;
+                if (keepAliveClosing || !keepAliveJobActive || keepAliveReconnectAttempted) return;
+                keepAliveReconnectAttempted = true;
+                setTimeout(() => {
+                    if (!keepAliveClosing && keepAliveJobActive && !keepAlivePort) {
+                        connectKeepAlive({ reconnect: true });
+                    }
+                }, 250);
+            });
+        }
+        return port;
+    } catch (_e) {
+        keepAlivePort = null;
+        // Uma falha durante a única reconexão permitida encerra a tentativa.
+        if (reconnect) keepAliveReconnectAttempted = true;
+        return null;
+    }
+}
+
 function openKeepAlive() {
-    if (keepAlivePort) return;
-    try { keepAlivePort = chrome.runtime.connect({ name: 'gemini-keep-alive' }); } catch (_e) { keepAlivePort = null; }
+    keepAliveJobActive = true;
+    keepAliveClosing = false;
+    keepAliveReconnectAttempted = false;
+    return connectKeepAlive();
 }
+
 function closeKeepAlive() {
-    if (!keepAlivePort) return;
-    try { keepAlivePort.disconnect(); } catch (_e) {}
+    keepAliveClosing = true;
+    keepAliveJobActive = false;
+    const port = keepAlivePort;
     keepAlivePort = null;
+    if (port) {
+        try { port.disconnect(); } catch (_e) {}
+    }
+    keepAliveReconnectAttempted = false;
 }
-openKeepAlive();
 
 function sanitizeLogExtra(value, key = '') {
     const sensitiveKey = /(url|uri|src|prompt|preview|hash|base64|dataurl|image|token|cookie|authorization)/i;
@@ -946,42 +983,94 @@ async function shouldKeepConversationForDebug(delivery, executionMode) {
     return debugData.debugMode === true;
 }
 
-async function processGeminiJob() {
-    debugConsole('log', '[MangaTranslator Gemini] processGeminiJob iniciado na aba');
-    // 1. Obter Tab ID com tolerância a atrasos de reidratação do Service Worker
-    let response = null;
-    for (let t = 0; t < 5; t++) {
-        response = await new Promise((resolve) => {
-            chrome.runtime.sendMessage({ action: 'GET_TAB_ID' }, (resp) => {
+function getExpectedGeminiJobId() {
+    try {
+        const parsed = new URL(window.location.href);
+        const jobId = parsed.searchParams.get('jobId');
+        return jobId && jobId.trim() ? jobId.trim() : null;
+    } catch (_e) {
+        return null;
+    }
+}
+
+function sendRuntimeMessage(message) {
+    return new Promise(resolve => {
+        try {
+            chrome.runtime.sendMessage(message, response => {
                 if (chrome.runtime.lastError) resolve(null);
-                else resolve(resp);
+                else resolve(response || null);
             });
+        } catch (_e) {
+            resolve(null);
+        }
+    });
+}
+
+async function claimGeminiJob({ timeoutMs = 5000 } = {}) {
+    const expectedJobId = getExpectedGeminiJobId();
+    const startedAt = Date.now();
+    let claimUnsupported = false;
+
+    do {
+        const response = await sendRuntimeMessage({
+            action: 'CLAIM_GEMINI_JOB',
+            jobId: expectedJobId || undefined,
         });
-        if (response && response.tabId) break;
+
+        if (response && response.ok === true && response.job) {
+            return response.job;
+        }
+
+        if (response && response.ok === true && Object.prototype.hasOwnProperty.call(response, 'job')) {
+            // Uma aba manual não possui jobId de correlação. Claim nulo é
+            // definitivo e deve deixá-la completamente inerte.
+            if (!expectedJobId) return null;
+        } else if (!response) {
+            // Compatibilidade transitória com fixtures/background antigo.
+            // Em runtime atual CLAIM_GEMINI_JOB existe; este caminho nunca faz
+            // full scan e será removido junto com o legado.
+            claimUnsupported = true;
+            break;
+        }
+
+        if (Date.now() - startedAt >= timeoutMs) return null;
+        await sleep(500);
+    } while (Date.now() - startedAt < timeoutMs);
+
+    if (!claimUnsupported) return null;
+
+    // Fallback estritamente direcionado: GET_TAB_ID + chave específica.
+    // Não usa storage.get(null), não reivindica jobs de outras abas e não abre
+    // keep-alive até encontrar exatamente o registro desta aba.
+    let tabResponse = null;
+    for (let attempt = 0; attempt < 5; attempt++) {
+        tabResponse = await sendRuntimeMessage({ action: 'GET_TAB_ID' });
+        if (tabResponse && Number.isInteger(tabResponse.tabId)) break;
         await sleep(500);
     }
+    if (!tabResponse || !Number.isInteger(tabResponse.tabId)) return null;
 
-    if (!response || !response.tabId) {
-        debugConsole('warn', '[MangaTranslator Gemini] Falha ao obter tabId após 5 tentativas');
-        return;
-    }
+    const tabId = tabResponse.tabId;
+    const jobKey = `gemini_job_${tabId}`;
+    const legacyStartedAt = Date.now();
+    do {
+        const data = await new Promise(resolve => chrome.storage.local.get([jobKey], resolve));
+        const job = data && data[jobKey];
+        if (job && (!expectedJobId || job.jobId === expectedJobId)) {
+            return { ...job, geminiTabId: tabId };
+        }
+        // O fallback existe apenas para compatibilidade com background/fixtures
+        // anteriores ao claim. Mantém retry limitado para cobrir a corrida em
+        // que a aba nasce antes da persistência do job, sem procurar outras chaves.
+        if (Date.now() - legacyStartedAt >= timeoutMs) return null;
+        await sleep(500);
+    } while (Date.now() - legacyStartedAt < timeoutMs);
 
-    const myTabId = response.tabId;
-    const recoveryKey = `gemini_delete_recovery_${myTabId}`;
-    const recoveryData = await new Promise(resolve => chrome.storage.local.get([recoveryKey], resolve));
-    const recovery = recoveryData[recoveryKey];
-    if (recovery && recovery.delivery) {
-        // Esta aba acabou de ser recarregada após falhar na primeira tentativa.
-        // Não reinicia o job: bloqueia a rolagem, tenta apagar e entrega o
-        // resultado que foi preservado antes do reload.
-        const deleted = await deleteCurrentConversation({ lockScroll: true });
-        await chrome.storage.local.remove(recoveryKey);
-        sendLog(deleted ? 'success' : 'warn', 'DELETE_RECOVERY', deleted
-            ? 'Conversa excluída após recarregar a aba.'
-            : 'Exclusão continuou sem confirmação após a recuperação.', { chatId: recovery.chatId || null });
-        chrome.runtime.sendMessage(recovery.delivery);
-        return;
-    }
+    return null;
+}
+
+async function processGeminiJob() {
+    debugConsole('log', '[MangaTranslator Gemini] processGeminiJob iniciado na aba');
 
     const currentPath = window.location.pathname;
     if (currentPath && currentPath.length > 8 && currentPath.startsWith('/app/')) {
@@ -993,41 +1082,39 @@ async function processGeminiJob() {
         if (isBeingDeleted) return;
     }
 
-    let job = null;
-    const jobKey = `gemini_job_${myTabId}`;
+    const job = await claimGeminiJob({ timeoutMs: 5000 });
     const isExistingChat = currentPath.startsWith('/app/');
-    const maxAttempts = 30; 
-
-    for (let attempt = 0; attempt < maxAttempts; attempt++) {
-        const data = await new Promise(r => chrome.storage.local.get([jobKey], r));
-        if (data[jobKey]) { job = data[jobKey]; break; }
-
-        // Resgate de job órfão APENAS se esta aba for do MangaTranslator
-        const isTranslatorTab = window.location.href.includes('mangatranslator');
-        if (isTranslatorTab) {
-            const all = await new Promise(r => chrome.storage.local.get(null, r));
-            const orphanKey = Object.keys(all).find(k => k.startsWith('gemini_job_') && all[k] && !all[k]._claimed);
-            if (orphanKey) {
-                job = all[orphanKey];
-                job._claimed = true;
-                debugConsole('log', '[MangaTranslator Gemini] Job resgatado via orphan fallback (tab key):', orphanKey);
-                await new Promise(r => chrome.storage.local.set({ [jobKey]: job }, r));
-                break;
-            }
-        }
-
-        await sleep(500);
-    }
-    
     if (!job) {
-        if (!isExistingChat) sendLog('warn', 'JOB_NOT_FOUND', 'Job não encontrado no storage após 15s — script desativado', { path: currentPath });
+        if (!isExistingChat) {
+            sendLog('warn', 'JOB_NOT_FOUND', 'Nenhum job válido foi reivindicado para esta aba — script desativado', {
+                path: currentPath,
+            });
+        }
         closeKeepAlive();
         return;
     }
 
-    // Job confirmado: só a partir daqui vale manter o Service Worker acordado.
+    const myTabId = job.geminiTabId;
+    const recoveryKey = `gemini_delete_recovery_${myTabId}`;
+    const recoveryData = await new Promise(resolve => chrome.storage.local.get([recoveryKey], resolve));
+    const recovery = recoveryData[recoveryKey];
+    if (recovery && recovery.delivery) {
+        const deleted = await deleteCurrentConversation({ lockScroll: true });
+        await chrome.storage.local.remove(recoveryKey);
+        sendLog(deleted ? 'success' : 'warn', 'DELETE_RECOVERY', deleted
+            ? 'Conversa excluída após recarregar a aba.'
+            : 'Exclusão continuou sem confirmação após a recuperação.', { chatId: recovery.chatId || null });
+        chrome.runtime.sendMessage(recovery.delivery);
+        return;
+    }
+
+    // Só um claim válido transforma esta aba em worker do MangaTranslator.
     openKeepAlive();
-    debugConsole('log', '[MangaTranslator Gemini] Job confirmado:', { jobId: (job.jobId || '').slice(0, 8), index: job.index });
+    debugConsole('log', '[MangaTranslator Gemini] Job confirmado por claim:', {
+        jobId: (job.jobId || '').slice(0, 8),
+        index: job.index,
+        geminiTabId: myTabId,
+    });
 
     const scrollInterval = setInterval(() => {
         window.scrollTo(0, document.body.scrollHeight);
