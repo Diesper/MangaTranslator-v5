@@ -28,7 +28,7 @@
 - [x] PASSO 14 — reduzir tentativas de envio para 2.
 - [x] PASSO 15 — trocar espera de resultado por observer.
 - [x] PASSO 16 — corrigir Temporary Chat.
-- [ ] PASSO 17 — extrair attachment/result/deletion. *(attachment concluído; result/deletion pendentes)*
+- [ ] PASSO 17 — extrair attachment/result/deletion. *(attachment + result concluídos; deletion pendente)*
 - [ ] PASSO 18 — criar job runner.
 - [ ] PASSO 19 — reduzir anti-throttling.
 - [ ] PASSO 20 — remover legado.
@@ -117,9 +117,9 @@
 - [x] CI do PR 8 verde — run #440.
 
 ### PR 9 — Result extractor modular
-- [ ] `gemini/result-extractor.js`.
-- [ ] Cadeia canvas → MAIN fetch → SW fetch → auxiliar preservada.
-- [ ] CI do PR 9 verde.
+- [x] `gemini/result-extractor.js`.
+- [x] Cadeia canvas → MAIN fetch → SW fetch → retry → auxiliar preservada por execution mode.
+- [x] CI do PR 9 verde — run #455.
 
 ### PR 10 — Deletion modular
 - [ ] `gemini/deletion.js`.
@@ -161,6 +161,13 @@
 - [ ] Logs não armazenam prompt, signed URL, imagem, cookie ou token.
 
 ## Notas de execução
+
+- PR 9: CI completo verde no run #455 (HEAD anterior ao commit documental de status).
+
+- PR 9 extrai a cadeia de resultado para `gemini/result-extractor.js` sem unificar prematuramente os execution modes.
+- Em `background_delete`, a ordem continua canvas → bridge MAIN → SW com sessão; nos demais modos, o SW fetch legado continua direto.
+- O retry continua repetindo a cadeia completa. O auxiliary fallback agora também pertence ao módulo via callback injetado e só roda depois que todas as tentativas diretas falham.
+- EXT-01 a EXT-09 fixam em teste a ordem das rotas, blob/data URL, retry e fallback auxiliar.
 
 - PR 8: CI completo verde no run #440 (HEAD anterior ao commit documental de status).
 
