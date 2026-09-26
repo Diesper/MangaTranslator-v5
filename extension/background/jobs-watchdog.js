@@ -17,7 +17,7 @@
       let canonicalTabId = await resolveCanonicalTabId(requestedTabId);
       const alarmName = alarmNameFor(canonicalTabId, jobId);
 
-      await chrome.alarms.clear(alarmName);
+      await new Promise(resolve => chrome.alarms.clear(alarmName, resolve));
       await chrome.storage.local.set({
         [`wd_data_${canonicalTabId}`]: {
           mangaTabId,
