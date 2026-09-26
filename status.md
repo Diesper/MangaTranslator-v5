@@ -114,7 +114,7 @@
 - [x] `gemini/attachment.js`.
 - [x] Paste/file input/drag-drop movidos.
 - [x] Attachment confirmado por baseline + MutationObserver; dispatch isolado não declara sucesso.
-- [ ] CI do PR 8 verde.
+- [x] CI do PR 8 verde — run #440.
 
 ### PR 9 — Result extractor modular
 - [ ] `gemini/result-extractor.js`.
@@ -161,6 +161,8 @@
 - [ ] Logs não armazenam prompt, signed URL, imagem, cookie ou token.
 
 ## Notas de execução
+
+- PR 8: CI completo verde no run #440 (HEAD anterior ao commit documental de status).
 
 - PR 8 extrai paste, file input, drag/drop e confirmação de thumbnail para `gemini/attachment.js`.
 - A confirmação captura um baseline antes da tentativa e só aceita evidência nova ou alterada; `attempted:true` nunca significa `confirmed:true`.
