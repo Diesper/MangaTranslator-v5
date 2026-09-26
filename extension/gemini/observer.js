@@ -294,13 +294,10 @@
         const image = images[index];
         if (!isCandidateImage(image)) continue;
 
-        // Sem response container, aceite apenas sinais fortes. O baseline de
-        // imagens elimina o anexo do próprio job; esta regra evita capturar
-        // thumbnails/UI genéricas quando o seletor de resposta mudou.
+        // Sem response container, o fallback profundo ainda exige imagem
+        // NOVA e heurísticas de tamanho/source. O baseline criado antes do
+        // submit elimina anexos e imagens antigas do job.
         const src = domApi.getImageSource(image);
-        if (!container && !strongImageUrl(src) && !domApi.isModelResponseImage(image)) {
-          continue;
-        }
         if (setResult(image, src)) return;
       }
     }
