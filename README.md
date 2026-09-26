@@ -1,6 +1,6 @@
 # 📖 Manga Translator
 
-> **Versão atual: 6.0** — extensão para navegadores Chromium (Manifest V3) para tradução automática, contínua e em alta resolução de mangás e quadrinhos na web utilizando o Google Gemini.
+> Extensão para navegadores Chromium (Manifest V3) para tradução automática, contínua e em alta resolução de mangás e quadrinhos na web utilizando o Google Gemini. A versão do produto tem uma única fonte de verdade em `package.json` e é sincronizada automaticamente com o Manifest e os metadados de teste.
 
 [![Manifest V3](https://img.shields.io/badge/Chrome_Extension-Manifest_V3-4285F4?logo=googlechrome&logoColor=white)](https://developer.chrome.com/docs/extensions/mv3/intro/)
 [![CI](https://github.com/Diesper/Manga_Translator/actions/workflows/ci.yml/badge.svg)](https://github.com/Diesper/Manga_Translator/actions/workflows/ci.yml)
@@ -60,9 +60,31 @@ Como a extensão está em formato de código aberto, você pode carregá-la dire
 │   ├── visual-v3/             # Testes visuais de consistência e fingerprint
 │   └── e2e/                   # Testes de ponta a ponta com Playwright
 ├── docs/                      # Documentação técnica de arquitetura
-├── .github/workflows/         # Pipeline de Integração Contínua (CI)
-└── package.json               # Configurações de scripts
+├── scripts/                   # Automação de versionamento e manutenção
+├── .github/workflows/         # CI e publicação de releases
+└── package.json               # Fonte única da versão do produto + scripts
 ```
+
+---
+
+## 🔢 Versionamento
+
+A versão do produto é definida **uma única vez** no `package.json` raiz. Os demais metadados são derivados dela:
+
+- `extension/manifest.json` recebe a versão Chromium correspondente;
+- `tests/package.json` e os metadados raiz de `tests/package-lock.json` recebem a versão SemVer completa;
+- a UI de opções lê `chrome.runtime.getManifest().version`, sem número hardcoded;
+- o workflow de publicação deriva tag, pasta, ZIP e nome da documentação automaticamente;
+- a documentação canônica no repositório usa o caminho estável `docs/Documentação.md`.
+
+Depois de alterar apenas `package.json`, execute:
+
+```bash
+npm run version:sync
+npm run version:check
+```
+
+O CI também executa `version:check` e falha se os metadados divergirem.
 
 ---
 
@@ -110,9 +132,9 @@ Também existe um teste específico de carregamento em modo estrito (`tests/unit
 
 ## 📚 Documentação Técnica
 
-A arquitetura vigente, contratos IPC/storage, lifecycle MV3, cache perceptual, Gemini RPA, Reader, compatibilidade e critérios de manutenção estão consolidados na **documentação técnica v6.5**. A versão executável da extensão permanece 6.0 neste PR.
+A arquitetura vigente, contratos IPC/storage, lifecycle MV3, cache perceptual, Gemini RPA, Reader, compatibilidade, versionamento e critérios de manutenção estão consolidados na documentação canônica de caminho estável:
 
-- [`docs/Documentação_V6.5.md`](docs/Documentação_V6.5.md)
+- [`docs/Documentação.md`](docs/Documentação.md)
 
 ---
 

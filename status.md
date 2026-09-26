@@ -147,7 +147,11 @@
 - [x] Fallback posicional inseguro do Temporary Chat removido.
 - [x] Flags transitórias de migração/teste removidas (`__mangaTranslatorJobSent`, `__MT_SKIP_GEMINI_AUTO_PROCESS__`).
 - [x] Helper textual/`new Function` removido; testes importam o módulo real via CommonJS.
-- [x] Docs V6.5/README atualizados para arquitetura modular e anti-throttling progressivo.
+- [x] Docs/README atualizados para arquitetura modular e anti-throttling progressivo.
+- [x] Versionamento centralizado em `package.json` com `version:sync` / `version:check`.
+- [x] Manifest e metadados de teste derivados da fonte única; versão executável elevada para 6.5/6.5.0.
+- [x] UI remove versão hardcoded e lê `chrome.runtime.getManifest().version`.
+- [x] Documento canônico passa a `docs/Documentação.md` e publicação passa a usar nomes dinâmicos.
 - [x] CI final verde — run #549 (13/13 E2E; todos os jobs verdes).
 
 ## Critérios globais de aceite do plano
@@ -203,8 +207,8 @@
 
 - PR 13 remove o legado transitório: fallback posicional do Temporary Chat, adapter legado, flag de submit já confirmado e loader textual baseado em `new Function`.
 - `content_gemini.js` passa a exportar sua API somente em CommonJS de teste e não autoexecuta nesse ambiente; no navegador mantém o bootstrap normal. Após remover wrappers transitórios, o arquivo ficou com ~451 linhas.
-- README e Documentação V6.5 agora descrevem os módulos `gemini/*`, Observer V2, Job Runner, deletion/recovery, extração e anti-throttling progressivo.
-- A documentação canônica foi renomeada para `docs/Documentação_V6.5.md`; a versão executável permanece 6.0/6.0.0 neste PR.
+- README e `docs/Documentação.md` descrevem os módulos `gemini/*`, Observer V2, Job Runner, deletion/recovery, extração, anti-throttling progressivo e versionamento centralizado.
+- `package.json` é a fonte única de versão; Manifest/testes são sincronizados e o workflow de release não depende mais de nomes `v6.0`/`v6.5` hardcoded.
 
 - PR 12 substitui o anti-throttling permanente por níveis progressivos: `minimal` (padrão), `balanced` (background/minimized) e `legacy` apenas na segunda tentativa de submit.
 - O loop de `mousemove` aleatório foi removido. O foco periódico deixou de existir em `minimal`; balanced usa 5 s e legacy usa 1 s somente durante escalada.

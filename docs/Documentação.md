@@ -1,8 +1,8 @@
-# Manga Translator — Documentação Técnica Consolidada v6.5
+# Manga Translator — Documentação Técnica Consolidada
 
-> **Documento canônico da documentação técnica v6.5.**
+> **Documento canônico da arquitetura atual do Manga Translator.**
 >
-> **Versão executável neste PR:** Manifest `6.0` e packages `6.0.0`. A marca v6.5 identifica esta consolidação documental; este PR não altera a versão do runtime.
+> **Fonte única da versão:** `package.json`. O Manifest, os metadados de teste, a UI e os artefatos de release são derivados dessa fonte.
 >
 > Esta documentação descreve a arquitetura que existe no código atual do projeto.
 > Ela substitui, como fonte operacional de verdade, a documentação incremental da
@@ -50,8 +50,7 @@
 
 # 1. Objetivo e regras desta documentação
 
-A v6.5 mantém o modelo de documentação autocontida, em vez do tipo "este arquivo atualiza o
-documento anterior". A documentação agora é autocontida.
+Esta documentação mantém um modelo autocontido, em vez do tipo "este arquivo atualiza o\ndocumento anterior".
 
 Isso significa:
 
@@ -68,7 +67,7 @@ Isso significa:
 
 A v6.5 é a versão desta documentação técnica consolidada. Ela descreve o estado arquitetural presente no PR 13 após a refatoração Gemini RPA V2.
 
-A versão executável do produto permanece `6.0` no `manifest.json` e `6.0.0` nos packages; este PR não altera esses metadados.
+O marco v6.5 também torna o versionamento do produto automático: `package.json` contém a versão SemVer canônica, enquanto `manifest.json` e os metadados de teste são sincronizados por `scripts/sync-version.js`.
 
 Ela não altera automaticamente:
 
@@ -90,15 +89,16 @@ quando o respectivo schema mudar.
 | Item | Valor |
 |---|---|
 | Produto | MangaTranslator |
-| Versão da documentação | **6.5** |
-| Versão executável do produto | **6.0** (`manifest.json`) / **6.0.0** (packages) |
+| Marco desta consolidação | **6.5** |
+| Fonte única da versão executável | <code>package.json</code> |
+| Versão executável desta consolidação | **6.5** (Manifest) / **6.5.0** (SemVer) |
 | Manifest | **Manifest V3** |
 | Navegadores alvo | Chromium: Chrome, Edge, Brave, Opera e derivados compatíveis |
 | Service Worker | <code>extension/background.js</code> |
 | Persistência principal de páginas | IndexedDB <code>manga_translator_data</code> |
 | Cache global visual | IndexedDB <code>manga_translator_gtc</code> |
 | Automação de tradução | Interface web do Google Gemini |
-| Documento canônico | <code>docs/Documentação_V6.5.md</code> |
+| Documento canônico | <code>docs/Documentação.md</code> |
 
 ## 2.2 Baseline funcional conhecido
 
@@ -113,7 +113,7 @@ O baseline funcional completo mais recente validado antes desta atualização do
 - testes visuais/perceptuais aprovados;
 - pipeline sem mascaramento das falhas funcionais.
 
-A atualização documental para v6.5 altera somente documentação e referências documentais; não altera a lógica funcional do pipeline de tradução nem a versão executável do produto.
+O marco v6.5 preserva a lógica funcional do pipeline de tradução e adiciona versionamento centralizado, validação de consistência e publicação independente de números hardcoded.
 
 ## 2.3 O que não deve mais ser considerado estado atual
 
@@ -140,7 +140,7 @@ MangaTranslator/
 │       └── ci.yml
 ├── docs/
 │   ├── DOCUMENTACAO_v5.1.1_ATUALIZACAO.md   # histórico
-│   └── Documentação_V6.5.md                  # fonte técnica atual
+│   └── Documentação.md                       # fonte técnica canônica, nome estável
 ├── extension/
 │   ├── manifest.json
 │   ├── background.js
@@ -1750,16 +1750,28 @@ Verificar:
 
 ## 20.1 Regra de versão
 
-Ao lançar nova versão do produto, atualizar em conjunto:
+<code>package.json</code> é a **única fonte manual da versão do produto**.
 
-- <code>extension/manifest.json</code>;
-- <code>package.json</code>;
-- <code>tests/package.json</code>;
-- metadados raiz do <code>tests/package-lock.json</code>;
-- README;
-- labels de UI que exibem versão;
-- runners que exibem versão;
-- documento canônico.
+Ao preparar uma nova versão:
+
+1. alterar somente <code>package.json#version</code> para um SemVer numérico como <code>6.5.0</code> ou <code>6.5.1</code>;
+2. executar <code>npm run version:sync</code>;
+3. executar <code>npm run version:check</code>.
+
+<code>scripts/sync-version.js</code> deriva e valida:
+
+- <code>extension/manifest.json#version</code>;
+- <code>tests/package.json#version</code>;
+- <code>tests/package-lock.json#version</code>;
+- <code>tests/package-lock.json#packages[""].version</code>.
+
+Para versões cujo patch é zero, a versão Chromium pode omitir o último zero
+(<code>6.5.0 → 6.5</code>). Quando existe patch, ele é preservado
+(<code>6.5.1 → 6.5.1</code>).
+
+A UI não contém versão fixa: lê <code>chrome.runtime.getManifest().version</code>.
+A documentação canônica usa sempre <code>docs/Documentação.md</code>. O workflow
+de release cria nomes versionados apenas nos artefatos publicados.
 
 ## 20.2 Não alterar versão de schema sem migração
 
@@ -1878,10 +1890,12 @@ A documentação agora trata explicitamente:
 
 ## 21.6 Labels antigos do código foram normalizados
 
-Cabeçalhos e UI que ainda se identificavam como v4.0, v5.1 ou v5.1.1 foram
-atualizados para a versão executável 6.0 quando representavam a versão do produto.
+Rótulos de versão do produto deixaram de ser espalhados como literais pelo
+runtime, testes e UI. Quando a versão precisa ser exibida em runtime, ela é
+obtida do Manifest; quando precisa ser usada em automação, é derivada de
+<code>package.json</code>.
 
-## 21.7 Consolidação Gemini RPA V2 na documentação v6.5
+## 21.7 Consolidação Gemini RPA V2 no marco v6.5
 
 A v6.5 incorpora como estado canônico a refatoração concluída na pilha de PRs Gemini RPA V2:
 
@@ -1895,6 +1909,16 @@ A v6.5 incorpora como estado canônico a refatoração concluída na pilha de PR
 - anti-throttling progressivo `minimal` / `balanced` / `legacy`;
 - remoção dos adapters, flags e polling legado já sem produtor/consumidor;
 - critérios E2E finais para resposta instantânea, submit ignorado, aba manual inerte, `minimized_window` e `background_delete`.
+
+## 21.8 Versionamento sem caminhos hardcoded
+
+O marco v6.5 elimina dependência operacional do número da versão:
+
+- o documento canônico passa a se chamar `docs/Documentação.md`;
+- a publicação passa a usar `.github/workflows/publish.yml`;
+- pasta, ZIP, documento publicado, título e tag são calculados a partir da versão;
+- o CI bloqueia divergência entre package, Manifest e metadados de teste;
+- nomes históricos continuam históricos e não participam da descoberta de arquivos.
 
 ---
 
@@ -2286,7 +2310,7 @@ explicitamente este arquivo como fonte canônica.
 
 ## Encerramento
 
-A documentação v6.5 consolida a arquitetura modularizada e estabilizada do PR 13:
+Esta documentação consolida a arquitetura modularizada e estabilizada do PR 13 e o marco v6.5:
 
 - Service Worker MV3 com estado durável;
 - lifecycle separado;
