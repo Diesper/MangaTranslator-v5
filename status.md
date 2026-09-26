@@ -26,7 +26,7 @@
 - [x] PASSO 12 — mudar click/trigger para “attempt”, não “success”.
 - [x] PASSO 13 — remover mutação forçada de `disabled`.
 - [x] PASSO 14 — reduzir tentativas de envio para 2.
-- [ ] PASSO 15 — trocar espera de resultado por observer.
+- [x] PASSO 15 — trocar espera de resultado por observer.
 - [ ] PASSO 16 — corrigir Temporary Chat.
 - [ ] PASSO 17 — extrair attachment/result/deletion.
 - [ ] PASSO 18 — criar job runner.
@@ -96,11 +96,11 @@
 - [ ] CI do PR 5 verde.
 
 ### PR 6 — Observer como fonte de resultado
-- [ ] Polling pesado de 1 s removido do caminho primário.
-- [ ] `waitForResult()` com timeout terminal.
-- [ ] Resposta instantânea capturada.
-- [ ] Imagem antiga não capturada.
-- [ ] CG-36/E2E atualizados.
+- [x] Polling pesado de 1 s removido do caminho primário.
+- [x] `waitForResult()` com timeout terminal.
+- [x] Resposta instantânea capturada.
+- [x] Imagem antiga não capturada.
+- [x] CG-36 atualizado; E2E de resposta rápida permanece para o gate desta etapa.
 - [ ] CI do PR 6 verde.
 
 ### PR 7 — Temporary Chat verificado
@@ -161,6 +161,9 @@
 - [ ] Logs não armazenam prompt, signed URL, imagem, cookie ou token.
 
 ## Notas de execução
+
+- PR 6 removeu o `while (!resultUrl) + sleep(1000)` do caminho primário. O Observer V2 agora resolve imagem/erro/timeout; timers restantes servem apenas a progresso e ao nudge opcional de cards, sem varredura profunda periódica.
+- Seleção manual passou a resolver a mesma Promise do observer por `acceptResult()`. O fallback profundo ocorre somente em inspeções disparadas por mutation quando o response container não pôde ser identificado.
 
 - PR 5 instala o Observer V2 antes de qualquer submit, preserva `__mangaTranslatorJobSent` apenas como compatibilidade após confirmação real e elimina qualquer mutação de `disabled`/`aria-disabled` em `content_gemini.js` e `inject.js`.
 - A escalada final (`MANGA_TRANSLATOR_TRIGGER_SEND` / `DO_SEND_NOW`) passou a significar **tentativa**, e o pipeline só continua após `waitForSubmission()` confirmar uma transição de UI.
