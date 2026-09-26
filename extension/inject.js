@@ -11,56 +11,143 @@
     }
     try { sessionStorage.setItem('mangatranslator_tab', 'true'); } catch (e) {}
 
-    // 1. Falsificação do Estado de Visibilidade e Foco
+    // 1. Anti-throttling progressivo.
+    //
+    // O modo padrão é minimal: mantém os shims necessários para o Gemini não
+    // congelar em background, mas não simula atividade humana nem dispara foco
+    // continuamente. O content script pode elevar temporariamente para
+    // balanced/legacy quando o modo de execução ou uma segunda tentativa de
+    // submit realmente precisar.
+    const ANTI_THROTTLE_MODES = new Set(['minimal', 'balanced', 'legacy']);
+    const RAF_CADENCE_MS = {
+        minimal: 250,
+        balanced: 100,
+        legacy: 50,
+    };
+    const FOCUS_CADENCE_MS = {
+        minimal: 0,
+        balanced: 5000,
+        legacy: 1000,
+    };
+
+    let antiThrottleMode = 'minimal';
     try {
-        Object.defineProperty(document, 'visibilityState', { get: () => 'visible', configurable: true });
-        Object.defineProperty(document, 'hidden', { get: () => false, configurable: true });
+        const storedMode = sessionStorage.getItem('mangaTranslatorAntiThrottleMode');
+        if (ANTI_THROTTLE_MODES.has(storedMode)) antiThrottleMode = storedMode;
+    } catch (_e) {}
+
+    // Visibilidade permanece falsificada enquanto esta aba é um worker válido.
+    // Isso evita que frameworks da página parem pipelines internos ao receber
+    // visibilitychange/blur, sem gerar mousemove sintético.
+    try {
+        Object.defineProperty(document, 'visibilityState', {
+            get: () => 'visible',
+            configurable: true
+        });
+        Object.defineProperty(document, 'hidden', {
+            get: () => false,
+            configurable: true
+        });
         if (Document.prototype) Document.prototype.hasFocus = () => true;
     } catch(e) {}
     document.hasFocus = () => true;
 
     const stopProp = e => e.stopImmediatePropagation();
     document.addEventListener('visibilitychange', stopProp, true);
-    window.addEventListener('visibilitychange', stopProp, true); 
+    window.addEventListener('visibilitychange', stopProp, true);
     window.addEventListener('blur', stopProp, true);
     window.addEventListener('pagehide', stopProp, true);
 
-    // Disparo sintético de foco contínuo para manter Angular/Lit/Zone.js ativos sem exigir clique manual
     const dispatchFocusEvents = () => {
         try {
             window.dispatchEvent(new Event('focus'));
-            window.dispatchEvent(new FocusEvent('focus'));
             document.dispatchEvent(new Event('focus'));
-            document.dispatchEvent(new FocusEvent('focus'));
-            document.dispatchEvent(new FocusEvent('focusin', { bubbles: true, composed: true }));
-        } catch (e) {}
+            document.dispatchEvent(new FocusEvent('focusin', {
+                bubbles: true,
+                composed: true
+            }));
+        } catch (_e) {}
     };
+
+    let focusIntervalId = null;
+    function refreshFocusEscalation() {
+        if (focusIntervalId !== null) {
+            clearInterval(focusIntervalId);
+            focusIntervalId = null;
+        }
+
+        const cadence = FOCUS_CADENCE_MS[antiThrottleMode] || 0;
+        if (cadence <= 0) return;
+
+        focusIntervalId = setInterval(dispatchFocusEvents, cadence);
+    }
+
+    function setAntiThrottleMode(nextMode) {
+        const normalized = ANTI_THROTTLE_MODES.has(nextMode)
+            ? nextMode
+            : 'minimal';
+
+        antiThrottleMode = normalized;
+        try {
+            sessionStorage.setItem(
+                'mangaTranslatorAntiThrottleMode',
+                antiThrottleMode
+            );
+        } catch (_e) {}
+
+        refreshFocusEscalation();
+        dispatchFocusEvents();
+        return antiThrottleMode;
+    }
+
+    // Pulso inicial único. Não existe mais loop de foco permanente no baseline.
     dispatchFocusEvents();
     if (document.readyState === 'loading') {
-        document.addEventListener('DOMContentLoaded', dispatchFocusEvents, { once: true });
+        document.addEventListener('DOMContentLoaded', dispatchFocusEvents, {
+            once: true
+        });
     }
-    setInterval(dispatchFocusEvents, 1000);
+    refreshFocusEscalation();
 
-    // 2. Throttle Bypass com fila centralizada (flushRaf) comprovada da Copia (2)
-    // No Chromium, rAF é congelado em abas em segundo plano. Drenar a fila a cada 50ms
-    // permite que animações, Change Detection do Angular e renderização do Lit completem normalmente.
+    window.addEventListener('MANGA_TRANSLATOR_ANTI_THROTTLE_SET_MODE', event => {
+        const requestedMode = event.detail && event.detail.mode;
+        setAntiThrottleMode(requestedMode);
+    });
+
+    window.addEventListener('MANGA_TRANSLATOR_ANTI_THROTTLE_PULSE', () => {
+        dispatchFocusEvents();
+    });
+
+    window.__mangaTranslatorAntiThrottle = {
+        getMode: () => antiThrottleMode,
+        setMode: setAntiThrottleMode,
+        pulse: dispatchFocusEvents,
+    };
+
+    // 2. requestAnimationFrame progressivo.
+    // Em vez de acordar a fila a cada 50ms para sempre, o próximo flush usa a
+    // cadência do nível atual. Uma escalada passa a valer no tick seguinte.
     let nextRafId = 1;
     const rafCallbacks = new Map();
-    const origRaf = typeof window.requestAnimationFrame === 'function' ? window.requestAnimationFrame.bind(window) : null;
-    const origCancelRaf = typeof window.cancelAnimationFrame === 'function' ? window.cancelAnimationFrame.bind(window) : null;
+    const origRaf = typeof window.requestAnimationFrame === 'function'
+        ? window.requestAnimationFrame.bind(window)
+        : null;
+    const origCancelRaf = typeof window.cancelAnimationFrame === 'function'
+        ? window.cancelAnimationFrame.bind(window)
+        : null;
 
     window.requestAnimationFrame = function(cb) {
         const id = nextRafId++;
         rafCallbacks.set(id, cb);
+
         if (origRaf && document.visibilityState === 'visible') {
             try {
-                origRaf((now) => {
-                    if (rafCallbacks.has(id)) {
-                        rafCallbacks.delete(id);
-                        try { cb(now); } catch(e) {}
-                    }
+                origRaf(now => {
+                    if (!rafCallbacks.has(id)) return;
+                    rafCallbacks.delete(id);
+                    try { cb(now); } catch(_e) {}
                 });
-            } catch(e) {}
+            } catch(_e) {}
         }
         return id;
     };
@@ -68,7 +155,7 @@
     window.cancelAnimationFrame = function(id) {
         rafCallbacks.delete(id);
         if (origCancelRaf) {
-            try { origCancelRaf(id); } catch (e) {}
+            try { origCancelRaf(id); } catch (_e) {}
         }
     };
 
@@ -77,51 +164,68 @@
         const entries = Array.from(rafCallbacks.entries());
         rafCallbacks.clear();
         const now = performance.now();
-        for (const [id, cb] of entries) {
-            try { cb(now); } catch(e) {}
+        for (const [, cb] of entries) {
+            try { cb(now); } catch(_e) {}
         }
     };
-    setInterval(flushRaf, 50);
 
-    // 2.1. requestIdleCallback Shim para Abas em Segundo Plano
-    // O Chromium suspende requestIdleCallback completamente em abas em segundo plano.
-    // O Gemini (Angular/Lit/BardChatUi) utiliza requestIdleCallback para processar o streaming
-    // da resposta do modelo. Executar com fallback de 50ms impede que a geração congele.
+    let rafFlushTimer = null;
+    function scheduleRafFlush() {
+        const cadence = RAF_CADENCE_MS[antiThrottleMode] || RAF_CADENCE_MS.minimal;
+        rafFlushTimer = setTimeout(() => {
+            flushRaf();
+            scheduleRafFlush();
+        }, cadence);
+    }
+    scheduleRafFlush();
+
+    // 2.1. requestIdleCallback com fallback adaptativo.
     let nextIdleId = 1;
     const idleCallbacks = new Map();
-    const origIdle = typeof window.requestIdleCallback === 'function' ? window.requestIdleCallback.bind(window) : null;
-    const origCancelIdle = typeof window.cancelIdleCallback === 'function' ? window.cancelIdleCallback.bind(window) : null;
+    const origIdle = typeof window.requestIdleCallback === 'function'
+        ? window.requestIdleCallback.bind(window)
+        : null;
+    const origCancelIdle = typeof window.cancelIdleCallback === 'function'
+        ? window.cancelIdleCallback.bind(window)
+        : null;
 
     window.requestIdleCallback = function(cb, options) {
         const id = nextIdleId++;
         let executed = false;
-        const maxWait = (options && typeof options.timeout === 'number') ? Math.min(options.timeout, 50) : 50;
+        const modeBudget = RAF_CADENCE_MS[antiThrottleMode] || RAF_CADENCE_MS.minimal;
+        const requestedTimeout =
+            options && typeof options.timeout === 'number'
+                ? options.timeout
+                : modeBudget;
+        const maxWait = Math.min(requestedTimeout, modeBudget);
+
         const timerId = setTimeout(() => {
-            if (!executed) {
-                executed = true;
-                idleCallbacks.delete(id);
-                try {
-                    cb({
-                        didTimeout: true,
-                        timeRemaining: () => Math.max(0, 50 - (performance.now() % 50))
-                    });
-                } catch(e) {}
-            }
+            if (executed) return;
+            executed = true;
+            idleCallbacks.delete(id);
+            try {
+                cb({
+                    didTimeout: true,
+                    timeRemaining: () => Math.max(
+                        0,
+                        modeBudget - (performance.now() % modeBudget)
+                    )
+                });
+            } catch(_e) {}
         }, maxWait);
 
         idleCallbacks.set(id, timerId);
 
         if (origIdle && document.visibilityState === 'visible') {
             try {
-                origIdle((deadline) => {
-                    if (!executed) {
-                        executed = true;
-                        clearTimeout(timerId);
-                        idleCallbacks.delete(id);
-                        try { cb(deadline); } catch(e) {}
-                    }
+                origIdle(deadline => {
+                    if (executed) return;
+                    executed = true;
+                    clearTimeout(timerId);
+                    idleCallbacks.delete(id);
+                    try { cb(deadline); } catch(_e) {}
                 }, options);
-            } catch(e) {}
+            } catch(_e) {}
         }
         return id;
     };
@@ -132,40 +236,35 @@
             idleCallbacks.delete(id);
         }
         if (origCancelIdle) {
-            try { origCancelIdle(id); } catch (e) {}
+            try { origCancelIdle(id); } catch (_e) {}
         }
     };
 
-    // 3. Audio Silencioso apenas com gesto real do usuário (Evita erro de Autoplay Policy no Chrome)
+    // 3. Audio silencioso apenas após gesto real do usuário.
     let audioContextAtivo = false;
-    const activateAudio = (e) => {
+    const activateAudio = e => {
         if (audioContextAtivo || (e && !e.isTrusted)) return;
         try {
             const ctx = new (window.AudioContext || window.webkitAudioContext)();
             if (ctx.state === 'suspended') ctx.resume();
             const osc = ctx.createOscillator();
             const gain = ctx.createGain();
-            gain.gain.value = 0; // silêncio
+            gain.gain.value = 0;
             osc.connect(gain);
             gain.connect(ctx.destination);
             osc.start();
             audioContextAtivo = true;
-            ['click', 'pointerdown', 'keydown'].forEach(evt => document.removeEventListener(evt, activateAudio, true));
-        } catch(e) {}
+            ['click', 'pointerdown', 'keydown'].forEach(evt =>
+                document.removeEventListener(evt, activateAudio, true)
+            );
+        } catch(_e) {}
     };
-    ['click', 'pointerdown', 'keydown'].forEach(evt => document.addEventListener(evt, activateAudio, true));
+    ['click', 'pointerdown', 'keydown'].forEach(evt =>
+        document.addEventListener(evt, activateAudio, true)
+    );
 
-    // 4. Ghost Interactions Seguras (Simula atividade humana suave sem scroll disruptivo)
-    setInterval(() => {
-        try {
-            document.dispatchEvent(new MouseEvent('mousemove', {
-                bubbles: true,
-                cancelable: true,
-                clientX: Math.random() * (window.innerWidth || 800),
-                clientY: Math.random() * (window.innerHeight || 600)
-            }));
-        } catch (e) {}
-    }, 1500);
+    // Ghost mousemove removido. Atividade sintética aleatória não é necessária
+    // para manter rAF/idle vivos e pode interferir com menus, tooltips e seleção.
 
     // Helper: busca profunda atravessando Shadow Roots
     function findAllDeep(root, predicate) {
@@ -368,6 +467,6 @@
         } catch(err) {}
     });
 
-    console.log("⚡ Anti-Hibernação SUPER ativado no Gemini! Flush RAF e Foco Ativo prontos!");
+    console.log("⚡ Anti-throttling progressivo ativo no Gemini (modo " + antiThrottleMode + ").");
 })();
 
