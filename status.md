@@ -148,7 +148,7 @@
 - [x] Flags transitórias de migração/teste removidas (`__mangaTranslatorJobSent`, `__MT_SKIP_GEMINI_AUTO_PROCESS__`).
 - [x] Helper textual/`new Function` removido; testes importam o módulo real via CommonJS.
 - [x] Docs V6/README atualizados para arquitetura modular e anti-throttling progressivo.
-- [ ] CI final verde.
+- [x] CI final verde — run #549 (13/13 E2E; todos os jobs verdes).
 
 ## Critérios globais de aceite do plano
 
@@ -177,9 +177,9 @@
 - [x] Todos os testes existentes atualizados passam no PR 12 — run #529.
 - [x] Novos testes TAB/SEND/OBS/TEMP/KEEP passam.
 - [x] E2E de tradução completa passa — PR 12 run #529.
-- [ ] E2E de resposta rápida passa.
-- [ ] E2E de submit ignorado falha cedo.
-- [ ] E2E de aba manual não toca no Gemini / não abre keepalive.
+- [x] E2E de resposta rápida passa — run #549.
+- [x] E2E de submit ignorado falha cedo — run #549.
+- [x] E2E de aba manual não toca no Gemini / não abre keepalive — run #549.
 
 ## Invariantes que serão preservados
 
@@ -192,6 +192,8 @@
 - [x] Logs sanitizam prompt, signed URL, imagem/base64, cookie e token.
 
 ## Notas de execução
+
+- PR 13: CI final completo verde no run #549; 13/13 E2E Playwright passaram, além de sintaxe, manifest, smoke/visual/unit em Node 20/22 e coverage.
 
 - PR 12: CI completo verde no run #529.
 - Critérios E2E finais adicionados no PR 13: tradução completa, resposta instantânea, submit ignorado com falha curta e aba Gemini manual inerte/sem keepalive.
