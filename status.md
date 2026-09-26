@@ -13,10 +13,10 @@
 ## Ordem prática do plano
 
 - [x] PASSO 1 — adicionar `tabs.onReplaced` ao mock e logs de diagnóstico.
-- [ ] PASSO 2 — criar `background/tab-identity.js`.
-- [ ] PASSO 3 — criar `actions/claim-gemini-job.js`.
-- [ ] PASSO 4 — tornar lifecycle/reconciler canonical-tab-aware.
-- [ ] PASSO 5 — adicionar testes de replacement/restart.
+- [x] PASSO 2 — criar `background/tab-identity.js`.
+- [x] PASSO 3 — criar `actions/claim-gemini-job.js`.
+- [x] PASSO 4 — tornar lifecycle/reconciler canonical-tab-aware.
+- [x] PASSO 5 — adicionar testes de replacement/restart.
 - [ ] PASSO 6 — trocar bootstrap de `content_gemini.js` para `CLAIM_GEMINI_JOB`.
 - [ ] PASSO 7 — remover fallback de `storage.get(null)`.
 - [ ] PASSO 8 — remover keep-alive prematuro.
@@ -46,19 +46,19 @@
 - [ ] CI do PR 0 verde.
 
 ### PR 1 — Identidade canônica de aba + claim seguro
-- [ ] Alias durável `oldTabId -> newTabId`.
-- [ ] Cadeia de aliases com limite de hops/ciclo/TTL.
-- [ ] Journal de migração recuperável após restart.
-- [ ] Migração de `gemini_job_*`.
-- [ ] Migração de `wd_data_*`.
-- [ ] Migração de `jobIndex`.
-- [ ] Migração de `extractionTabs[*].geminiTabId`.
-- [ ] Migração de recovery/finalization markers.
-- [ ] Lifecycle resolve canonical antes de persistir job.
-- [ ] Reconciler resolve canonical antes de dropar job.
-- [ ] Watchdog alias-aware.
-- [ ] `CLAIM_GEMINI_JOB` implementado e restrito à origem Gemini.
-- [ ] TAB-01 a TAB-12.
+- [x] Alias durável `oldTabId -> newTabId`.
+- [x] Cadeia de aliases com limite de hops/ciclo/TTL.
+- [x] Journal de migração recuperável após restart.
+- [x] Migração de `gemini_job_*`.
+- [x] Migração de `wd_data_*`.
+- [x] Migração de `jobIndex`.
+- [x] Migração de `extractionTabs[*].geminiTabId`.
+- [x] Migração de recovery/finalization markers.
+- [x] Lifecycle resolve canonical antes de persistir job.
+- [x] Reconciler resolve canonical antes de dropar job.
+- [x] Watchdog alias-aware.
+- [x] `CLAIM_GEMINI_JOB` implementado e restrito à origem Gemini.
+- [x] TAB-01 a TAB-12.
 - [ ] CI do PR 1 verde.
 
 ### PR 2 — Bootstrap por claim
@@ -161,6 +161,9 @@
 - [ ] Logs não armazenam prompt, signed URL, imagem, cookie ou token.
 
 ## Notas de execução
+
+- PR 1 adicionou uma proteção extra não explícita no checklist: conflito de rekey entre dois `jobId` diferentes aborta a migração em vez de apagar ownership existente.
+- O lifecycle e o watchdog usam write → canonical recheck para fechar a corrida em que `onReplaced` acontece durante a própria persistência.
 
 - Cada checkbox só deve ser marcado quando a mudança correspondente estiver realmente presente no branch.
 - Itens de CI só são marcados após os checks do GitHub Actions terminarem com sucesso.
