@@ -78,35 +78,6 @@
     });
   }
 
-  function findButtonByPosition(root = document) {
-    const view = root.defaultView || window;
-    const winW = view.innerWidth || 0;
-    const candidates = Array.from(root.querySelectorAll(
-      'button, [role="button"], [role="switch"], a, div[tabindex], span[tabindex]'
-    ));
-
-    const valid = [];
-    for (const element of candidates) {
-      if (!hasTemporarySemantics(element)) continue;
-      let rect;
-      try { rect = element.getBoundingClientRect(); } catch (_e) { continue; }
-      if (
-        rect.top >= 0 &&
-        rect.top <= 100 &&
-        rect.right >= winW - 500 &&
-        rect.left <= winW
-      ) {
-        valid.push({
-          element: element.closest('button, [role="button"], [role="switch"], a') || element,
-          rect,
-        });
-      }
-    }
-
-    valid.sort((a, b) => b.rect.right - a.rect.right);
-    return valid.length ? valid[0].element : null;
-  }
-
   function isAlreadyActive(button, root = document) {
     if (button) {
       const text = textOf(button);
@@ -190,7 +161,6 @@
     timeoutMs = 12000,
     signal = null,
     sleep = ms => new Promise(resolve => setTimeout(resolve, ms)),
-    onLegacyFallback = null,
   } = {}) {
     const start = Date.now();
     let clicked = false;
@@ -201,19 +171,8 @@
         return { status: 'verification_failed', reason: 'aborted' };
       }
 
-      const semanticButton = findTempChatButton(root);
-      let button = semanticButton;
-      if (semanticButton) sawSemanticButton = true;
-
-      if (!button) {
-        const positional = findButtonByPosition(root);
-        if (positional) {
-          if (typeof onLegacyFallback === 'function') {
-            try { onLegacyFallback(positional); } catch (_e) {}
-          }
-          button = positional;
-        }
-      }
+      const button = findTempChatButton(root);
+      if (button) sawSemanticButton = true;
 
       if (isAlreadyActive(button, root)) {
         return { status: clicked ? 'activated_verified' : 'already_active' };
@@ -240,42 +199,10 @@
     return { status: 'verification_failed', reason: 'control_not_actionable' };
   }
 
-  function createLegacyAdapter({ root = document } = {}) {
-    const adapter = {
-      sleep: ms => new Promise(resolve => setTimeout(resolve, ms)),
-      findInTree,
-      findTempChatButton: () => findTempChatButton(root),
-      findButtonByPosition: () => findButtonByPosition(root),
-      isAlreadyActive: button => isAlreadyActive(button, root),
-      triggerClick,
-      async ensureTemporaryChatActive(maxSeconds = 12) {
-        const result = await ensureActive({
-          root,
-          timeoutMs: Math.max(1, Number(maxSeconds) * 1000),
-          sleep: ms => adapter.sleep(ms),
-        });
-
-        if (result.status === 'already_active') {
-          return { success: true, alreadyActive: true, status: result.status };
-        }
-        if (result.status === 'activated_verified') {
-          return { success: true, activated: true, status: result.status };
-        }
-        if (result.status === 'unavailable') {
-          return { success: false, notFound: true, status: result.status };
-        }
-        return { success: false, verificationFailed: true, status: result.status };
-      },
-    };
-    return adapter;
-  }
-
   const api = {
     ensureActive,
-    createLegacyAdapter,
     findInTree,
     findTempChatButton,
-    findButtonByPosition,
     isAlreadyActive,
     triggerClick,
     hasTemporarySemantics,
