@@ -238,8 +238,12 @@ function buildGeminiMockHtml() {
 
         const img = document.createElement('img');
         img.alt = 'Imagem traduzida do mock';
+        // Mantém o resultado no mesmo origin da página Gemini mock.
+        // Usar localhost aqui enquanto a página roda em 127.0.0.1 tornava a
+        // imagem cross-origin e desviava artificialmente o E2E para o fallback
+        // auxiliar, em vez de testar a cadeia direta de background_delete.
         img.src =
-          'http://localhost:3999/gemini-result-image?jobIndex=' +
+          '/gemini-result-image?jobIndex=' +
           encodeURIComponent(jobIndex) +
           '&t=' +
           Date.now();
