@@ -86,9 +86,32 @@
     async function assertJobOwnership(sender, jobId) {
       const senderTabId = sender && sender.tab ? sender.tab.id : null;
       if (!jobId || senderTabId === null) return { owns: false, tabId: senderTabId };
-      const tabId = await resolveCanonicalTabId(senderTabId);
-      const data = await chrome.storage.local.get([`gemini_job_${tabId}`]);
-      const job = data && data[`gemini_job_${tabId}`];
+
+      // Caminho comum sem replacement: uma leitura apenas, preservando a
+      // latência original. Só consultamos aliases se a chave física não existe.
+      let tabId = senderTabId;
+      let data = await chrome.storage.local.get([`gemini_job_${tabId}`]);
+      let job = data && data[`gemini_job_${tabId}`];
+      if (job) return { owns: job.jobId === jobId, tabId };
+
+      tabId = await resolveCanonicalTabId(senderTabId);
+      if (tabId !== senderTabId) {
+        data = await chrome.storage.local.get([`gemini_job_${tabId}`]);
+        job = data && data[`gemini_job_${tabId}`];
+        if (job) return { owns: job.jobId === jobId, tabId };
+      }
+
+      // Durante a pequena janela entre TAB_REPLACED e o término do rekey, o
+      // sender já é a aba nova enquanto o índice ainda aponta para a antiga.
+      const indexed = indexJobsOfBatch(null).find(entry => entry && entry.jobId === jobId);
+      if (indexed) {
+        const indexedCanonical = await resolveCanonicalTabId(indexed.geminiTabId);
+        if (indexedCanonical === senderTabId) {
+          tabId = await migrateTabIdentity(indexed.geminiTabId, senderTabId, { jobId });
+          data = await chrome.storage.local.get([`gemini_job_${tabId}`]);
+          job = data && data[`gemini_job_${tabId}`];
+        }
+      }
       return { owns: Boolean(job && job.jobId === jobId), tabId };
     }
 
@@ -214,11 +237,23 @@
     }
 
     async function finalizeJob(geminiTabId, mangaTabId, fromError = false) {
-      geminiTabId = await resolveCanonicalTabId(geminiTabId);
       if (isFinalized(geminiTabId)) return false;
-      const jobKey = `gemini_job_${geminiTabId}`;
-      const key = markerKey(geminiTabId);
-      const data = await chrome.storage.local.get([jobKey, key, 'geminiExecutionMode', 'debugMode']);
+
+      // Leitura direta primeiro: no caminho normal isso mantém exatamente uma
+      // ida ao storage. Se a chave física já foi movida, então resolvemos alias.
+      let jobKey = `gemini_job_${geminiTabId}`;
+      let key = markerKey(geminiTabId);
+      let data = await chrome.storage.local.get([jobKey, key, 'geminiExecutionMode', 'debugMode']);
+      if (!data[jobKey]) {
+        const canonicalTabId = await resolveCanonicalTabId(geminiTabId);
+        if (canonicalTabId !== geminiTabId) {
+          geminiTabId = canonicalTabId;
+          if (isFinalized(geminiTabId)) return false;
+          jobKey = `gemini_job_${geminiTabId}`;
+          key = markerKey(geminiTabId);
+          data = await chrome.storage.local.get([jobKey, key, 'geminiExecutionMode', 'debugMode']);
+        }
+      }
       const job = data[jobKey] || {};
       const prior = data[key];
       if (prior && prior.expiresAt > Date.now() && (!job.jobId || prior.jobId === job.jobId)) {
