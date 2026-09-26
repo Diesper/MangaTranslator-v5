@@ -260,6 +260,30 @@ describe('gemini/observer.js — Observer V2', () => {
     observer.stop();
   });
 
+  test('OBS-13: send disabled no baseline não confirma submit; transição enabled -> disabled confirma', () => {
+    const send = document.createElement('button');
+    send.setAttribute('aria-label', 'Send message');
+    send.disabled = true;
+    visibleRect(send, 36, 36);
+    document.body.appendChild(send);
+
+    const { createGeminiObserver } = loadObserver();
+    const observer = createGeminiObserver({ jobId: 'obs-13' }).start();
+
+    expect(observer.getState().submissionConfirmed).toBe(false);
+
+    send.disabled = false;
+    observer.inspect();
+    expect(observer.getState().submissionConfirmed).toBe(false);
+
+    send.disabled = true;
+    observer.inspect();
+
+    expect(observer.getState().submissionConfirmed).toBe(true);
+    expect(observer.getState().submissionReason).toBe('send_busy');
+    observer.stop();
+  });
+
   test('coalescing: várias mutations no mesmo turno agendam uma única inspeção', async () => {
     const { createGeminiObserver } = loadObserver();
     const observer = createGeminiObserver({ jobId: 'obs-coalesce' }).start();
