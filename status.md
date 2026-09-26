@@ -28,7 +28,7 @@
 - [x] PASSO 14 — reduzir tentativas de envio para 2.
 - [x] PASSO 15 — trocar espera de resultado por observer.
 - [x] PASSO 16 — corrigir Temporary Chat.
-- [ ] PASSO 17 — extrair attachment/result/deletion.
+- [ ] PASSO 17 — extrair attachment/result/deletion. *(attachment concluído; result/deletion pendentes)*
 - [ ] PASSO 18 — criar job runner.
 - [ ] PASSO 19 — reduzir anti-throttling.
 - [ ] PASSO 20 — remover legado.
@@ -66,14 +66,14 @@
 - [x] Full scan órfão removido.
 - [x] `openKeepAlive()` só após claim válido.
 - [x] KEEP-01 a KEEP-05.
-- [ ] CI do PR 2 verde.
+- [x] CI do PR 2 verde — run #323.
 
 ### PR 3 — Fundação modular Gemini
 - [x] `gemini/selectors.js`.
 - [x] `gemini/dom.js`.
 - [x] Manifest com load order explícito.
 - [x] Funções puras testáveis por `require()`.
-- [x] CI do PR 3 verde — run #333.
+- [ ] CI do PR 3 verde.
 
 ### PR 4 — Observer V2
 - [x] `gemini/observer.js`.
@@ -82,7 +82,7 @@
 - [x] `generationActiveObserved`.
 - [x] Cleanup idempotente.
 - [x] OBS-01 a OBS-12.
-- [x] CI do PR 4 verde — run #396.
+- [ ] CI do PR 4 verde.
 
 ### PR 5 — Submit confirmado
 - [x] `gemini/editor.js`.
@@ -93,7 +93,7 @@
 - [x] Máximo de 2 tentativas.
 - [x] Falha curta `GEMINI_SUBMISSION_NOT_CONFIRMED`.
 - [x] SEND-01 a SEND-07.
-- [x] CI do PR 5 verde — run #398.
+- [ ] CI do PR 5 verde.
 
 ### PR 6 — Observer como fonte de resultado
 - [x] Polling pesado de 1 s removido do caminho primário.
@@ -101,19 +101,19 @@
 - [x] Resposta instantânea capturada.
 - [x] Imagem antiga não capturada.
 - [x] CG-36 atualizado; E2E de resposta rápida permanece para o gate desta etapa.
-- [x] CI do PR 6 verde — run #407.
+- [ ] CI do PR 6 verde.
 
 ### PR 7 — Temporary Chat verificado
 - [x] `gemini/temporary-chat.js`.
 - [x] Estado relido após clique controla o retorno; falso sucesso de `activeNow` removido.
 - [x] Fallback geométrico exige semântica.
 - [x] TEMP-01 a TEMP-05.
-- [x] CI do PR 7 verde — run #410.
+- [ ] CI do PR 7 verde.
 
 ### PR 8 — Attachment modular
 - [x] `gemini/attachment.js`.
 - [x] Paste/file input/drag-drop movidos.
-- [x] Attachment confirmado por MutationObserver/evidência observável; dispatch isolado não declara sucesso.
+- [x] Attachment confirmado por baseline + MutationObserver; dispatch isolado não declara sucesso.
 - [ ] CI do PR 8 verde.
 
 ### PR 9 — Result extractor modular
@@ -162,18 +162,25 @@
 
 ## Notas de execução
 
-- PR 8 move paste, file input, drag/drop e detecção de thumbnail para `gemini/attachment.js`. A confirmação captura um baseline antes do upload e só aceita evidência nova/alterada; `attempted:true` nunca implica `confirmed:true`.
-- A primeira tentativa preserva paste + file input + drag/drop; os retries preservam paste + file input em cadência equivalente ao fluxo anterior (até 8 dispatches dentro da janela de 15 s).
+- PR 8 extrai paste, file input, drag/drop e confirmação de thumbnail para `gemini/attachment.js`.
+- A confirmação captura um baseline antes da tentativa e só aceita evidência nova ou alterada; `attempted:true` nunca significa `confirmed:true`.
+- A primeira tentativa preserva paste + file input + drag/drop. Retries preservam paste + file input, em cadência equivalente ao fluxo anterior, dentro da janela terminal de 15 s.
+- O conteúdo herdado de PR 7 foi ressincronizado com os HEADs verdes após o primeiro CI do PR 8 detectar drift na pilha.
 
-- PR 7 substitui o antigo retorno `click -> success:true` por estados explícitos `already_active`, `activated_verified`, `unavailable` e `verification_failed`. Após um clique, o controle é apenas observado; não há loop de toggle que possa desfazer a ativação.
+- PR 7 substitui o antigo retorno `click -> success:true` por estados explícitos `already_active`, `activated_verified`, `unavailable` e `verification_failed`.
+- Após um clique, o controle é apenas observado; o código não alterna o toggle repetidamente.
 
-- PR 6 removeu o `while (!resultUrl) + sleep(1000)` do caminho primário. O Observer V2 agora resolve imagem/erro/timeout; timers restantes servem apenas a progresso e ao nudge opcional de cards, sem varredura profunda periódica.
-- Seleção manual passou a resolver a mesma Promise do observer por `acceptResult()`. O fallback profundo ocorre somente em inspeções disparadas por mutation quando o response container não pôde ser identificado.
+- PR 6 remove o polling pesado do caminho primário: imagem, erro e timeout passam por `activeGeminiObserver.waitForResult()`.
+- Seleção manual resolve a mesma Promise via `acceptResult()`; a cadeia de extração permanece intacta.
 
-- PR 5 instala o Observer V2 antes de qualquer submit, preserva `__mangaTranslatorJobSent` apenas como compatibilidade após confirmação real e elimina qualquer mutação de `disabled`/`aria-disabled` em `content_gemini.js` e `inject.js`.
-- A escalada final (`MANGA_TRANSLATOR_TRIGGER_SEND` / `DO_SEND_NOW`) passou a significar **tentativa**, e o pipeline só continua após `waitForSubmission()` confirmar uma transição de UI.
+- PR 5 instala o Observer V2 antes de qualquer submit, preserva `__mangaTranslatorJobSent` apenas após confirmação real e elimina mutações forçadas de `disabled`/`aria-disabled`.
+- `MANGA_TRANSLATOR_TRIGGER_SEND` e `DO_SEND_NOW` representam tentativa; o pipeline só segue após `waitForSubmission()`.
 
+- PR 3: CI completo verde no run #333 (HEAD `fe75c45a`).
 - PR 4 adiciona Observer V2 isolado e ainda não troca o polling do runtime. O observer instala ownership por response novo, baseline de imagens/erros, coalescing de mutations, confirmação de submit e cleanup idempotente.
+- Correção adicional: `send_busy` só confirma submit após transição observada de Send habilitado para busy/desabilitado; um controle já disabled no baseline não é evidência de envio.
+
+- PR 2: CI completo verde no run #323 (HEAD `570b029b`).
 
 - PR 3 extraiu seletores e helpers DOM sem alterar intencionalmente o pipeline. `content_gemini.js` delega `getImageSource`, blacklist de imagens, ownership por response, deep traversal, editable lookup e send-button lookup ao novo módulo.
 
