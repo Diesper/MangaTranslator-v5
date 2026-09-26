@@ -3,6 +3,8 @@ const path = require('path');
 const { getRuntimeMock, getStorageMock } = require('../../mocks/chrome-api.mock.js');
 
 const CONTENT_GEMINI_PATH = path.resolve(__dirname, '../../../extension/content_gemini.js');
+const GEMINI_SELECTORS_PATH = path.resolve(__dirname, '../../../extension/gemini/selectors.js');
+const GEMINI_DOM_PATH = path.resolve(__dirname, '../../../extension/gemini/dom.js');
 
 function setWindowLocation(pathname = '/app/chat-1') {
     Object.defineProperty(window, 'location', {
@@ -267,6 +269,8 @@ describe('content_gemini.js - RPA real do Gemini', () => {
         });
 
         jest.isolateModules(() => {
+            require(GEMINI_SELECTORS_PATH);
+            require(GEMINI_DOM_PATH);
             require(CONTENT_GEMINI_PATH);
         });
 

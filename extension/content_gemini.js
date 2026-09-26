@@ -2,6 +2,11 @@
 
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 
+const GeminiDom = globalThis.MangaTranslatorGeminiDom;
+if (!GeminiDom) {
+    throw new Error('MangaTranslatorGeminiDom não foi carregado antes de content_gemini.js');
+}
+
 // ── Keep-alive sob demanda ───────────────────────────────────────────────────
 // Antes a porta era aberta no carregamento do script, ou seja, QUALQUER aba do
 // Gemini que o usuário abrisse manualmente mantinha o Service Worker acordado.
@@ -407,42 +412,15 @@ const TemporaryChatActivator = {
 };
 
 function getImageSource(img) {
-    if (!img) return '';
-    if (img.dataset && img.dataset.src && !img.src) img.src = img.dataset.src;
-    return img.currentSrc || img.src || (img.dataset && img.dataset.src) || img.getAttribute('src') || '';
+    return GeminiDom.getImageSource(img);
 }
 
 function isIgnoredGeminiImageSource(src) {
-    const lower = String(src || '').toLowerCase();
-    return !lower
-        || lower.includes('avatar')
-        || lower.includes('favicon')
-        || lower.includes('emoji')
-        || lower.includes('profile')
-        || lower.includes('googleusercontent.com/a/')
-        || lower.includes('gstatic.com/images/branding');
+    return GeminiDom.isIgnoredGeminiImageSource(src);
 }
 
 function isModelResponseImage(img) {
-    if (!img) return false;
-    const modelSelector = [
-        'model-response',
-        '[data-test-id*="model-response"]',
-        '.model-response-text',
-        '.response-container',
-        '.model-turn',
-        '[data-message-author="model"]',
-        'message-content.model',
-        '.presented-turn-content',
-        'bard-model-response',
-        'div[data-turn-role="model"]',
-        '.model-response-container'
-    ].join(', ');
-
-    try {
-        if (img.closest && img.closest(modelSelector)) return true;
-    } catch(e) {}
-    return false;
+    return GeminiDom.isModelResponseImage(img);
 }
 
 function tryClickModelImageCards() {
@@ -511,22 +489,7 @@ function isManualSelectableImage(img, ignoreImages = new Set()) {
 }
 
 function findAllElementsDeep(root, matcher) {
-    const list = [];
-    if (!root) return list;
-    function walk(node) {
-        if (!node) return;
-        if (node.nodeType === Node.ELEMENT_NODE) {
-            try { if (matcher(node)) list.push(node); } catch(e) {}
-            try { if (node.shadowRoot) walk(node.shadowRoot); } catch(e) {}
-        }
-        let child = node.firstChild;
-        while (child) {
-            walk(child);
-            child = child.nextSibling;
-        }
-    }
-    walk(root);
-    return list;
+    return GeminiDom.findAllDeep(root, matcher);
 }
 
 function findFileInputsDeep(root = document.body) {
@@ -572,75 +535,7 @@ function findAttachmentThumbnailDeep(root = document.body) {
 }
 
 function findSendButtonDeep(root = document.body) {
-    const allClickables = findAllElementsDeep(root, el => {
-        if (!el || el.nodeType !== Node.ELEMENT_NODE) return false;
-        const tag = el.tagName.toLowerCase();
-        const role = (el.getAttribute('role') || '').toLowerCase();
-        return tag === 'button' || role === 'button' || tag.includes('button') || tag === 'mat-icon-button';
-    });
-
-    const blacklist = ['feedback', 'report', 'survey', 'bug', 'cancel', 'cancelar', 'close', 'fechar', 'dismiss', 'reject', 'mic', 'microfone', 'voice', 'audio', 'stop', 'help', 'ajuda', 'clear', 'limpar'];
-
-    for (let i = allClickables.length - 1; i >= 0; i--) {
-        const btn = allClickables[i];
-        const label       = (btn.getAttribute('aria-label')   || '').toLowerCase().trim();
-        const tooltip     = (btn.getAttribute('mattooltip')   || '').toLowerCase().trim();
-        const dataTooltip = (btn.getAttribute('data-tooltip') || '').toLowerCase().trim();
-        const title       = (btn.getAttribute('title')        || '').toLowerCase().trim();
-        const testId      = (btn.getAttribute('data-test-id') || btn.getAttribute('data-testid') || '').toLowerCase().trim();
-        const className   = (typeof btn.className === 'string' ? btn.className : '').toLowerCase();
-        const text        = (btn.innerText || btn.textContent || '').toLowerCase().trim();
-
-        const combined = `${label} ${tooltip} ${dataTooltip} ${title} ${testId} ${className}`;
-        if (blacklist.some(bad => combined.includes(bad))) continue;
-
-        const hasArrowIcon = text.includes('arrow_upward') || text.includes('send') ||
-                             !!btn.querySelector('mat-icon, svg, [data-icon-name*="send"], [data-icon-name*="arrow"]');
-
-        const isExact = label === 'enviar' || label === 'enviar mensagem' || label === 'enviar prompt' || label === 'enviar consulta' ||
-                        label === 'send' || label === 'send message' || label === 'send prompt' ||
-                        tooltip === 'enviar' || tooltip === 'enviar mensagem' || tooltip === 'send' || tooltip === 'send message' ||
-                        dataTooltip === 'enviar' || dataTooltip === 'send' ||
-                        testId === 'send-button' || className.includes('send-button');
-
-        if (isExact || (hasArrowIcon && (label.includes('enviar') || label.includes('send') || label === ''))) {
-            return btn;
-        }
-    }
-
-    for (let i = allClickables.length - 1; i >= 0; i--) {
-        const btn = allClickables[i];
-        const label     = (btn.getAttribute('aria-label') || '').toLowerCase().trim();
-        const tooltip   = (btn.getAttribute('mattooltip') || '').toLowerCase().trim();
-        const className = (typeof btn.className === 'string' ? btn.className : '').toLowerCase();
-        const text      = (btn.innerText || btn.textContent || '').toLowerCase().trim();
-
-        const combined = `${label} ${tooltip} ${className} ${text}`;
-        if (blacklist.some(bad => combined.includes(bad))) continue;
-
-        if (combined.includes('enviar') || combined.includes('send') || text.includes('arrow_upward')) {
-            return btn;
-        }
-    }
-
-    const inputArea = document.querySelector('rich-textarea, .input-area, chat-window, .chat-input-container');
-    if (inputArea) {
-        const cRect = inputArea.getBoundingClientRect();
-        for (let i = allClickables.length - 1; i >= 0; i--) {
-            const btn = allClickables[i];
-            const bRect = btn.getBoundingClientRect();
-            if (bRect.width >= 24 && bRect.height >= 24 &&
-                bRect.bottom <= (cRect.bottom + 80) && bRect.top >= (cRect.top - 20) &&
-                bRect.right <= (cRect.right + 40) && bRect.left >= (cRect.right - 140)) {
-                const label = (btn.getAttribute('aria-label') || '').toLowerCase();
-                if (!blacklist.some(bad => label.includes(bad))) {
-                    return btn;
-                }
-            }
-        }
-    }
-
-    return null;
+    return GeminiDom.findSendButton(root);
 }
 
 function clickSendButton(btn) {
@@ -819,13 +714,7 @@ function createGeminiManualPanel(job, getIgnoreImages) {
 }
 
 function getEditableElement(root) {
-    if (!root) return null;
-    const editable = root.querySelector ? root.querySelector('.ql-editor, [contenteditable="true"]') : null;
-    if (editable) return editable;
-    if (root.getAttribute && (root.getAttribute('contenteditable') === 'true' || (typeof root.className === 'string' && root.className.includes('ql-editor')))) {
-        return root;
-    }
-    return (root.querySelector && root.querySelector('p')) || root;
+    return GeminiDom.getEditableElement(root);
 }
 
 function imageElementToDataUrl(image) {

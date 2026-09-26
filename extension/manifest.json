@@ -56,6 +56,8 @@
         "http://127.0.0.1/*"
       ],
       "js": [
+        "gemini/selectors.js",
+        "gemini/dom.js",
         "content_gemini.js"
       ],
       "run_at": "document_idle"
