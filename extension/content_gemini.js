@@ -535,75 +535,7 @@ function findAttachmentThumbnailDeep(root = document.body) {
 }
 
 function findSendButtonDeep(root = document.body) {
-    const allClickables = findAllElementsDeep(root, el => {
-        if (!el || el.nodeType !== Node.ELEMENT_NODE) return false;
-        const tag = el.tagName.toLowerCase();
-        const role = (el.getAttribute('role') || '').toLowerCase();
-        return tag === 'button' || role === 'button' || tag.includes('button') || tag === 'mat-icon-button';
-    });
-
-    const blacklist = ['feedback', 'report', 'survey', 'bug', 'cancel', 'cancelar', 'close', 'fechar', 'dismiss', 'reject', 'mic', 'microfone', 'voice', 'audio', 'stop', 'help', 'ajuda', 'clear', 'limpar'];
-
-    for (let i = allClickables.length - 1; i >= 0; i--) {
-        const btn = allClickables[i];
-        const label       = (btn.getAttribute('aria-label')   || '').toLowerCase().trim();
-        const tooltip     = (btn.getAttribute('mattooltip')   || '').toLowerCase().trim();
-        const dataTooltip = (btn.getAttribute('data-tooltip') || '').toLowerCase().trim();
-        const title       = (btn.getAttribute('title')        || '').toLowerCase().trim();
-        const testId      = (btn.getAttribute('data-test-id') || btn.getAttribute('data-testid') || '').toLowerCase().trim();
-        const className   = (typeof btn.className === 'string' ? btn.className : '').toLowerCase();
-        const text        = (btn.innerText || btn.textContent || '').toLowerCase().trim();
-
-        const combined = `${label} ${tooltip} ${dataTooltip} ${title} ${testId} ${className}`;
-        if (blacklist.some(bad => combined.includes(bad))) continue;
-
-        const hasArrowIcon = text.includes('arrow_upward') || text.includes('send') ||
-                             !!btn.querySelector('mat-icon, svg, [data-icon-name*="send"], [data-icon-name*="arrow"]');
-
-        const isExact = label === 'enviar' || label === 'enviar mensagem' || label === 'enviar prompt' || label === 'enviar consulta' ||
-                        label === 'send' || label === 'send message' || label === 'send prompt' ||
-                        tooltip === 'enviar' || tooltip === 'enviar mensagem' || tooltip === 'send' || tooltip === 'send message' ||
-                        dataTooltip === 'enviar' || dataTooltip === 'send' ||
-                        testId === 'send-button' || className.includes('send-button');
-
-        if (isExact || (hasArrowIcon && (label.includes('enviar') || label.includes('send') || label === ''))) {
-            return btn;
-        }
-    }
-
-    for (let i = allClickables.length - 1; i >= 0; i--) {
-        const btn = allClickables[i];
-        const label     = (btn.getAttribute('aria-label') || '').toLowerCase().trim();
-        const tooltip   = (btn.getAttribute('mattooltip') || '').toLowerCase().trim();
-        const className = (typeof btn.className === 'string' ? btn.className : '').toLowerCase();
-        const text      = (btn.innerText || btn.textContent || '').toLowerCase().trim();
-
-        const combined = `${label} ${tooltip} ${className} ${text}`;
-        if (blacklist.some(bad => combined.includes(bad))) continue;
-
-        if (combined.includes('enviar') || combined.includes('send') || text.includes('arrow_upward')) {
-            return btn;
-        }
-    }
-
-    const inputArea = document.querySelector('rich-textarea, .input-area, chat-window, .chat-input-container');
-    if (inputArea) {
-        const cRect = inputArea.getBoundingClientRect();
-        for (let i = allClickables.length - 1; i >= 0; i--) {
-            const btn = allClickables[i];
-            const bRect = btn.getBoundingClientRect();
-            if (bRect.width >= 24 && bRect.height >= 24 &&
-                bRect.bottom <= (cRect.bottom + 80) && bRect.top >= (cRect.top - 20) &&
-                bRect.right <= (cRect.right + 40) && bRect.left >= (cRect.right - 140)) {
-                const label = (btn.getAttribute('aria-label') || '').toLowerCase();
-                if (!blacklist.some(bad => label.includes(bad))) {
-                    return btn;
-                }
-            }
-        }
-    }
-
-    return null;
+    return GeminiDom.findSendButton(root);
 }
 
 function clickSendButton(btn) {
