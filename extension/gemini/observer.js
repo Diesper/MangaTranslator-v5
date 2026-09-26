@@ -439,6 +439,10 @@
       return state;
     }
 
+    function acceptResult(image, url) {
+      return setResult(image || null, url);
+    }
+
     const api = {
       start,
       stop,
@@ -446,6 +450,7 @@
       scheduleInspect,
       waitForSubmission,
       waitForResult,
+      acceptResult,
       getState,
     };
 
