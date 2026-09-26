@@ -883,7 +883,7 @@ async function processGeminiJob() {
             root: document,
             timeoutMs: 15000,
             retryAfterMs: 2000,
-            maxDispatches: 3,
+            maxDispatches: 8,
             sleep,
         });
 
