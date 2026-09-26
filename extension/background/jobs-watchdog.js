@@ -2,7 +2,14 @@
 // background/jobs-watchdog.js -- Persisted watchdog lifecycle and alarm routing.
 
 (function(scope) {
-  function createWatchdog({ getJobIndex, getExtractionTabs, finalizeJob, log, timeoutMinutes }) {
+  function createWatchdog({
+    getJobIndex,
+    getExtractionTabs,
+    finalizeJob,
+    log,
+    timeoutMinutes,
+    resolveCanonicalTabId = async tabId => tabId,
+  }) {
     const alarmNameFor = (geminiTabId, jobId) => `watchdog_${jobId || geminiTabId}`;
 
     function arm(mangaTabId, index, geminiTabId, jobId) {
@@ -28,7 +35,7 @@
       const keys = indexed ? [`wd_data_${indexed.geminiTabId}`] : [];
       if (!keys.includes(`wd_data_${suffix}`)) keys.push(`wd_data_${suffix}`);
 
-      chrome.storage.local.get(keys, data => {
+      chrome.storage.local.get(keys, async data => {
         const key = keys.find(candidate => data && data[candidate]);
         const watchdog = key ? data[key] : (indexed && {
           geminiTabId: indexed.geminiTabId,
@@ -39,9 +46,13 @@
         if (!watchdog) return;
         if (key) chrome.storage.local.remove(key);
 
-        const tabId = watchdog.geminiTabId || (indexed && indexed.geminiTabId);
-        if (tabId === undefined || tabId === null) return;
-        log('warn', 'bg', 'JOB_TIMEOUT', `Timeout de ${timeoutMinutes} min no index ${watchdog.index}`, { geminiTabId: tabId });
+        const rawTabId = watchdog.geminiTabId || (indexed && indexed.geminiTabId);
+        if (rawTabId === undefined || rawTabId === null) return;
+        const tabId = await resolveCanonicalTabId(rawTabId);
+        log('warn', 'bg', 'JOB_TIMEOUT', `Timeout de ${timeoutMinutes} min no index ${watchdog.index}`, {
+          geminiTabId: tabId,
+          replacedTabId: rawTabId === tabId ? null : rawTabId,
+        });
         if (watchdog.mangaTabId) {
           chrome.tabs.sendMessage(watchdog.mangaTabId, {
             action: 'SHOW_ERROR_INTEGRATED',
