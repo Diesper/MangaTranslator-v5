@@ -1,4 +1,4 @@
-// content_gemini.js — Manga Translator v6.0
+// content_gemini.js — Manga Translator
 //
 // Bootstrap/orquestração do worker Gemini.
 // Implementação detalhada vive em extension/gemini/*.js.

@@ -1,6 +1,6 @@
 <#
 .SYNOPSIS
-    Executa todos os testes do MangaTranslator v6.0 em um único comando.
+    Executa todos os testes do MangaTranslator em um único comando.
 .DESCRIPTION
     Localiza automaticamente o interpretador Node.js ou VS Code no sistema
     e dispara a suíte completa de testes (Jest Unitários, Integração e Visuais v3/v4).
