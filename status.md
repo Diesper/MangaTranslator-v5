@@ -147,7 +147,7 @@
 - [x] Fallback posicional inseguro do Temporary Chat removido.
 - [x] Flags transitórias de migração/teste removidas (`__mangaTranslatorJobSent`, `__MT_SKIP_GEMINI_AUTO_PROCESS__`).
 - [x] Helper textual/`new Function` removido; testes importam o módulo real via CommonJS.
-- [x] Docs V6/README atualizados para arquitetura modular e anti-throttling progressivo.
+- [x] Docs V6.5/README atualizados para arquitetura modular e anti-throttling progressivo.
 - [x] CI final verde — run #549 (13/13 E2E; todos os jobs verdes).
 
 ## Critérios globais de aceite do plano
@@ -193,7 +193,7 @@
 
 ## Notas de execução
 
-- PR 13: CI final completo verde no run #549; 13/13 E2E Playwright passaram, além de sintaxe, manifest, smoke/visual/unit em Node 20/22 e coverage.
+- PR 13: baseline funcional mais recente validado no run #551; 94/94 suítes Jest, 693/693 testes Jest e 13/13 E2E Playwright passaram, além de sintaxe, manifest e coverage.
 
 - PR 12: CI completo verde no run #529.
 - Critérios E2E finais adicionados no PR 13: tradução completa, resposta instantânea, submit ignorado com falha curta e aba Gemini manual inerte/sem keepalive.
@@ -203,7 +203,8 @@
 
 - PR 13 remove o legado transitório: fallback posicional do Temporary Chat, adapter legado, flag de submit já confirmado e loader textual baseado em `new Function`.
 - `content_gemini.js` passa a exportar sua API somente em CommonJS de teste e não autoexecuta nesse ambiente; no navegador mantém o bootstrap normal. Após remover wrappers transitórios, o arquivo ficou com ~451 linhas.
-- README e Documentação V6 agora descrevem os módulos `gemini/*`, Observer V2, Job Runner, deletion/recovery, extração e anti-throttling progressivo.
+- README e Documentação V6.5 agora descrevem os módulos `gemini/*`, Observer V2, Job Runner, deletion/recovery, extração e anti-throttling progressivo.
+- A documentação canônica foi renomeada para `docs/Documentação_V6.5.md`; a versão executável permanece 6.0/6.0.0 neste PR.
 
 - PR 12 substitui o anti-throttling permanente por níveis progressivos: `minimal` (padrão), `balanced` (background/minimized) e `legacy` apenas na segunda tentativa de submit.
 - O loop de `mousemove` aleatório foi removido. O foco periódico deixou de existir em `minimal`; balanced usa 5 s e legacy usa 1 s somente durante escalada.

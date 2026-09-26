@@ -1,6 +1,8 @@
-# Manga Translator v6.0 — Documentação Técnica Consolidada
+# Manga Translator — Documentação Técnica Consolidada v6.5
 
-> **Documento canônico da release 6.0.**
+> **Documento canônico da documentação técnica v6.5.**
+>
+> **Versão executável neste PR:** Manifest `6.0` e packages `6.0.0`. A marca v6.5 identifica esta consolidação documental; este PR não altera a versão do runtime.
 >
 > Esta documentação descreve a arquitetura que existe no código atual do projeto.
 > Ela substitui, como fonte operacional de verdade, a documentação incremental da
@@ -18,7 +20,7 @@
 ## Índice
 
 1. [Objetivo e regras desta documentação](#1-objetivo-e-regras-desta-documentação)
-2. [Estado da release 6.0](#2-estado-da-release-60)
+2. [Estado documentado na v6.5](#2-estado-documentado-na-v65)
 3. [Topologia do repositório](#3-topologia-do-repositório)
 4. [Manifest V3 e modelo de injeção](#4-manifest-v3-e-modelo-de-injeção)
 5. [Service Worker e bootstrap modular](#5-service-worker-e-bootstrap-modular)
@@ -37,7 +39,7 @@
 18. [Testes e CI](#18-testes-e-ci)
 19. [Falhas esperadas e diagnóstico](#19-falhas-esperadas-e-diagnóstico)
 20. [Regras de manutenção](#20-regras-de-manutenção)
-21. [Mudanças documentais da v6.0](#21-mudanças-documentais-da-v60)
+21. [Mudanças documentais da v6.5](#21-mudanças-documentais-da-v65)
 22. [Apêndice A — Inventário dos módulos](#apêndice-a--inventário-dos-módulos)
 23. [Apêndice B — Matriz IPC](#apêndice-b--matriz-ipc)
 24. [Apêndice C — Armazenamento e chaves](#apêndice-c--armazenamento-e-chaves)
@@ -48,7 +50,7 @@
 
 # 1. Objetivo e regras desta documentação
 
-A v6.0 deixa de usar o modelo de documentação do tipo "este arquivo atualiza o
+A v6.5 mantém o modelo de documentação autocontida, em vez do tipo "este arquivo atualiza o
 documento anterior". A documentação agora é autocontida.
 
 Isso significa:
@@ -62,9 +64,11 @@ Isso significa:
   histórico, não como arquitetura;
 - o código em <code>main</code> prevalece sobre qualquer texto antigo.
 
-## 1.1 O que significa "v6.0"
+## 1.1 O que significa "v6.5"
 
-A versão 6.0 é a versão do produto MangaTranslator.
+A v6.5 é a versão desta documentação técnica consolidada. Ela descreve o estado arquitetural presente no PR 13 após a refatoração Gemini RPA V2.
+
+A versão executável do produto permanece `6.0` no `manifest.json` e `6.0.0` nos packages; este PR não altera esses metadados.
 
 Ela não altera automaticamente:
 
@@ -79,38 +83,37 @@ quando o respectivo schema mudar.
 
 ---
 
-# 2. Estado da release 6.0
+# 2. Estado documentado na v6.5
 
 ## 2.1 Metadados oficiais
 
 | Item | Valor |
 |---|---|
 | Produto | MangaTranslator |
-| Release | **6.0** |
+| Versão da documentação | **6.5** |
+| Versão executável do produto | **6.0** (`manifest.json`) / **6.0.0** (packages) |
 | Manifest | **Manifest V3** |
 | Navegadores alvo | Chromium: Chrome, Edge, Brave, Opera e derivados compatíveis |
 | Service Worker | <code>extension/background.js</code> |
 | Persistência principal de páginas | IndexedDB <code>manga_translator_data</code> |
 | Cache global visual | IndexedDB <code>manga_translator_gtc</code> |
 | Automação de tradução | Interface web do Google Gemini |
-| Documento canônico | <code>docs/Documentação_V6.0.md</code> |
+| Documento canônico | <code>docs/Documentação_V6.5.md</code> |
 
 ## 2.2 Baseline funcional conhecido
 
-O último baseline funcional completo validado imediatamente antes da
-consolidação da release foi:
+O baseline funcional completo mais recente validado antes desta atualização documental é o **GitHub Actions run #551**:
 
-- **81/81 suítes Jest**;
-- **574/574 testes Jest**;
-- **8/8 testes E2E Playwright**;
+- **94/94 suítes Jest**;
+- **693/693 testes Jest**;
+- **13/13 testes E2E Playwright**;
 - sintaxe JavaScript aprovada;
 - Manifest V3 aprovado;
 - smoke tests aprovados;
 - testes visuais/perceptuais aprovados;
 - pipeline sem mascaramento das falhas funcionais.
 
-A atualização para v6.0 desta rodada altera metadados, rótulos, comentários e
-documentação; não altera a lógica funcional do pipeline de tradução.
+A atualização documental para v6.5 altera somente documentação e referências documentais; não altera a lógica funcional do pipeline de tradução nem a versão executável do produto.
 
 ## 2.3 O que não deve mais ser considerado estado atual
 
@@ -137,7 +140,7 @@ MangaTranslator/
 │       └── ci.yml
 ├── docs/
 │   ├── DOCUMENTACAO_v5.1.1_ATUALIZACAO.md   # histórico
-│   └── Documentação_V6.0.md                  # fonte técnica atual
+│   └── Documentação_V6.5.md                  # fonte técnica atual
 ├── extension/
 │   ├── manifest.json
 │   ├── background.js
@@ -1366,7 +1369,7 @@ A atualização por scroll/resize é limitada por requestAnimationFrame.
 
 # 15. Compatibilidade e legado que ainda existem
 
-A v6.0 **não** significa remover toda compatibilidade.
+A documentação v6.5 **não** significa remover toda compatibilidade.
 
 A regra é:
 
@@ -1818,7 +1821,7 @@ Sem isso, deve ser removido junto com testes e documentação.
 
 ---
 
-# 21. Mudanças documentais da v6.0
+# 21. Mudanças documentais da v6.5
 
 A criação deste documento corrige problemas estruturais da documentação anterior.
 
@@ -1849,7 +1852,7 @@ A documentação antiga misturava:
 - fallback ainda necessário;
 - formato legado ainda migrável.
 
-Na v6.0 esses conceitos são separados.
+Na v6.5 esses conceitos permanecem separados.
 
 ## 21.4 Versão do produto foi separada de schema interno
 
@@ -1876,7 +1879,22 @@ A documentação agora trata explicitamente:
 ## 21.6 Labels antigos do código foram normalizados
 
 Cabeçalhos e UI que ainda se identificavam como v4.0, v5.1 ou v5.1.1 foram
-atualizados para a release 6.0 quando representavam a versão do produto.
+atualizados para a versão executável 6.0 quando representavam a versão do produto.
+
+## 21.7 Consolidação Gemini RPA V2 na documentação v6.5
+
+A v6.5 incorpora como estado canônico a refatoração concluída na pilha de PRs Gemini RPA V2:
+
+- identidade canônica de abas e `CLAIM_GEMINI_JOB` obrigatório;
+- keep-alive somente após claim válido;
+- `selectors.js`, `dom.js`, Observer V2 e editor modular;
+- submit tratado como tentativa até existir confirmação observável;
+- Temporary Chat com verificação de estado e sem fallback posicional inseguro;
+- attachment, extração de resultado e deletion/recovery em módulos dedicados;
+- `job-runner.js` como orquestrador do pipeline;
+- anti-throttling progressivo `minimal` / `balanced` / `legacy`;
+- remoção dos adapters, flags e polling legado já sem produtor/consumidor;
+- critérios E2E finais para resposta instantânea, submit ignorado, aba manual inerte, `minimized_window` e `background_delete`.
 
 ---
 
@@ -2268,7 +2286,7 @@ explicitamente este arquivo como fonte canônica.
 
 ## Encerramento
 
-A v6.0 consolida uma arquitetura já modularizada e estabilizada:
+A documentação v6.5 consolida a arquitetura modularizada e estabilizada do PR 13:
 
 - Service Worker MV3 com estado durável;
 - lifecycle separado;

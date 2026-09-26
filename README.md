@@ -110,9 +110,9 @@ Também existe um teste específico de carregamento em modo estrito (`tests/unit
 
 ## 📚 Documentação Técnica
 
-A arquitetura vigente, contratos IPC/storage, lifecycle MV3, cache perceptual, Gemini RPA, Reader, compatibilidade e critérios de manutenção da release 6.0 estão consolidados em:
+A arquitetura vigente, contratos IPC/storage, lifecycle MV3, cache perceptual, Gemini RPA, Reader, compatibilidade e critérios de manutenção estão consolidados na **documentação técnica v6.5**. A versão executável da extensão permanece 6.0 neste PR.
 
-- [`docs/Documentação_V6.0.md`](docs/Documentação_V6.0.md)
+- [`docs/Documentação_V6.5.md`](docs/Documentação_V6.5.md)
 
 ---
 
