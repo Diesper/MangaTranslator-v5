@@ -129,7 +129,7 @@ function mountGeminiEditor({ onSubmit } = {}) {
     return { editor, sendButton };
 }
 
-describe('v6.0 Elevação de Resolução CDN (=s0) — content_gemini.js', () => {
+describe('Elevação de Resolução CDN (=s0) — content_gemini.js', () => {
     let runtimeMock;
     let storageMock;
     let sentMessages = [];

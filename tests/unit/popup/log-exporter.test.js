@@ -8,7 +8,7 @@
 const { loadExtensionPage, flushAsyncTasks } = require('../../helpers/load-extension-page.js');
 const { getStorageMock, getTabsMock, getDownloadsMock } = require('../../mocks/chrome-api.mock.js');
 
-describe('v6.0 Log Buffer e Exportador — popup.js', () => {
+describe('Log Buffer e Exportador — popup.js', () => {
     let storageMock;
     let tabsMock;
     let downloadsMock;

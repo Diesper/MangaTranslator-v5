@@ -18,7 +18,7 @@ function loadTemporaryChat() {
     return api;
 }
 
-describe('v6.0 Temporary Chat — módulo semântico', () => {
+describe('Temporary Chat — módulo semântico', () => {
     let temporaryChat;
 
     beforeEach(() => {
