@@ -1059,7 +1059,9 @@ async function claimGeminiJob({ timeoutMs = 5000 } = {}) {
         if (job && (!expectedJobId || job.jobId === expectedJobId)) {
             return { ...job, geminiTabId: tabId };
         }
-        if (!expectedJobId) return null;
+        // O fallback existe apenas para compatibilidade com background/fixtures
+        // anteriores ao claim. Mantém retry limitado para cobrir a corrida em
+        // que a aba nasce antes da persistência do job, sem procurar outras chaves.
         if (Date.now() - legacyStartedAt >= timeoutMs) return null;
         await sleep(500);
     } while (Date.now() - legacyStartedAt < timeoutMs);
