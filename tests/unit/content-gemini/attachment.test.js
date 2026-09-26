@@ -265,7 +265,7 @@ describe('gemini/attachment.js', () => {
     expect(api.findFileInputsDeep(document.body)).toContain(input);
   });
 
-  test('ATT-09: baseline captura assinatura e ignora evidência idêntica', () => {
+  test('ATT-09: baseline ignora mudança cosmética e aceita mudança estrutural de mídia', () => {
     const api = loadAttachment();
     const preview = addPreview({ withImage: true });
     const baseline = api.captureAttachmentBaseline(document);
@@ -273,6 +273,10 @@ describe('gemini/attachment.js', () => {
     expect(api.findAttachmentThumbnailDeep(document, baseline)).toBeNull();
 
     preview.classList.add('upload-complete');
+    expect(api.findAttachmentThumbnailDeep(document, baseline)).toBeNull();
+
+    const image = preview.querySelector('img');
+    image.src = 'blob:https://gemini.test/new-attachment';
     expect(api.findAttachmentThumbnailDeep(document, baseline)).toEqual(
       expect.objectContaining({ el: preview, type: 'container' })
     );
