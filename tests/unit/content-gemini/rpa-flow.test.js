@@ -10,6 +10,7 @@ const GEMINI_EDITOR_PATH = path.resolve(__dirname, '../../../extension/gemini/ed
 const GEMINI_ATTACHMENT_PATH = path.resolve(__dirname, '../../../extension/gemini/attachment.js');
 const GEMINI_TEMP_CHAT_PATH = path.resolve(__dirname, '../../../extension/gemini/temporary-chat.js');
 const GEMINI_RESULT_EXTRACTOR_PATH = path.resolve(__dirname, '../../../extension/gemini/result-extractor.js');
+const GEMINI_DELETION_PATH = path.resolve(__dirname, '../../../extension/gemini/deletion.js');
 
 function setWindowLocation(pathname = '/app/chat-1') {
     Object.defineProperty(window, 'location', {
@@ -282,6 +283,7 @@ describe('content_gemini.js - RPA real do Gemini', () => {
             require(GEMINI_ATTACHMENT_PATH);
             require(GEMINI_TEMP_CHAT_PATH);
             require(GEMINI_RESULT_EXTRACTOR_PATH);
+            require(GEMINI_DELETION_PATH);
             require(CONTENT_GEMINI_PATH);
         });
 
