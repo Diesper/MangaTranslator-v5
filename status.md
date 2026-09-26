@@ -119,7 +119,7 @@
 ### PR 9 — Result extractor modular
 - [x] `gemini/result-extractor.js`.
 - [x] Cadeia canvas → MAIN fetch → SW fetch → retry → auxiliar preservada por execution mode.
-- [ ] CI do PR 9 verde.
+- [x] CI do PR 9 verde — run #455.
 
 ### PR 10 — Deletion modular
 - [ ] `gemini/deletion.js`.
@@ -161,6 +161,8 @@
 - [ ] Logs não armazenam prompt, signed URL, imagem, cookie ou token.
 
 ## Notas de execução
+
+- PR 9: CI completo verde no run #455 (HEAD anterior ao commit documental de status).
 
 - PR 9 extrai a cadeia de resultado para `gemini/result-extractor.js` sem unificar prematuramente os execution modes.
 - Em `background_delete`, a ordem continua canvas → bridge MAIN → SW com sessão; nos demais modos, o SW fetch legado continua direto.
