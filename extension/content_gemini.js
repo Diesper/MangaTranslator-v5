@@ -2,6 +2,11 @@
 
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 
+const GeminiDom = globalThis.MangaTranslatorGeminiDom;
+if (!GeminiDom) {
+    throw new Error('MangaTranslatorGeminiDom não foi carregado antes de content_gemini.js');
+}
+
 // ── Keep-alive sob demanda ───────────────────────────────────────────────────
 // Antes a porta era aberta no carregamento do script, ou seja, QUALQUER aba do
 // Gemini que o usuário abrisse manualmente mantinha o Service Worker acordado.
@@ -407,42 +412,15 @@ const TemporaryChatActivator = {
 };
 
 function getImageSource(img) {
-    if (!img) return '';
-    if (img.dataset && img.dataset.src && !img.src) img.src = img.dataset.src;
-    return img.currentSrc || img.src || (img.dataset && img.dataset.src) || img.getAttribute('src') || '';
+    return GeminiDom.getImageSource(img);
 }
 
 function isIgnoredGeminiImageSource(src) {
-    const lower = String(src || '').toLowerCase();
-    return !lower
-        || lower.includes('avatar')
-        || lower.includes('favicon')
-        || lower.includes('emoji')
-        || lower.includes('profile')
-        || lower.includes('googleusercontent.com/a/')
-        || lower.includes('gstatic.com/images/branding');
+    return GeminiDom.isIgnoredGeminiImageSource(src);
 }
 
 function isModelResponseImage(img) {
-    if (!img) return false;
-    const modelSelector = [
-        'model-response',
-        '[data-test-id*="model-response"]',
-        '.model-response-text',
-        '.response-container',
-        '.model-turn',
-        '[data-message-author="model"]',
-        'message-content.model',
-        '.presented-turn-content',
-        'bard-model-response',
-        'div[data-turn-role="model"]',
-        '.model-response-container'
-    ].join(', ');
-
-    try {
-        if (img.closest && img.closest(modelSelector)) return true;
-    } catch(e) {}
-    return false;
+    return GeminiDom.isModelResponseImage(img);
 }
 
 function tryClickModelImageCards() {
@@ -511,22 +489,7 @@ function isManualSelectableImage(img, ignoreImages = new Set()) {
 }
 
 function findAllElementsDeep(root, matcher) {
-    const list = [];
-    if (!root) return list;
-    function walk(node) {
-        if (!node) return;
-        if (node.nodeType === Node.ELEMENT_NODE) {
-            try { if (matcher(node)) list.push(node); } catch(e) {}
-            try { if (node.shadowRoot) walk(node.shadowRoot); } catch(e) {}
-        }
-        let child = node.firstChild;
-        while (child) {
-            walk(child);
-            child = child.nextSibling;
-        }
-    }
-    walk(root);
-    return list;
+    return GeminiDom.findAllDeep(root, matcher);
 }
 
 function findFileInputsDeep(root = document.body) {
@@ -819,13 +782,7 @@ function createGeminiManualPanel(job, getIgnoreImages) {
 }
 
 function getEditableElement(root) {
-    if (!root) return null;
-    const editable = root.querySelector ? root.querySelector('.ql-editor, [contenteditable="true"]') : null;
-    if (editable) return editable;
-    if (root.getAttribute && (root.getAttribute('contenteditable') === 'true' || (typeof root.className === 'string' && root.className.includes('ql-editor')))) {
-        return root;
-    }
-    return (root.querySelector && root.querySelector('p')) || root;
+    return GeminiDom.getEditableElement(root);
 }
 
 function imageElementToDataUrl(image) {
