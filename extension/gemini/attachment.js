@@ -120,20 +120,17 @@
       element.getAttribute?.('data-testid') ||
       ''
     );
-    const className = typeof element.className === 'string' ? element.className : '';
     const childCount = Number(element.childElementCount || 0);
-    const width = Number(image?.naturalWidth || image?.width || 0);
-    const height = Number(image?.naturalHeight || image?.height || 0);
 
+    // A assinatura ignora classe/style/dimensões: esses valores podem mudar
+    // apenas por animação, layout tardio ou carregamento de uma preview antiga.
+    // Confirmação exige mudança estrutural ou de identidade da mídia.
     return [
       evidence.type || '',
       evidence.selector || '',
       dataTestId,
-      className,
       childCount,
       imageSource,
-      width,
-      height,
     ].join('|');
   }
 
