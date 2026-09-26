@@ -63,6 +63,7 @@
         "gemini/attachment.js",
         "gemini/temporary-chat.js",
         "gemini/result-extractor.js",
+        "gemini/deletion.js",
         "content_gemini.js"
       ],
       "run_at": "document_idle"
