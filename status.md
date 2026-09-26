@@ -150,6 +150,37 @@
 - [x] Docs V6/README atualizados para arquitetura modular e anti-throttling progressivo.
 - [ ] CI final verde.
 
+## Critérios globais de aceite do plano
+
+- [x] Não existe falso sucesso de submit.
+- [x] `MANGA_TRANSLATOR_TRIGGER_SEND` significa tentativa, não confirmação.
+- [x] `DO_SEND_NOW` significa tentativa, não confirmação.
+- [x] `activeNow=false` não retorna ativação bem-sucedida.
+- [x] Stop escondido não é considerado geração.
+- [x] Send disabled não é habilitado por mutação forçada.
+- [x] Observer é instalado antes do envio.
+- [x] Nova resposta é identificada por ownership.
+- [x] Resultado antigo não é confundido com resultado atual.
+- [x] Cleanup é idempotente.
+- [x] Aba manual Gemini permanece inerte no contrato unitário KEEP/TAB.
+- [x] Keepalive só abre após claim.
+- [x] `storage.get(null)` não participa do routing de job.
+- [x] `onReplaced` preserva ownership.
+- [x] Replacement chain funciona.
+- [x] Restart durante rekey funciona.
+- [x] Reconciler não descarta aba substituída.
+- [x] Watchdog continua funcionando.
+- [x] DOM ACK continua funcionando.
+- [x] Finalização continua idempotente.
+- [x] GTC e IndexedDB não sofreram regressão no CI do PR 12.
+- [x] Reader não sofreu regressão no CI do PR 12.
+- [x] Todos os testes existentes atualizados passam no PR 12 — run #529.
+- [x] Novos testes TAB/SEND/OBS/TEMP/KEEP passam.
+- [x] E2E de tradução completa passa — PR 12 run #529.
+- [ ] E2E de resposta rápida passa.
+- [ ] E2E de submit ignorado falha cedo.
+- [ ] E2E de aba manual não toca no Gemini / não abre keepalive.
+
 ## Invariantes que serão preservados
 
 - [x] `jobId` lógico permanece independente de `tabId`.
